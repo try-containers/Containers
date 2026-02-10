@@ -4,17 +4,13 @@
   },
   "groups" : [
     {
-      "hidden" : false,
       "layers" : [
         {
-          "blend-mode" : "lighten",
-          "glass" : false,
-          "hidden" : false,
-          "image-name" : "cube.transparent.svg",
-          "name" : "cube.transparent",
-          "opacity" : 0.5,
+          "glass" : true,
+          "image-name" : "Layer 2.png",
+          "name" : "Cube",
           "position" : {
-            "scale" : 35,
+            "scale" : 1.05,
             "translation-in-points" : [
               0,
               0
@@ -22,13 +18,12 @@
           }
         }
       ],
-      "lighting" : "individual",
       "shadow" : {
-        "kind" : "layer-color",
+        "kind" : "neutral",
         "opacity" : 0.5
       },
       "translucency" : {
-        "enabled" : false,
+        "enabled" : true,
         "value" : 0.5
       }
     }

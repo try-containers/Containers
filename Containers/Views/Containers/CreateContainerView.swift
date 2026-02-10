@@ -67,35 +67,40 @@ struct CreateContainerView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Create New Container")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Create New Container")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("Configure your new container settings")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
+            .padding(20)
+            .background(Color(nsColor: .controlBackgroundColor))
             
             Divider()
-            
-            // Error message
-            if let errorMessage = self.errorMessage {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                    Text(errorMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Color.red.opacity(0.1))
-            }
             
             // Content
             ScrollView {
                 VStack(spacing: 20) {
+                    // Error message
+                    if let errorMessage = self.errorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Text(errorMessage)
+                                .font(.subheadline)
+                                .foregroundStyle(.red)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    
                     // Image Section
                     GroupBox {
                         VStack(alignment: .leading, spacing: 12) {
@@ -134,40 +139,63 @@ struct CreateContainerView: View {
                     }
                     
                     // Optional Settings Disclosure
-                    DisclosureGroup("Optional Settings", isExpanded: $showAdditionalSettings) {
-                        additionalSettings
+                    DisclosureGroup(
+                        isExpanded: $showAdditionalSettings,
+                        content: {
+                            VStack(alignment: .leading, spacing: 16) {
+                                Divider()
+                                additionalSettings
+                            }
                             .padding(.top, 12)
-                    }
-                    .padding(12)
+                        },
+                        label: {
+                            Label {
+                                Text("Optional Settings")
+                                    .font(.headline)
+                            } icon: {
+                                Image(systemName: "gearshape")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    )
+                    .padding(16)
                     .background(Color(nsColor: .controlBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .padding(20)
             }
             
-            // Footer with buttons
             Divider()
-            
-            HStack(spacing: 12) {
-                Button("Cancel") {
-                    self.dismiss()
+            // Bottom Bar
+            HStack {
+                if showProgressView {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.trailing, 8)
+                    Text("Creating container...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .keyboardShortcut(.cancelAction)
                 
                 Spacer()
                 
-                Button(action: createContainer, label: {
-                    Text("Create")
-                        .frame(minWidth: 80)
-                })
+                Button("Cancel") {
+                    self.dismiss()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                
+                Button("Create Container") {
+                    createContainer()
+                }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
+                .controlSize(.large)
+                .disabled(imageReference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(16)
+            .background(Color(nsColor: .controlBackgroundColor))
         }
-        .frame(width: 600)
-        .frame(minHeight: 400, maxHeight: 700)
+        .frame(width: 600, height: 500)
         .sheet(isPresented: $showProgressView, content: {
             ProgressView()
         })
@@ -367,7 +395,7 @@ struct CreateContainerView: View {
                 .padding(12)
             }
             
-            // Volumes
+            /*/ Volumes
             GroupBox {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -426,7 +454,7 @@ struct CreateContainerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-            }
+            }*/
         }
     }
 }

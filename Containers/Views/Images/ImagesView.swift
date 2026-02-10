@@ -20,13 +20,14 @@ struct ImagesView: View {
 
     @State private var images: [ImageViewModel] = []
     @State private var lastUpdated: Date? = nil
-    @State private var selections = Set<ImageViewModel.ID>()
     @State private var createContainerForImage: ImageViewModel? = nil
-    @State private var showInUseContainerForImage: ImageViewModel?
-    @State private var showSaveImageView: Bool = false
     @State private var imagesToSave: String =  ""
+    @State private var imageToDelete: ImageViewModel?
     @State private var error: Error?
     @State private var showError: Bool = false
+    @State private var showDeleteConfirmation: Bool = false
+    @State private var showInUseContainerForImage: ImageViewModel?
+    @State private var showSaveImageView: Bool = false
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -48,7 +49,7 @@ struct ImagesView: View {
 
     var body: some View {
         VStack(alignment: .leading , spacing: 0) {
-            Table(of: ImageViewModel.self, selection: $selections, columns: {
+            Table(of: ImageViewModel.self, columns: {
                 TableColumn("Name") { image in
                     
                     Text(image.name)
@@ -123,6 +124,15 @@ struct ImagesView: View {
                 TableColumn("Actions") { image in
 
                     HStack(spacing: 12) {
+                        
+                        Button(action: {
+                            self.createContainerForImage = image
+                        }, label: {
+                            Image(systemName: "cube.fill")
+                                .foregroundStyle(.blue)
+                        })
+                        .buttonStyle(.plain)
+                        
                         Button(action: {
                             self.imagesToSave = image.imageDescription.reference
                             self.showSaveImageView = true
@@ -132,29 +142,9 @@ struct ImagesView: View {
                         })
                         .buttonStyle(.plain)
 
-                        
                         Button(action: {
-                            self.createContainerForImage = image
-                        }, label: {
-                            Image(systemName: "cube.fill")
-                                .foregroundStyle(.blue)
-                        })
-                        .buttonStyle(.plain)
-
-                        Divider()
-                            .padding(.vertical, 12)
-                        
-                        Button(action: {
-                            Task {
-                                do {
-                                    try await imageManager.delete(images: [image.imageDescription])
-
-                                    await self.listImages()
-                                } catch (let err) {
-                                    self.error = err
-                                    self.showError = true
-                                }
-                            }
+                            imageToDelete = image
+                            showDeleteConfirmation = true
                         }, label: {
                             Image(systemName: "trash.fill")
                                 .foregroundStyle(image.inUse ? .secondary : Color.red)
@@ -179,11 +169,10 @@ struct ImagesView: View {
                 } else if filteredImages.isEmpty {
                     ContentUnavailableView(
                         trimmedText.isEmpty ? "No Images Found" : "No Matching Images",
-                        systemImage: NavigationTab.image.icon
+                        systemImage: NavigationTab.images.icon
                     )
                 }
             })
-
         }
         .onChange(of: self.system.isRunning, initial: true, {
             guard self.system.isRunning else {
@@ -215,12 +204,12 @@ struct ImagesView: View {
         
             RunningContainersView(containers: image.inUseContainers.map({ContainerViewModel($0)}), updateContainer: { id in
                 let container = try await containerManager.get(id: id)
+                
                 guard let index = self.showInUseContainerForImage?.inUseContainers.firstIndex(where: {$0.configuration.id == id }) else {
                     return
                 }
 
                 self.showInUseContainerForImage?.inUseContainers[index] = container
-
             }, deleteContainer: { id in
                 self.showInUseContainerForImage?.inUseContainers.removeAll(where: {$0.configuration.id == id})
             })
@@ -239,6 +228,38 @@ struct ImagesView: View {
                 Text(error.localizedDescription)
             }
         })
+        .confirmationDialog(
+            "Delete Image?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                guard let image = imageToDelete else {
+                    return
+                }
+                
+                Task {
+                    do {
+                        try await imageManager.delete(images: [image.imageDescription])
+                        
+                        await self.listImages()
+                    } catch (let err) {
+                        self.error = err
+                        self.showError = true
+                    }
+                }
+                
+                imageToDelete = nil
+            }
+            
+            Button("Cancel", role: .cancel) {
+                imageToDelete = nil
+            }
+        } message: {
+            if let image = imageToDelete {
+                Text("Delete \(image.name):\(image.tag)? This cannot be undone.")
+            }
+        }
     }
 
     func listImages() async {
@@ -257,4 +278,10 @@ struct ImagesView: View {
             self.showError = true
         }
     }
+}
+
+#Preview {
+    ImagesView(
+        searchText: .constant("")
+    )
 }

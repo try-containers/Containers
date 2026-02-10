@@ -47,7 +47,7 @@ struct RunningContainersView: View {
             // Table
             if containers.isEmpty {
                 ContentUnavailableView {
-                    Label("No Containers", systemImage: "cube")
+                    Label("No Containers", systemImage: "cube.fill")
                 } description: {
                     Text("No containers are currently using this image")
                 }

@@ -40,7 +40,6 @@ struct VolumesView: View {
         
         return filtered
     }
-    
 
     var body: some View {
         VStack(alignment: .leading , spacing: 0) {
@@ -59,7 +58,6 @@ struct VolumesView: View {
                 }
                 .width(80)
 
-                                
                 TableColumn("State") { volume in
                     Group {
                         if volume.inUse {
@@ -80,8 +78,7 @@ struct VolumesView: View {
 
                 }
                 .width(64)
-                
-                
+
                 TableColumn("Size") { volume in
                     if let size = volume.formattedSize {
                         Text(size)
@@ -180,7 +177,6 @@ struct VolumesView: View {
                 }
                 .width(80)
                 
-
             }, rows: {
                 ForEach(filteredVolumes)
             })
@@ -192,11 +188,10 @@ struct VolumesView: View {
                 } else if filteredVolumes.isEmpty {
                     ContentUnavailableView(
                         trimmedText.isEmpty ? "No Volumes Found" : "No Matching Volumes",
-                        systemImage: NavigationTab.image.icon
+                        systemImage: NavigationTab.volumes.icon
                     )
                 }
             })
-
         }
         .onChange(of: self.system.isRunning, initial: true, {
             guard self.system.isRunning else {
@@ -204,6 +199,7 @@ struct VolumesView: View {
                 self.lastUpdated = nil
                 return
             }
+            
             Task {
                 guard self.lastUpdated == nil else {
                     return
@@ -223,19 +219,18 @@ struct VolumesView: View {
                 await self.listVolumes()
             }
         }, content: { volume in
-            
-            /*RunningContainersView(containers: volume.inUseContainers.map({ContainerViewModel($0)}), updateContainer: { id in
+            RunningContainersView(containers: volume.inUseContainers.map({ContainerViewModel($0)}), updateContainer: { id in
 
-                if let container = try await containerManager?.get(id: id) {
-                    guard let index = self.showInUseContainerForVolume?.inUseContainers.firstIndex(where: {$0.configuration.id == id }) else {
-                        return
-                    }
-                    self.showInUseContainerForVolume?.inUseContainers[index] = container
+                let container = try await containerManager.get(id: id)
+                
+                guard let index = self.showInUseContainerForVolume?.inUseContainers.firstIndex(where: {$0.configuration.id == id }) else {
+                    return
                 }
-
+                
+                self.showInUseContainerForVolume?.inUseContainers[index] = container
             }, deleteContainer: { id in
                 self.showInUseContainerForVolume?.inUseContainers.removeAll(where: {$0.configuration.id == id})
-            })*/
+            })
         })
         .sheet(item: $showLabelForVolume, content: { volume in
             VolumeDetailOptionView(dictionary: volume.labels, title: "Metadata", emptyText: "No Metadata Specified.")
@@ -255,9 +250,9 @@ struct VolumesView: View {
     }
 
     func listVolumes() async {
-        /*do {
-            let containers = try await containerManager?.list() ?? []
-            let volumes = try await volumeManager?.list() ?? []
+        do {
+            let containers = try await containerManager.list()
+            let volumes = try await volumeManager.list()
             let displayModels: [VolumeViewModel] = volumes.map({VolumeViewModel($0, containers: containers)})
 
             self.volumes = displayModels
@@ -266,9 +261,9 @@ struct VolumesView: View {
         } catch(let err) {
             self.error = err
             self.showError = true
-        }*/
+        }
     }
-        
+
     private func openFile(_ url: URL) {
         let _ = NSWorkspace.shared.selectFile(
             url.absoluteString,

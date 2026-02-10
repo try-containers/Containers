@@ -12,28 +12,28 @@ import ContainerizationOCI
 import ContainerResource
 
 enum NavigationTab: String, Identifiable, Equatable {
-    case container
-    case image
-    case volume
+    case containers
+    case images
+    case volumes
     
     var displayTitle: String {
         switch self {
-        case .container:
+        case .containers:
             "Containers"
-        case .image:
+        case .images:
             "Images"
-        case .volume:
+        case .volumes:
             "Volumes"
         }
     }
     
     var icon: String {
         switch self {
-        case .container:
+        case .containers:
             "cube.fill"
-        case .image:
+        case .images:
             "cloud.fill"
-        case .volume:
+        case .volumes:
             "internaldrive.fill"
         }
     }
@@ -43,7 +43,7 @@ enum NavigationTab: String, Identifiable, Equatable {
     }
     
     // for customizing order
-    static let allCases: [NavigationTab] = [.container, .image, .volume]
+    static let allCases: [NavigationTab] = [.containers, .images, .volumes]
 }
 
 struct DashboardView: View {
@@ -52,8 +52,7 @@ struct DashboardView: View {
     @Environment(\.openSettings) private var openSettings
     
     // Local navigation state
-    @SwiftUI.State private var selectedTab: NavigationTab = .container
-    @SwiftUI.State private var selectedContainerID: String?
+    @SwiftUI.State private var selectedTab: NavigationTab = .containers
     @SwiftUI.State private var refreshContainerNeeded: Bool = false
     
     // Local error state
@@ -75,21 +74,33 @@ struct DashboardView: View {
     @SwiftUI.State private var runningContainersOnly: Bool = false
     
     // Resource usage state
-    @SwiftUI.State private var memoryUsage: Double = 0.0 // in GB
-    @SwiftUI.State private var cpuUsage: Double = 0.0 // percentage
-    @SwiftUI.State private var diskUsage: Double = 0.0 // in GB
-    @SwiftUI.State private var diskLimit: Double = 50.0 // in GB
-    
+    @SwiftUI.State private var resources = ResourcesViewModel()
+
     var body: some View {
-        
         VStack(spacing: 0) {
             TabView(selection: $selectedTab) {
                 ForEach(NavigationTab.allCases) { tab in
                     NavigationStack {
-                        contentView(for: tab)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                            .toolbarBackground(.hidden, for: .automatic)
+                        switch tab {
+                        case .containers:
+                            ContainersView(
+                                searchText: $searchText,
+                                runningContainersOnly: $runningContainersOnly
+                            )
+                            .id("containers-\(refreshTrigger)")
+                            .padding(.vertical)
+                        case .images:
+                            ImagesView(searchText: $searchText)
+                                .id("images-\(refreshTrigger)")
+                                .padding(.vertical)
+                        case .volumes:
+                            VolumesView(searchText: $searchText)
+                                .id("volumes-\(refreshTrigger)")
+                                .padding(.vertical)
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .toolbarBackground(.hidden, for: .automatic)
                     .tabItem {
                         Label(tab.displayTitle, systemImage: tab.icon)
                     }
@@ -98,18 +109,13 @@ struct DashboardView: View {
             }
             .tabViewStyle(.automatic)
             .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    if selectedTab == .container {
-                        HStack(spacing: 8) {
-                            Text("Running only")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Toggle(isOn: $runningContainersOnly, label: {
-                                EmptyView()
-                            })
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-                        }
+                if selectedTab == .containers {
+                    ToolbarItem(placement: .automatic) {
+                        Toggle(isOn: $runningContainersOnly, label: {
+                            Image(systemName: "line.3.horizontal.decrease")
+                        })
+                        .toggleStyle(.button)
+                        .help("Running containers only")
                     }
                 }
                 
@@ -119,6 +125,7 @@ struct DashboardView: View {
                     }, label: {
                         Image(systemName: "arrow.clockwise")
                     })
+                    .help("Refresh")
                 }
                 
                 ToolbarItem(placement: .automatic) {
@@ -127,6 +134,8 @@ struct DashboardView: View {
                     }, label: {
                         Image(systemName: "plus")
                     })
+                    .disabled(selectedTab == .volumes)
+                    .help("New")
                 }
                 
                 ToolbarSpacer(.fixed)
@@ -174,44 +183,10 @@ struct DashboardView: View {
             }, content: {
                 BuildImageView()
             })
-            .sheet(isPresented: Binding(
-                get: { selectedContainerID != nil },
-                set: { if !$0 { selectedContainerID = nil } }
-            )) {
-                if let containerID = selectedContainerID {
-                    ContainerDetailView(containerID: containerID, onClose: {
-                        selectedContainerID = nil
-                    })
-                    .frame(minWidth: 800, minHeight: 600)
-                    .environment(containerManager)
-                }
-            }
-            
+
             statusBar
         }
         .frame(minWidth: 800, minHeight: 520)
-    }
-    
-    @ViewBuilder
-    private func contentView(for tab: NavigationTab) -> some View {
-        switch tab {
-        case .container:
-            ContainersView(
-                searchText: $searchText,
-                runningContainerOnly: $runningContainersOnly,
-                selectedContainerID: $selectedContainerID
-            )
-                .id("containers-\(refreshTrigger)")
-                .padding(.vertical)
-        case .image:
-            ImagesView(searchText: $searchText)
-                .id("images-\(refreshTrigger)")
-                .padding(.vertical)
-        case .volume:
-            VolumesView(searchText: $searchText)
-                .id("volumes-\(refreshTrigger)")
-                .padding(.vertical)
-        }
     }
     
     private var statusBar: some View {
@@ -284,7 +259,7 @@ struct DashboardView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "memorychip")
                         .font(.caption)
-                    Text(String(format: "%.2f GB", memoryUsage))
+                    Text(String(format: "%.2f GB", resources.memoryUsage))
                         .font(.caption)
                 }
                 
@@ -292,7 +267,7 @@ struct DashboardView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "cpu")
                         .font(.caption)
-                    Text(String(format: "%.0f%%", cpuUsage))
+                    Text(String(format: "%.0f%%", resources.cpuUsage))
                         .font(.caption)
                 }
                 
@@ -300,9 +275,9 @@ struct DashboardView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "internaldrive")
                         .font(.caption)
-                    Text(String(format: "%.2f GB", diskUsage))
+                    Text(String(format: "%.2f GB", resources.diskUsage))
                         .font(.caption)
-                    Text(String(format: "(limit %.0f GB)", diskLimit))
+                    Text(String(format: "(limit %.0f GB)", resources.diskLimit))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -353,20 +328,24 @@ struct DashboardView: View {
     
     private func handlePlusButton() {
         switch selectedTab {
-        case .container:
+        case .containers:
             showCreateContainerView = true
-        case .volume:
+        case .volumes:
             showCreateVolumeView = true
-        case .image:
+        case .images:
             showBuildImageView = true
         }
     }
     
     private func updateResourceUsage() async {
         guard system.isRunning else {
-            memoryUsage = 0.0
-            cpuUsage = 0.0
-            diskUsage = 0.0
+            resources = ResourcesViewModel(
+                memoryUsage: 0,
+                cpuUsage: 0,
+                diskUsage: 0,
+                diskLimit: 0
+            )
+            
             return
         }
         
@@ -377,15 +356,12 @@ struct DashboardView: View {
         
         let runningContainers = snapshots.filter { $0.status == .running }
         
-        // Calculate total memory usage (simulated - in real implementation, would query actual stats)
-        // For now, estimate ~128MB per running container
-        memoryUsage = Double(runningContainers.count) * 0.128
-        
-        // Calculate CPU usage (simulated)
-        cpuUsage = Double(runningContainers.count) * 5.0 // 5% per container estimate
-        
-        // Calculate disk usage (simulated - would need to query actual container disk usage)
-        diskUsage = Double(runningContainers.count) * 2.5 // 2.5GB per container estimate
+        resources = ResourcesViewModel(
+            memoryUsage:  Double(runningContainers.count) * 0.128, // For now, estimate ~128MB per running container
+            cpuUsage:  Double(runningContainers.count) * 5.0, // 5% per container estimate
+            diskUsage:  Double(runningContainers.count) * 2.5, // 2.5GB per container estimate
+            diskLimit: 50,
+        )
     }
 }
 

@@ -4,8 +4,7 @@
    <FileRef
       location = "self:">
    </FileRef>
-   <Group
-      location = "group:ContainersTests"
-      name = "ContainersTests">
-   </Group>
+   <FileRef
+      location = "group:CODE_OF_CONDUCT.md">
+   </FileRef>
 </Workspace>
