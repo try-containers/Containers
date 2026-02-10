@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://github.com/try-containers/Containers/blob/main/.github/256.png?raw=true" height="128">
-  <h1 align="center">Index</h1>
+  <h1 align="center">Containers</h1>
 </p>
 
 A modern, native macOS application for managing Linux containers using Apple's container runtime. 
