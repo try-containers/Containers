@@ -16,7 +16,6 @@ public struct ContainerInfo: Sendable {
     public var publishSockets: [PublishSocket] = []
     public var temporaryFileSystem: [Filesystem] = []
     public var entryPoint: String?
-    public var name: String = ""
     public var platform: String?
     public var os = "linux"
     public var arch: String = Arch.hostArchitecture().rawValue

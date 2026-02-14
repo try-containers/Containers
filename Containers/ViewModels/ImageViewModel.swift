@@ -21,7 +21,7 @@ enum VolumeType: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct ImageViewModel: Identifiable {
+struct ImageViewModel: Identifiable, Hashable, Equatable {
     var name: String
     var tag: String
     var indexDigest: String
@@ -43,7 +43,7 @@ struct ImageViewModel: Identifiable {
     }
     
     /// Initialize from ImageDescription (simplified, without full image details)
-    init(_ description: ImageDescription, containers: [ContainerSnapshot]) {
+    init(_ description: ImageDescription, containers: [ContainerSnapshot], variant: String? = nil, created: Date? = nil, os: String? = nil, architecture: String? = nil) {
         self.imageDescription = description
         
         // Parse reference to get name and tag
@@ -57,13 +57,27 @@ struct ImageViewModel: Identifiable {
         
         self.indexDigest = description.digest
         self.manifestDigest = description.digest
-        self.rawOS = "Linux"
-        self.rawArch = Platform.current.architecture
-        self.variant = ""
+        self.rawOS = os ?? "Linux"
+        self.rawArch = architecture ?? Platform.current.architecture
+        self.variant = variant ?? ""
         self.sizeInBytes = description.descriptor.size
-        self.createdDate = nil
+        self.createdDate = created
         
         self.inUseContainers = containers.filter { $0.configuration.image.digest == description.digest }
+    }
+    
+    // Hashable conformance
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(indexDigest)
+        hasher.combine(manifestDigest)
+        hasher.combine(inUseContainers.count)
+    }
+    
+    // Equatable conformance
+    static func == (lhs: ImageViewModel, rhs: ImageViewModel) -> Bool {
+        return lhs.indexDigest == rhs.indexDigest &&
+               lhs.manifestDigest == rhs.manifestDigest &&
+               lhs.inUseContainers.count == rhs.inUseContainers.count
     }
 }
 
@@ -74,9 +88,6 @@ extension ImageViewModel {
         var d = indexDigest
         if d.hasPrefix("sha256:") {
             d = String(d.dropFirst("sha256:".count))
-        }
-        if d.count > 24 {
-            return String(d.prefix(24)) + "..."
         }
         return d
     }

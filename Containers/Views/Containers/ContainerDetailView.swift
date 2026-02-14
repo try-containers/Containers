@@ -7,21 +7,22 @@
 
 import ContainerResource
 import ContainerSystem
+import ContainerizationOCI
 import SwiftUI
+import Logging
 
 struct ContainerDetailView: View {
-    let container: ContainerViewModel
-    let onStart: () -> Void
-    let onStop: () -> Void
     let onClose: () -> Void
     
     @Environment(ContainerManager.self) private var containerManager
  
-    @State private var status: RuntimeStatus
-    @State private var selectedCategory: DetailCategory = .inspect
-    @State private var error: Error?
-    @State private var showError: Bool = false
-    @State private var showDeleteConfirmation: Bool = false
+    @SwiftUI.State private var container: ContainerViewModel
+    @SwiftUI.State private var status: RuntimeStatus
+    @SwiftUI.State private var selectedCategory: DetailCategory = .inspect
+    @SwiftUI.State private var error: Error?
+    @SwiftUI.State private var showError: Bool = false
+    @SwiftUI.State private var showDeleteConfirmation: Bool = false
+    @SwiftUI.State private var isOperationInProgress: Bool = false
     
     enum DetailCategory: String, Identifiable {
         case logs
@@ -36,15 +37,11 @@ struct ContainerDetailView: View {
     
     init(
         container: ContainerViewModel,
-        onStart: @escaping () -> Void,
-        onStop: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
-        self.container = container
-        self.onStart = onStart
-        self.onStop = onStop
         self.onClose = onClose
-        self.status = container.status
+        self._container = SwiftUI.State(initialValue: container)
+        self._status = SwiftUI.State(initialValue: container.status)
     }
     
     var body: some View {
@@ -55,7 +52,7 @@ struct ContainerDetailView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(container.name)
+                            Text(container.id)
                                 .font(.title2)
                                 .fontWeight(.semibold)
                             
@@ -83,93 +80,73 @@ struct ContainerDetailView: View {
                                     )
                             )
                         }
-                        
-                        // Container ID
-                        Text(container.id)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        
-                        // Image and IP
-                        HStack(spacing: 12) {
-                            Label(container.imageName, systemImage: "cube")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            
-                            if container.hasIPAddress {
-                                Label(
-                                    container.formattedIPAddress,
-                                    systemImage: "network"
-                                )
-                                .font(
-                                    .system(.subheadline, design: .monospaced)
-                                )
-                                .foregroundStyle(.blue)
-                                .textSelection(.enabled)
-                            }
-                        }
                     }
                     
                     Spacer()
                     
                     // Action Buttons
                     HStack(spacing: 8) {
-                        switch status {
-                        case .running:
-                            Button {
-                                Task {
-                                    do {
-                                        try await containerManager.stop(
-                                            snapshots: [container.snapshot],
-                                            timeoutSeconds: UserDefaults.stopContainerTimeoutSeconds
-                                        )
-                                        
-                                        status = .stopped
-                                        
-                                        onStop()
-                                    } catch (let error) {
-                                        self.error = error
-                                        self.showError = true
-                                    }
-                                }
-                            } label: {
-                                Label("Stop", systemImage: "stop.fill")
-                                    .labelStyle(.iconOnly)
-                            }
-                            .buttonStyle(.bordered)
-                            .help("Stop container")
-                            
-                        case .stopped:
-                            Button {
-                                Task {
-                                    do {
-                                        try await containerManager.start(
-                                            id: container.snapshot.configuration.id,
-                                            attachStdout: false,
-                                            attachStdin: false
-                                        )
-                                        
-                                        status = .running
-                                        
-                                        onStart()
-                                    } catch (let error) {
-                                        self.error = error
-                                        self.showError = true
-                                    }
-                                }
-                            } label: {
-                                Label("Start", systemImage: "play.fill")
-                                    .labelStyle(.iconOnly)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .help("Start container")
-                            
-                        case .stopping:
+                        if isOperationInProgress {
                             ProgressView()
                                 .controlSize(.small)
-                            
-                        case .unknown:
-                            EmptyView()
+                        } else {
+                            switch status {
+                            case .running:
+                                Button {
+                                    Task {
+                                        isOperationInProgress = true
+                                        do {
+                                            try await containerManager.stop(
+                                                snapshots: [container.snapshot],
+                                                timeoutSeconds: UserDefaults.stopContainerTimeoutSeconds
+                                            )
+                                            
+                                            self.error = nil
+                                        } catch (let error) {
+                                            self.error = error
+                                            self.showError = true
+                                        }
+                                        isOperationInProgress = false
+                                    }
+                                } label: {
+                                    Label("Stop", systemImage: "stop.fill")
+                                        .labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.bordered)
+                                .help("Stop container")
+                                
+                            case .stopped:
+                                Button {
+                                    Task {
+                                        isOperationInProgress = true
+                                        do {
+                                            try await containerManager.start(
+                                                id: container.snapshot.configuration.id,
+                                                attachStdout: false,
+                                                attachStdin: false
+                                            )
+                                            
+                                            self.error = nil
+                                        } catch (let error) {
+                                            self.error = error
+                                            self.showError = true
+                                        }
+                                        isOperationInProgress = false
+                                    }
+                                } label: {
+                                    Label("Start", systemImage: "play.fill")
+                                        .labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .help("Start container")
+                                
+                            case .stopping:
+                                ProgressView()
+                                    .controlSize(.small)
+                                
+                            case .unknown:
+                                EmptyView()
+                            }
                         }
                         
                         Button(role: .destructive) {
@@ -180,6 +157,7 @@ struct ContainerDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .help("Delete container")
+                        .disabled(isOperationInProgress)
                     }
                 }
             }
@@ -263,6 +241,7 @@ struct ContainerDetailView: View {
                             force: true
                         )
                         
+                        self.error = nil
                         onClose()
                     } catch (let error) {
                         self.error = error
@@ -273,15 +252,63 @@ struct ContainerDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Are you sure you want to delete container '\(container.name)'? This action cannot be undone."
+                "Are you sure you want to delete container '\(container.id)'? This action cannot be undone."
             )
+        }
+        .onChange(of: containerManager.lastContainerChange) {
+            Task {
+                do {
+                    let containers = try await containerManager.list()
+                    
+                    if let updatedSnapshot = containers.first(where: { $0.configuration.id == container.id }) {
+                        let updatedContainer = ContainerViewModel(updatedSnapshot)
+                        
+                        if updatedContainer.status != status {
+                            status = updatedContainer.status
+                        }
+                        
+                        container = updatedContainer
+                    }
+                } catch {
+                    self.error = error
+                    self.showError = true
+                }
+            }
         }
     }
 }
 
-/*#Preview {
-    ContainerDetailView(container: ContainerViewModel(
-        snapshot: ContainerSnapshot(from: any Decoder),
-        onClose: () -> {})
+#Preview {
+    @Previewable @SwiftUI.State var containerManager = ContainerManager()
+    
+    ContainerDetailView(
+        container: ContainerViewModel(
+            ContainerSnapshot(
+                configuration: ContainerConfiguration(
+                    id: "preview-container",
+                    image: ImageDescription(
+                        reference: "nginx:latest",
+                        descriptor: ContainerizationOCI.Descriptor(
+                            mediaType: "application/vnd.oci.image.manifest.v1+json",
+                            digest: "sha256:1234567890abcdef",
+                            size: 1024
+                        )
+                    ),
+                    process: ProcessConfiguration(
+                        executable: "/bin/sh",
+                        arguments: [],
+                        environment: [],
+                        workingDirectory: "/",
+                        terminal: false
+                    )
+                ),
+                status: .running,
+                networks: [],
+                startedDate: Date()
+            )
+        ),
+        onClose: {}
     )
-}*/
+    .environment(containerManager)
+    .frame(width: 800, height: 600)
+}

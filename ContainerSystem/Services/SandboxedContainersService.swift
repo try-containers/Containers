@@ -103,6 +103,14 @@ public actor SandboxedContainersService {
     private let imagesService: ImagesService
     private var containers: [String: ContainerState] = [:]
     private var ipAllocations: [String: UInt8] = [:]
+    
+    /// Callbacks to invoke when container state changes
+    private var stateChangeCallbacks: [@Sendable @MainActor () -> Void] = []
+    
+    /// Register a callback to be invoked when container state changes
+    public func addStateChangeCallback(_ callback: @escaping @Sendable @MainActor () -> Void) {
+        stateChangeCallbacks.append(callback)
+    }
 
     init(appRoot: URL, imagesService: ImagesService, log: Logger) throws {
         let containerRoot = appRoot.appendingPathComponent("containers")
@@ -143,7 +151,7 @@ public actor SandboxedContainersService {
                     container: LinuxContainer?.none,
                     bundle: bundle
                 )
-                log.info("Restored container from disk: \(config.id)")
+                // Container restored from disk
             } catch {
                 log.warning("Failed to load container bundle at \(dir.path): \(error)")
             }
@@ -154,11 +162,11 @@ public actor SandboxedContainersService {
     // MARK: - Public API
 
     public func list() async -> [ContainerSnapshot] {
-        return containers.values.map { $0.snapshot }
+        return containers.values.map { $0.snapshot }.sorted { $0.configuration.id < $1.configuration.id }
     }
 
     public func create(configuration: ContainerConfiguration, kernel: Kernel, options: ContainerCreateOptions) async throws {
-        log.info("=== Creating container: \(configuration.id) ===")
+        // Creating container
 
         guard containers[configuration.id] == nil else {
             throw ContainerizationError(.exists, message: "container already exists: \(configuration.id)")
@@ -195,7 +203,7 @@ public actor SandboxedContainersService {
                 bundle: bundle
             )
 
-            log.info("=== Container created successfully: \(configuration.id) ===")
+            // Container created successfully
 
         } catch {
             log.error("Failed to create container: \(error)")
@@ -205,15 +213,13 @@ public actor SandboxedContainersService {
     }
 
     public func bootstrap(id: String, stdio: [FileHandle?]) async throws {
-        log.info("Bootstrapping container: \(id)")
-
         guard var state = containers[id] else {
             throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
 
         // Already bootstrapped
         if state.container != nil {
-            log.info("Container already bootstrapped: \(id)")
+            // Container already bootstrapped
             return
         }
 
@@ -291,11 +297,8 @@ public actor SandboxedContainersService {
         // Allocate IP before the closure (actor-isolated state)
         let (ip, gw) = try allocateIP(for: id)
         
-        log.info("Container \(id) assigned IP: \(ip)")
+        // Container assigned IP
         
-        let ipWithoutPrefix = String(ip.split(separator: "/").first ?? Substring(ip))
-        let dnsServers = Self.getHostDNSServers()
-
         let container = try LinuxContainer(id, rootfs: rootfs, vmm: vmm, logger: self.log) { czConfig in
             try Self.configureContainer(
                 czConfig: &czConfig,
@@ -306,18 +309,8 @@ public actor SandboxedContainersService {
             // Configure NATInterface (IsolatedInterfaceStrategy pattern)
             czConfig.interfaces = [try NATInterface(ipv4Address: CIDRv4(ip), ipv4Gateway: IPv4Address(gw))]
 
-            // DNS: use host nameservers if none were explicitly configured.
-            // ContainerManager may set czConfig.dns with empty nameservers by default,
-            // so we check for both nil and empty.
-            if czConfig.dns == nil || (czConfig.dns?.nameservers ?? []).isEmpty {
-                czConfig.dns = DNS(nameservers: dnsServers)
-            }
-
-            // Hosts: localHostIPV4 + container hostname (matches SandboxService bootstrap)
-            czConfig.hosts = Hosts(entries: [
-                Hosts.Entry.localHostIPV4(),
-                Hosts.Entry(ipAddress: ipWithoutPrefix, hostnames: [czConfig.hostname])
-            ])
+            // Do not set hosts configuration - causes I/O errors when framework tries to write /etc/hosts
+            // The framework will handle hosts automatically
 
             czConfig.process.stdout = stdout
             czConfig.process.stderr = stderr
@@ -327,7 +320,7 @@ public actor SandboxedContainersService {
 
         do {
             try await container.create()
-            log.info("LinuxContainer VM created and booted for: \(id)")
+            // LinuxContainer VM created and booted
 
             state.container = container
             state.bundle = bundle
@@ -342,8 +335,9 @@ public actor SandboxedContainersService {
                 )
             ]
             containers[id] = state
-
-            log.info("Container bootstrapped successfully: \(id)")
+            
+            // Notify observers that networks have been assigned
+            notifyStateChange()
         } catch {
             log.error("Failed to bootstrap container \(id): \(error)")
             releaseIP(for: id)
@@ -352,7 +346,7 @@ public actor SandboxedContainersService {
     }
 
     public func startProcess(id: String, processID: String) async throws {
-        log.info("Starting process \(processID) in container: \(id)")
+        // Starting process in container
 
         guard var state = containers[id] else {
             throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
@@ -368,17 +362,19 @@ public actor SandboxedContainersService {
         }
 
         try await container.start()
-        log.info("Container init process started: \(id)")
+        // Container init process started
 
         if isInit {
             state.snapshot.status = .running
+            state.snapshot.startedDate = Date()
 
             // Monitor container exit in background
             let logger = self.log
+            
             state.exitMonitorTask = Task { [weak self] in
                 do {
-                    let exitStatus = try await container.wait()
-                    logger.info("Container \(id) exited with code: \(exitStatus.exitCode)")
+                    try await container.wait()
+                    // Container exited
                 } catch {
                     logger.error("Error waiting for container \(id): \(error)")
                 }
@@ -386,14 +382,13 @@ public actor SandboxedContainersService {
             }
 
             containers[id] = state
+            
+            // Notify observers that container started
+            notifyStateChange()
         }
-
-        log.info("Process started: \(processID)")
     }
 
     public func stop(id: String, options: ContainerStopOptions) async throws {
-        log.info("Stopping container: \(id)")
-
         guard var state = containers[id] else {
             throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
@@ -417,13 +412,12 @@ public actor SandboxedContainersService {
         state.container = nil
         releaseIP(for: id)
         containers[id] = state
-
-        log.info("Container stopped: \(id)")
+        
+        // Notify observers that container stopped
+        notifyStateChange()
     }
 
     public func delete(id: String) async throws {
-        log.info("Deleting container: \(id)")
-
         guard let state = containers[id] else {
             throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
@@ -438,8 +432,6 @@ public actor SandboxedContainersService {
 
         releaseIP(for: id)
         containers.removeValue(forKey: id)
-
-        log.info("Container deleted: \(id)")
     }
 
     /// Execute a command in a running container and return its output (uses vsock, no networking needed).
@@ -449,7 +441,9 @@ public actor SandboxedContainersService {
         }
 
         let outputURL = containerRoot.appendingPathComponent("\(id)-exec-output.tmp")
+        
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+        
         let outputHandle = try FileHandle(forWritingTo: outputURL)
         let writer = MultiWriter(handles: [outputHandle])
 
@@ -460,13 +454,19 @@ public actor SandboxedContainersService {
         }
 
         try await process.start()
+        
         let exitStatus = try await process.wait()
+        
         try? writer.close()
 
         let output = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
+        
         try? FileManager.default.removeItem(at: outputURL)
-
-        log.info("exec in \(id): \(arguments) → exit \(exitStatus.exitCode)")
+        
+        if exitStatus.exitCode != 0 {
+            throw ContainerizationError(.internalError, message: "command failed with exit code \(exitStatus.exitCode): \(output)")
+        }
+        
         return output
     }
 
@@ -475,7 +475,7 @@ public actor SandboxedContainersService {
             throw ContainerizationError(.invalidState, message: "container not running: \(id)")
         }
 
-        log.info("Dialing vsock port \(port) on container: \(id)")
+        // Dialing vsock port
         return try await container.dialVsock(port: port)
     }
 
@@ -501,29 +501,22 @@ public actor SandboxedContainersService {
         ipAllocations.removeValue(forKey: id)
     }
 
-    // MARK: - DNS
-
-    /// Read the host's DNS nameservers from /etc/resolv.conf, falling back to public DNS.
-    private nonisolated static func getHostDNSServers() -> [String] {
-        if let contents = try? String(contentsOfFile: "/etc/resolv.conf", encoding: .utf8) {
-            let servers = contents.components(separatedBy: .newlines)
-                .filter { $0.hasPrefix("nameserver ") }
-                .compactMap { $0.split(separator: " ").last.map(String.init) }
-            if !servers.isEmpty {
-                return servers
-            }
-        }
-        return ["8.8.8.8", "1.1.1.1"]
-    }
-
     // MARK: - Private Methods
 
     private func handleContainerExit(id: String) {
-        guard var state = containers[id] else { return }
+        guard var state = containers[id] else {
+            log.warning("Container \(id) not found during exit handling")
+            return
+        }
         state.snapshot.status = .stopped
         state.snapshot.networks = []
+        state.container = nil
+        state.exitMonitorTask?.cancel()
+        state.exitMonitorTask = nil
         releaseIP(for: id)
         containers[id] = state
+        
+        notifyStateChange()
     }
 
     private func gracefulStopContainer(_ lc: LinuxContainer, stopOpts: ContainerStopOptions) async throws {
@@ -556,7 +549,7 @@ public actor SandboxedContainersService {
         try await lc.stop()
     }
 
-    private nonisolated static func configureContainer(
+    private static func configureContainer(
         czConfig: inout LinuxContainer.Configuration,
         config: ContainerConfiguration,
         precomputedMounts: [Containerization.Mount],
@@ -600,7 +593,10 @@ public actor SandboxedContainersService {
 
         czConfig.hostname = config.id
 
-        if let dns = config.dns {
+        // Only set DNS if explicitly provided by container configuration
+        // Setting DNS causes the framework to write /etc/resolv.conf which fails on read-only rootfs
+        // If not set, containers will use the host's DNS via the VM network
+        if let dns = config.dns, !dns.nameservers.isEmpty {
             czConfig.dns = DNS(
                 nameservers: dns.nameservers, domain: dns.domain,
                 searchDomains: dns.searchDomains, options: dns.options)
@@ -609,7 +605,7 @@ public actor SandboxedContainersService {
         Self.configureInitialProcess(czConfig: &czConfig, config: config)
     }
 
-    private nonisolated static func configureInitialProcess(
+    private static func configureInitialProcess(
         czConfig: inout LinuxContainer.Configuration,
         config: ContainerConfiguration
     ) {
@@ -669,5 +665,14 @@ public actor SandboxedContainersService {
         var fs = try await imagesService.getImageSnapshot(description: initDescription, platform: platform)
         fs.options = ["ro"]
         return fs
+    }
+    
+    /// Notify all registered callbacks that container state changed
+    private func notifyStateChange() {
+        for callback in stateChangeCallbacks {
+            Task { @MainActor in
+                callback()
+            }
+        }
     }
 }

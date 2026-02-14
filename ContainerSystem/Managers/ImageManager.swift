@@ -59,6 +59,29 @@ public final class ImageManager {
         return images.filter { !Self.isInfraImage(name: $0.reference) }
     }
     
+    public func getImageInformation(imageReference: String, platform: Platform) async throws -> ImageInfo {
+        let appRoot = try runtime.getAppRoot()
+        let imagesDir = appRoot.appendingPathComponent("images")
+        
+        let imageStore = try ImageStore(path: imagesDir)
+        let image = try await imageStore.get(reference: imageReference)
+        
+        let imageData = try await image.config(for: platform)
+        
+        let createdDate: Date? = {
+            guard let createdString = imageData.created else { return nil }
+            let formatter = ISO8601DateFormatter()
+            return formatter.date(from: createdString)
+        }()
+        
+        return ImageInfo(
+            variant: platform.variant,
+            created: createdDate,
+            os: platform.os,
+            architecture: platform.architecture
+        )
+    }
+    
     public func pull(
         reference: String,
         platform: Platform = .current,
@@ -393,6 +416,57 @@ public final class ImageManager {
         }
     }
     
+    public func getImageLayers(imageReference: String, platform: Platform) async throws -> [ImageLayer] {
+        let appRoot = try runtime.getAppRoot()
+        let imagesDir = appRoot.appendingPathComponent("images")
+        
+        logger.info("Getting layer information for image: \(imageReference)")
+        
+        let imageStore = try ImageStore(path: imagesDir)
+        let image = try await imageStore.get(reference: imageReference)
+        
+        // Get both manifest (for layer sizes) and image config (for history/commands)
+        let manifest = try await image.manifest(for: platform)
+        let imageData = try await image.config(for: platform)
+        
+        var layers: [ImageLayer] = []
+        
+        // Get history from image data if available
+        let history = imageData.history ?? []
+        
+        // Extract layers from manifest and match with history
+        // Note: History entries correspond to diff_ids in rootfs, not directly to manifest layers
+        // We'll match by index, understanding that some history entries may be empty layers
+        for (index, layer) in manifest.layers.enumerated() {
+            var createdBy: String? = nil
+            var comment: String? = nil
+            var emptyLayer = false
+            
+            // Try to find corresponding history entry
+            if index < history.count {
+                let historyEntry = history[index]
+                
+                createdBy = historyEntry.createdBy
+                comment = historyEntry.comment
+                emptyLayer = historyEntry.emptyLayer ?? false
+            }
+            
+            let layerDetail = ImageLayer(
+                digest: layer.digest,
+                size: layer.size,
+                createdBy: createdBy,
+                comment: comment ?? "Media type: \(layer.mediaType)",
+                emptyLayer: emptyLayer
+            )
+            
+            layers.append(layerDetail)
+        }
+        
+        logger.info("Found \(layers.count) layers for image: \(imageReference)")
+        
+        return layers.reversed()
+    }
+    
     // MARK: - Private Helper Methods (moved from Utility)
     
     private static let infraImages = [
@@ -407,11 +481,6 @@ public final class ImageManager {
             }
         }
         return false
-    }
-    
-    // Internal so BuildImageOutputConfiguration can use it
-    nonisolated public static func keyValueString(key: String, value: String) -> String {
-        return "\(key)=\(value)"
     }
 }
 
@@ -479,12 +548,16 @@ public struct BuildImageOutputConfiguration {
     }
     
     public var additionalFields: [KeyValue]
+    
+    private static func keyValueString(key: String, value: String) -> String {
+        return "\(key)=\(value)"
+    }
 
     var buildExport: Builder.BuildExport {
-        var rawInput = ImageManager.keyValueString(key: "type", value: type.rawValue)
+        var rawInput = Self.keyValueString(key: "type", value: type.rawValue)
         
         if let destination {
-            rawInput = "\(rawInput),\(ImageManager.keyValueString(key: "dest", value: destination.path(percentEncoded: true)))"
+            rawInput = "\(rawInput),\(Self.keyValueString(key: "dest", value: destination.path(percentEncoded: true)))"
         }
         
         if !additionalFields.isEmpty {
@@ -523,5 +596,35 @@ public struct BuildImageOutputConfiguration {
         if !destinationDirectory.isDirectory {
             throw ContainerizationError(.invalidArgument, message: "Specified Destination is not a directory.")
         }
+    }
+}
+
+public struct ImageLayer {
+    public let digest: String
+    public let size: Int64
+    public let createdBy: String?
+    public let comment: String?
+    public let emptyLayer: Bool
+    
+    public init(digest: String, size: Int64, createdBy: String?, comment: String?, emptyLayer: Bool) {
+        self.digest = digest
+        self.size = size
+        self.createdBy = createdBy
+        self.comment = comment
+        self.emptyLayer = emptyLayer
+    }
+}
+
+public struct ImageInfo {
+    public let variant: String?
+    public let created: Date?
+    public let os: String
+    public let architecture: String
+    
+    public init(variant: String?, created: Date?, os: String, architecture: String) {
+        self.variant = variant
+        self.created = created
+        self.os = os
+        self.architecture = architecture
     }
 }

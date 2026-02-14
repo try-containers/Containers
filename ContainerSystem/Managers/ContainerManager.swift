@@ -32,6 +32,18 @@ public final class ContainerManager {
     internal let runtime: ContainerRuntime
     private let logger: Logger
     
+    /// Observable property that triggers UI updates when containers change
+    /// This mirrors the runtime's lastContainerStateChange property
+    public var lastContainerChange: Date {
+        runtime.lastContainerStateChange
+    }
+    
+    /// Observable property for progress messages during long-running operations
+    /// This mirrors the runtime's progressMessage property
+    public var progressMessage: String {
+        runtime.progressMessage
+    }
+    
     /// Public initializer - creates instance referencing shared runtime
     public init() {
         self.runtime = ContainerRuntime.shared
@@ -63,11 +75,6 @@ public final class ContainerManager {
     ) async throws {
         let service = try await runtime.getContainersService()
 
-        let id = Self.createContainerID(name: container.name)
-        try Self.validEntityName(id)
-        
-        logger.info("Creating container: \(id)")
-
         let (configuration, kernel) = try await createContainerConfig(
             imageReference: imageReference,
             imagesDir: imagesDir,
@@ -87,19 +94,14 @@ public final class ContainerManager {
         if !container.cidfile.isEmpty {
             try writeCIDFile(path: container.cidfile, id: configuration.id)
         }
-        
-        logger.info("Container created: \(configuration.id)")
     }
    
     public func start(id: String, attachStdout: Bool = false, attachStdin: Bool = false) async throws {
         let service = try await runtime.getContainersService()
         
-        logger.info("Starting container: \(id)")
-        
         do {
             try await service.bootstrap(id: id, stdio: [nil, nil, nil])
             try await service.startProcess(id: id, processID: id)
-            logger.info("Container started: \(id)")
         } catch {
             try? await service.stop(id: id, options: .default)
             
@@ -131,8 +133,6 @@ public final class ContainerManager {
     
     public func exec(id: String, arguments: [String]) async throws -> String {
         let service = try await runtime.getContainersService()
-        
-        logger.info("Executing command in container: \(id)")
         return try await service.exec(id: id, arguments: arguments)
     }
 
@@ -150,8 +150,6 @@ public final class ContainerManager {
     
     public func stop(snapshots: [ContainerSnapshot], timeoutSeconds: Int32) async throws {
         let service = try await runtime.getContainersService()
-        
-        logger.info("Stopping \(snapshots.count) container(s)")
 
         let stopOptions = ContainerStopOptions(
             timeoutInSeconds: timeoutSeconds,
@@ -163,7 +161,6 @@ public final class ContainerManager {
         for container in snapshots {
             do {
                 try await service.stop(id: container.configuration.id, options: stopOptions)
-                logger.info("Stopped container: \(container.configuration.id)")
             } catch {
                 logger.error("Failed to stop container \(container.configuration.id): \(error)")
                 failed.append((container.configuration.id, error))
@@ -180,8 +177,6 @@ public final class ContainerManager {
     
     public func delete(snapshots: [ContainerSnapshot], force: Bool) async throws {
         let service = try await runtime.getContainersService()
-        
-        logger.info("Deleting \(snapshots.count) container(s)")
 
         var failed: [(String, Error)] = []
         
@@ -196,7 +191,6 @@ public final class ContainerManager {
                 }
 
                 try await service.delete(id: container.configuration.id)
-                logger.info("Container deleted: \(container.configuration.id)")
             } catch {
                 logger.error("Failed to delete container \(container.configuration.id): \(error)")
                 failed.append((container.configuration.id, error))
@@ -263,14 +257,6 @@ public final class ContainerManager {
         return name
     }
 
-    private static func validEntityName(_ name: String) throws {
-        let pattern = #"^[a-zA-Z0-9][a-zA-Z0-9_.-]+$"#
-        let regex = try Regex(pattern)
-        if try regex.firstMatch(in: name) == nil {
-            throw ContainerizationError(.invalidArgument, message: "invalid entity name \(name)")
-        }
-    }
-
     private func resolveImage(
         reference: String,
         platform: Platform,
@@ -278,35 +264,97 @@ public final class ContainerManager {
         imagesService: ImagesService
     ) async throws -> ImageDescription {
         let existingImages = try await imagesService.list()
+        
+        // Try exact match first
         if let existing = existingImages.first(where: { $0.reference == reference }) {
-            logger.info("Using existing image: \(existing.reference)")
             try await imagesService.unpack(
                 description: existing,
                 platform: platform,
-                progressUpdate: { _ in }
+                progressUpdate: { events in
+                    Task { @MainActor in
+                        self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
+                    }
+                }
             )
             return existing
         }
+        
+        // Try matching by comparing digests - most reliable
+        let matchingByDigest = existingImages.first { image in
+            // If the input reference contains a digest, match by digest
+            if reference.contains("@sha256:") {
+                return image.digest == reference.split(separator: "@").last.map(String.init)
+            }
+            return false
+        }
+        
+        if let existing = matchingByDigest {
+            try await imagesService.unpack(
+                description: existing,
+                platform: platform,
+                progressUpdate: { events in
+                    Task { @MainActor in
+                        self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
+                    }
+                }
+            )
+            return existing
+        }
+        
+        // Try matching by parsing the reference to handle different formats
+        // e.g., "alpine:latest" should match "docker.io/library/alpine:latest"
+        if let parsedRef = try? ContainerizationOCI.Reference.parse(reference) {
+            let matchingImage = existingImages.first { image in
+                guard let imageRef = try? ContainerizationOCI.Reference.parse(image.reference) else {
+                    return false
+                }
+                
+                // Extract just the repository name without registry
+                let refNameComponents = parsedRef.name.split(separator: "/")
+                let imageNameComponents = imageRef.name.split(separator: "/")
+                
+                let refShortName = refNameComponents.last ?? Substring(parsedRef.name)
+                let imageShortName = imageNameComponents.last ?? Substring(imageRef.name)
+                
+                // Match on short name and tag
+                let nameMatch = refShortName == imageShortName
+                let tagMatch = (parsedRef.tag ?? "latest") == (imageRef.tag ?? "latest")
+                return nameMatch && tagMatch
+            }
+            
+            if let existing = matchingImage {
+                try await imagesService.unpack(
+                    description: existing,
+                    platform: platform,
+                    progressUpdate: { events in
+                        Task { @MainActor in
+                            self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
+                        }
+                    }
+                )
+                return existing
+            }
+        }
 
-        logger.info("Pulling image: \(reference)")
         let imageDescription = try await imagesService.pull(
             reference: reference,
             platform: platform,
             insecure: insecure,
             progressUpdate: { events in
-                for event in events {
-                    if case .setDescription(let desc) = event {
-                        self.logger.info("\(desc)")
-                    }
+                Task { @MainActor in
+                    self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
                 }
             }
         )
 
-        logger.info("Unpacking image")
         try await imagesService.unpack(
             description: imageDescription,
             platform: platform,
-            progressUpdate: { _ in }
+            progressUpdate: { events in
+                Task { @MainActor in
+                    self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
+                }
+            }
         )
 
         return imageDescription
@@ -321,9 +369,6 @@ public final class ContainerManager {
         resource: ContainerConfiguration.Resources,
         registryScheme: String
     ) async throws -> (ContainerConfiguration, Kernel) {
-        let id = Self.createContainerID(name: container.name)
-        try Self.validEntityName(id)
-
         var requestedPlatform = Parser.platform(os: container.os, arch: container.arch)
         
         if let platform = container.platform {
@@ -339,8 +384,6 @@ public final class ContainerManager {
         let imagesService = try await runtime.getImagesService()
         
         // Resolve image - check local first, then pull if needed
-        logger.info("Resolving image: \(processedReference)")
-        
         let imageDescription = try await resolveImage(
             reference: processedReference,
             platform: requestedPlatform,
@@ -348,27 +391,25 @@ public final class ContainerManager {
             imagesService: imagesService
         )
         
-        logger.info("Fetching kernel")
-        
         let kernel = try await getKernel(container: container)
-
-        logger.info("Fetching init image")
         
         let initImageDescription = try await imagesService.pull(
             reference: ClientImage.initImageRef,
             platform: .current,
             insecure: insecure,
-            progressUpdate: { _ in }
+            progressUpdate: { events in
+                Task { @MainActor in
+                    self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
+                }
+            }
         )
-
-        logger.info("Unpacking init image")
         
         try await imagesService.unpack(
             description: initImageDescription,
             platform: requestedPlatform,
             progressUpdate: { events in
                 Task { @MainActor in
-                    // ContainerSystem.shared.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
+                    self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
                 }
             }
         )
@@ -385,7 +426,8 @@ public final class ContainerManager {
             config: imageConfig
         )
 
-        var config = ContainerConfiguration(id: id, image: imageDescription, process: pc)
+        let containerId = Self.createContainerID(name: nil)
+        var config = ContainerConfiguration(id: containerId, image: imageDescription, process: pc)
         config.platform = requestedPlatform
         config.resources = resource
 
@@ -397,17 +439,25 @@ public final class ContainerManager {
         
         // Note: Sandboxed service uses built-in NAT networking, no validation needed
 
+        // Only configure DNS if explicitly requested
+        // If not set, containers will use the host's DNS via the VM network
+        // Setting DNS causes the framework to write /etc/resolv.conf which can fail on read-only rootfs
         if container.dnsDisabled {
             config.dns = nil
-        } else {
+        } else if !container.dnsNameservers.isEmpty || container.dnsDomain != nil || !container.dnsSearchDomains.isEmpty || !container.dnsOptions.isEmpty {
+            // User has explicitly configured DNS settings, so apply them
             let domain: String? = container.dnsDomain ?? DefaultsStore.getOptional(key: .defaultDNSDomain)
+            
             let dnsConfig = ContainerConfiguration.DNSConfiguration(
-                nameservers: container.dnsNameservers,
+                nameservers: container.dnsNameservers.isEmpty ? getHostDNSServers() : container.dnsNameservers,
                 domain: domain,
                 searchDomains: container.dnsSearchDomains,
                 options: container.dnsOptions
             )
             config.dns = dnsConfig
+        } else {
+            // No DNS configuration specified - let it use host DNS via VM network
+            config.dns = nil
         }
 
         if Platform.current.architecture == "arm64" && requestedPlatform.architecture == "amd64" {
@@ -541,6 +591,23 @@ public final class ContainerManager {
             user: user,
             supplementalGroups: additionalGroups
         )
+    }
+    
+    // MARK: - DNS Helpers
+    
+    /// Read the host's DNS nameservers from /etc/resolv.conf, falling back to public DNS.
+    private func getHostDNSServers() -> [String] {
+        if let contents = try? String(contentsOfFile: "/etc/resolv.conf", encoding: .utf8) {
+            let servers = contents.components(separatedBy: .newlines)
+                .filter { $0.hasPrefix("nameserver ") }
+                .compactMap { $0.split(separator: " ").last.map(String.init) }
+                .filter { !$0.isEmpty } // Filter out empty entries
+            if !servers.isEmpty {
+                return servers
+            }
+        }
+        // Fallback to public DNS if /etc/resolv.conf is unavailable or has no nameservers
+        return ["8.8.8.8", "1.1.1.1"]
     }
 
 }

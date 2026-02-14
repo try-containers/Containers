@@ -172,9 +172,19 @@ struct CreateContainerView: View {
                     ProgressView()
                         .controlSize(.small)
                         .padding(.trailing, 8)
-                    Text("Creating container...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Creating container...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        
+                        if !containerManager.progressMessage.isEmpty {
+                            Text(containerManager.progressMessage)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(2)
+                        }
+                    }
                 }
                 
                 Spacer()
@@ -293,24 +303,6 @@ struct CreateContainerView: View {
     @ViewBuilder
     private var additionalSettings: some View {
         VStack(spacing: 16) {
-            // Container Name
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Container Name")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    Text("If empty, a generated UUID will be used")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    TextField("Auto-generated", text: $container.name)
-                        .textFieldStyle(.roundedBorder)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-            }
-            
             // Entrypoint
             GroupBox {
                 VStack(alignment: .leading, spacing: 8) {

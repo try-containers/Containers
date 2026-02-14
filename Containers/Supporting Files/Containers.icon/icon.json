@@ -1,9 +1,48 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-gray:0.50000,1.00000"
+    "linear-gradient" : [
+      "display-p3:0.56902,0.58436,0.65089,1.00000",
+      "display-p3:0.38323,0.40443,0.46632,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
   },
   "groups" : [
     {
+      "hidden" : false,
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "Layer.png",
+          "name" : "Layer",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              -13,
+              -16.5
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "hidden" : true,
       "layers" : [
         {
           "glass" : true,

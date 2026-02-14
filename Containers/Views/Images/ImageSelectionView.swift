@@ -22,14 +22,15 @@ struct ImageSelectionView: View {
     }
     
     private var filteredImages: [ImageDescription] {
+        let sorted = images.sorted { $0.reference < $1.reference }
+        
         if trimmedText.isEmpty {
-            return images
+            return sorted
         }
-        let filtered = self.images.filter({
+        
+        return sorted.filter({
             $0.reference.contains(trimmedText)
         })
-        
-        return filtered
     }
 
     var body: some View {

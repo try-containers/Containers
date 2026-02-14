@@ -72,7 +72,7 @@ struct ContainersApp: App {
             MenuBarItem()
                 .environment(systemManager)
         }, label: {
-            Image(systemName: systemManager.isRunning ? "cube.fill" : "cube")
+            Image(systemManager.isRunning ? "server.play" : "server.pause")
         })
         .menuBarExtraStyle(.menu)
         

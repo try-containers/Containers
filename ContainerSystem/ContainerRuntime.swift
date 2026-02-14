@@ -56,6 +56,13 @@ internal class ContainerRuntime {
     internal var isStopping: Bool = false
     internal var startupError: Error?
     
+    /// Timestamp of last container state change
+    /// All ContainerManager instances observe this property
+    internal var lastContainerStateChange: Date = Date()
+    
+    /// Progress message for long-running operations (image unpacking, etc.)
+    internal var progressMessage: String = ""
+    
     // Plugin processes storage (used by ContainerRuntime+Plugins extension)
     internal var pluginProcesses: [String: PluginProcessInfo] = [:]
     
@@ -175,19 +182,17 @@ internal class ContainerRuntime {
         
         do {
             // Create necessary directories
-            Self.logger.info("Creating data directories...")
             try createDataDirectories(appRoot: appRoot)
             
             // Initialize services
-            Self.logger.info("Initializing services...")
             try await initializeServices(appRoot: appRoot)
-            Self.logger.info("Services initialized")
             
             // Install prerequisites (init image and kernel)
             try await installPrerequisites()
             
             isRunning = true
             startupError = nil
+            
             Self.logger.info("Container system started successfully")
             
         } catch {
@@ -230,6 +235,8 @@ internal class ContainerRuntime {
     // MARK: - Private Helpers
     
     private func createDataDirectories(appRoot: URL) throws {
+        Self.logger.info("Creating data directories...")
+        
         // Create app data directory with subdirectories
         try FileManager.default.createDirectory(
             at: appRoot,

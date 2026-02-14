@@ -9,6 +9,8 @@ import SwiftUI
 import AppKit
 import ContainerSystem
 import ContainerResource
+import ContainerizationOCI
+import ContainerizationExtras
 
 struct ContainerInspectView : View {
     let container: ContainerViewModel
@@ -19,6 +21,48 @@ struct ContainerInspectView : View {
                 alignment: .leading,
                 spacing: 20,
                 content: {
+
+                    // Image Information
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionHeader(title: "Image", subtitle: nil)
+                        
+                        infoRow(label: "Reference", value: container.snapshot.configuration.image.reference)
+                        infoRow(label: "Digest", value: container.snapshot.configuration.image.digest)
+                    }
+                    
+                    // Network
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionHeader(title: "Network", subtitle: nil)
+                        
+                        if !container.snapshot.networks.isEmpty {
+                            ForEach(Array(container.snapshot.networks.enumerated()), id: \.offset) { index, network in
+                                infoRow(label: "IPv4 [\(index)]", value: network.ipv4Address.description)
+                                if let ipv6 = network.ipv6Address {
+                                    infoRow(label: "IPv6 [\(index)]", value: ipv6.description)
+                                }
+                            }
+                        } else {
+                            emptyStateView(text: "No network information")
+                        }
+                    }
+                    
+                    // Command & Entrypoint
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionHeader(title: "Execution", subtitle: nil)
+                        
+                        let initProcess = container.snapshot.configuration.initProcess
+                        
+                        infoRow(label: "Executable", value: initProcess.executable)
+                        
+                        if !initProcess.arguments.isEmpty {
+                            infoRow(label: "Arguments", value: initProcess.arguments.joined(separator: " "))
+                        }
+                        
+                        infoRow(label: "Working Directory", value: initProcess.workingDirectory)
+                        
+                        infoRow(label: "Terminal", value: initProcess.terminal ? "Yes" : "No")
+                    }
+                    
                     let environments = KeyValue.fromEnvironment(container.snapshot)
                     let ports = KeyValue.fromPorts(container.snapshot)
                     
@@ -216,6 +260,26 @@ struct ContainerInspectView : View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+    
+    private func infoRow(label: String, value: String) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.body)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 120, alignment: .leading)
+            
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(6)
     }
     
     private func emptyStateView(text: String) -> some View {

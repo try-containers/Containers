@@ -49,7 +49,7 @@ struct ContainerLogsView: View {
             }
         }
         .task {
-            await self.getLogs()
+            await streamLogs()
         }
         .alert(
             "Error",
@@ -67,20 +67,63 @@ struct ContainerLogsView: View {
         )
     }
 
-    private func getLogs() async {
-        do {
-            let containerDir = UserDefaults.applicationDataRoot
-                .appendingPathComponent("containers")
-                .appendingPathComponent(containerID)
-
-            self.logs = try await containerManager.getLog(
-                id: containerID,
-                containerDir: containerDir,
-                boot: false
-            )
-        } catch (let error) {
-            self.error = error
-            self.showError = true
+    private func streamLogs() async {
+        let containerDir = UserDefaults.applicationDataRoot
+            .appendingPathComponent("containers")
+            .appendingPathComponent(containerID)
+        
+        let logFile = containerDir.appendingPathComponent("stdio.log")
+        
+        // Create file if it doesn't exist
+        if !FileManager.default.fileExists(atPath: logFile.path) {
+            FileManager.default.createFile(atPath: logFile.path, contents: nil)
+        }
+        
+        guard let fileHandle = try? FileHandle(forReadingFrom: logFile) else {
+            return
+        }
+        
+        // Read initial content
+        if let initialData = try? fileHandle.readToEnd(),
+           let initialContent = String(data: initialData, encoding: .utf8) {
+            logs = initialContent.trimmingCharacters(in: .newlines)
+        }
+        
+        // Seek to end to only get new content
+        _ = try? fileHandle.seekToEnd()
+        
+        // Create async stream using readabilityHandler
+        let stream = AsyncStream<String> { continuation in
+            fileHandle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    // File truncated or handle closed
+                    do {
+                        _ = try fileHandle.seekToEnd()
+                    } catch {
+                        fileHandle.readabilityHandler = nil
+                        continuation.finish()
+                        return
+                    }
+                }
+                if let newContent = String(data: data, encoding: .utf8), !newContent.isEmpty {
+                    continuation.yield(newContent)
+                }
+            }
+            
+            continuation.onTermination = { @Sendable _ in
+                fileHandle.readabilityHandler = nil
+                try? fileHandle.close()
+            }
+        }
+        
+        // Process new log content as it arrives
+        for await newContent in stream {
+            if !logs.isEmpty {
+                logs += newContent
+            } else {
+                logs = newContent.trimmingCharacters(in: .newlines)
+            }
         }
     }
 }

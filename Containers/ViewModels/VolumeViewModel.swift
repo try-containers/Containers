@@ -9,7 +9,7 @@ import Foundation
 import ContainerResource
 
 @dynamicMemberLookup
-struct VolumeViewModel: Identifiable {
+struct VolumeViewModel: Identifiable, Hashable, Equatable {
     var volume: Volume
     var inUseContainers: [ContainerSnapshot]
     
@@ -38,6 +38,20 @@ struct VolumeViewModel: Identifiable {
         self.inUseContainers = containers.filter({ container in
             container.volumeNames.contains(volume.name)
         })
+    }
+    
+    // Hashable conformance
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(volume.id)
+        hasher.combine(volume.name)
+        hasher.combine(inUseContainers.count)
+    }
+    
+    // Equatable conformance
+    static func == (lhs: VolumeViewModel, rhs: VolumeViewModel) -> Bool {
+        return lhs.volume.id == rhs.volume.id &&
+               lhs.volume.name == rhs.volume.name &&
+               lhs.inUseContainers.count == rhs.inUseContainers.count
     }
 
 }

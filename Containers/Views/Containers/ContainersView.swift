@@ -15,6 +15,7 @@ struct ContainersView: View {
     
     @Binding var searchText: String
     @Binding var runningContainersOnly: Bool
+    var refreshTrigger: Int
     
     @State private var containers: [ContainerViewModel] = []
     @State private var selectedContainer: ContainerViewModel? = nil
@@ -22,6 +23,7 @@ struct ContainersView: View {
     @State private var error: Error?
     @State private var showError = false
     @State private var showDeleteConfirmation = false
+    @State private var showContainerDetail = false
     @State private var showCreateContainerView = false
     
     private var trimmedText: String {
@@ -34,7 +36,7 @@ struct ContainersView: View {
         }
         
         let filtered = self.containers.filter({
-            $0.name.contains(trimmedText) == true ||
+            $0.id.contains(trimmedText) == true ||
             $0.imageName.contains(trimmedText) ||
             $0.formattedPorts.contains(trimmedText) == true ||
             $0.formattedIPAddress.contains(trimmedText) == true
@@ -48,12 +50,12 @@ struct ContainersView: View {
             Table(
                 of: ContainerViewModel.self,
                 columns: {
-                    TableColumn("Name") { container in
-                        
+                    TableColumn("ID") { container in
                         Button(action: {
                             selectedContainer = container
+                            showContainerDetail = true
                         }, label: {
-                            Text(container.name)
+                            Text(container.id)
                                 .font(.headline)
                                 .lineLimit(1)
                                 .underline()
@@ -105,6 +107,13 @@ struct ContainersView: View {
                     }
                     .width(min: 56, ideal: 72, max: 96)
                     
+                    TableColumn("Started") { container in
+                        Text(container.formattedStarted)
+                            .lineLimit(1)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                    .width(min: 120, ideal: 160, max: 200)
+                    
                     TableColumn("Actions") { container in
                         
                         HStack(spacing: 12) {
@@ -118,10 +127,6 @@ struct ContainersView: View {
                                                     snapshots: [container.snapshot],
                                                     timeoutSeconds: Int32(UserDefaults.stopContainerTimeoutSeconds)
                                                 )
-                                                
-                                                try await updateStatus(.stopped, for: container)
-                                                
-                                                self.lastUpdated = Date()
                                                 
                                             } catch (let err) {
                                                 self.error = err
@@ -144,10 +149,6 @@ struct ContainersView: View {
                                                 attachStdout: false,
                                                 attachStdin: false
                                             )
-                                            
-                                            try await updateStatus(.running, for: container)
-                                            
-                                            self.lastUpdated = Date()
                                         } catch (let err) {
                                             self.error = err
                                             self.showError = true
@@ -169,6 +170,7 @@ struct ContainersView: View {
                             }
                             
                             Button(action: {
+                                selectedContainer = container
                                 showDeleteConfirmation = true
                             }, label: {
                                 Image(systemName: "trash.fill")
@@ -185,7 +187,7 @@ struct ContainersView: View {
                 rows: {
                     ForEach(filteredContainers)
                 })
-            .tableStyle(.automatic)
+            .tableStyle(.inset)
             .alternatingRowBackgrounds(.disabled)
             .overlay(alignment: .center, content: {
                 if !self.system.isRunning {
@@ -220,38 +222,43 @@ struct ContainersView: View {
                 }
             }
         })
+        .onChange(of: refreshTrigger) {
+            Task {
+                await refreshContainers()
+            }
+        }
+        .onAppear {
+            Task {
+                guard system.isRunning else { return }
+                await refreshContainers()
+            }
+        }
+        .onChange(of: containerManager.lastContainerChange) {
+            Task {
+                guard system.isRunning else { return }
+                await refreshContainers()
+            }
+        }
         .sheet(isPresented: $showCreateContainerView, onDismiss: {
             Task {
-                do {
-                    self.containers = (try await containerManager.list()).map({ContainerViewModel($0)})
-                    self.lastUpdated = Date()
-                } catch(let err) {
-                    self.error = err
-                    self.showError = true
-                }
+                await refreshContainers()
             }
         }, content: {
             CreateContainerView(imageReference: "")
         })
-        .sheet(item: $selectedContainer) { container in
-            ContainerDetailView(
-                container: container,
-                onStart: {
-                    Task {
-                        try? await updateStatus(.running, for: container)
+        .sheet(isPresented: $showContainerDetail, onDismiss: {
+            selectedContainer = nil
+        }) {
+            if let container = selectedContainer {
+                ContainerDetailView(
+                    container: container,
+                    onClose: {
+                        showContainerDetail = false
                     }
-                },
-                onStop: {
-                    Task {
-                        try? await updateStatus(.stopped, for: container)
-                    }
-                },
-                onClose: {
-                    selectedContainer = nil
-                }
-            )
-            .frame(minWidth: 800, minHeight: 600)
-            .environment(containerManager)
+                )
+                .frame(minWidth: 800, minHeight: 600)
+                .environment(containerManager)
+            }
         }
         .alert("Error", isPresented: $showError, actions: {
             Button("OK") {
@@ -275,9 +282,7 @@ struct ContainersView: View {
                 Task {
                     do {
                         try await containerManager.delete(snapshots: [container.snapshot], force: true)
-                        
-                        self.containers = (try await containerManager.list()).map({ ContainerViewModel($0) })
-                        self.lastUpdated = Date()
+                        await refreshContainers()
                     } catch (let err) {
                         self.error = err
                         self.showError = true
@@ -287,19 +292,26 @@ struct ContainersView: View {
                 selectedContainer = nil
             }
             
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                selectedContainer = nil
+            }
         } message: {
             if let container = selectedContainer {
-                Text("Delete \(container.name)? This cannot be undone.")
+                Text("Delete \(container.id)? This cannot be undone.")
             }
         }
     }
     
-    func updateStatus(_ status: RuntimeStatus, for container: ContainerViewModel) async throws {
-        if let index = self.containers.firstIndex(where: {
-            $0.snapshot.configuration.id == container.snapshot.configuration.id
-        }) {
-            self.containers[index].status = status
+
+    private func refreshContainers() async {
+        do {
+            self.containers = (try await containerManager.list())
+                .map({ContainerViewModel($0)})
+                .sorted { $0.id < $1.id }
+            self.lastUpdated = Date()
+        } catch(let err) {
+            self.error = err
+            self.showError = true
         }
     }
 }
@@ -307,6 +319,7 @@ struct ContainersView: View {
 #Preview {
     ContainersView(
         searchText: .constant(""),
-        runningContainersOnly: .constant(false)
+        runningContainersOnly: .constant(false),
+        refreshTrigger: 0
     )
 }

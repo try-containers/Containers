@@ -15,6 +15,7 @@ struct ImagesView: View {
     @Environment(SystemManager.self) private var system
 
     @Binding var searchText: String
+    var refreshTrigger: Int
 
     var onRefresh: (() async -> Void)? = nil
 
@@ -28,6 +29,7 @@ struct ImagesView: View {
     @State private var showDeleteConfirmation: Bool = false
     @State private var showInUseContainerForImage: ImageViewModel?
     @State private var showSaveImageView: Bool = false
+    @State private var showImageDetails: ImageViewModel?
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -51,19 +53,24 @@ struct ImagesView: View {
         VStack(alignment: .leading , spacing: 0) {
             Table(of: ImageViewModel.self, columns: {
                 TableColumn("Name") { image in
-                    
-                    Text(image.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .frame(height: 48)
+                    Button(action: {
+                        self.showImageDetails = image
+                    }) {
+                        Text(image.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .underline()
+                    }
+                    .buttonStyle(.link)
+                    .frame(height: 48)
                 }
-                .width(min: 80, ideal: 80)
+                .width(min: 60, ideal: 80)
                 
                 TableColumn("Tag") { image in
                     Text(image.tag)
                         .lineLimit(1)
                 }
-                .width(min: 64, ideal: 64)
+                .width(min: 50, ideal: 60)
 
                 TableColumn("Digest") { image in
                     Text(image.formattedDigest)
@@ -71,7 +78,7 @@ struct ImagesView: View {
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                 }
-                .width(min: 100, ideal: 140, max: 180)
+                .width(min: 250, ideal: 400)
 
                 TableColumn("State") { image in
                     
@@ -93,33 +100,7 @@ struct ImagesView: View {
                     .lineLimit(1)
 
                 }
-                .width(64)
-
-                TableColumn("OS") { image in
-                    Text(image.formattedOS)
-                }
-                .width(min: 36, ideal: 36, max: 72)
-
-                TableColumn("Arch") { image in
-                    Text(image.formattedArch)
-                }
-                .width(min: 48, ideal: 48, max: 72)
-
-                
-                TableColumn("Variant") { image in
-                    Text(image.variant)
-                }
-                .width(64)
-                
-                TableColumn("Size") { image in
-                    Text(image.formattedSize)
-                }
-                .width(64)
-                
-                TableColumn("Created") { image in
-                    Text(image.formattedCreated)
-                }
-                .width(min: 64, ideal: 64, max: 200)
+                .width(min: 60, ideal: 70)
 
                 TableColumn("Actions") { image in
 
@@ -132,6 +113,7 @@ struct ImagesView: View {
                                 .foregroundStyle(.blue)
                         })
                         .buttonStyle(.plain)
+                        .help("Create container from image")
                         
                         Button(action: {
                             self.imagesToSave = image.imageDescription.reference
@@ -141,6 +123,7 @@ struct ImagesView: View {
                                 .foregroundStyle(.blue)
                         })
                         .buttonStyle(.plain)
+                        .help("Save image")
 
                         Button(action: {
                             imageToDelete = image
@@ -151,6 +134,7 @@ struct ImagesView: View {
                         })
                         .disabled(image.inUse)
                         .buttonStyle(.plain)
+                        .help("Delete image")
 
                     }
                     .padding(.horizontal, 8)
@@ -161,7 +145,7 @@ struct ImagesView: View {
             }, rows: {
                 ForEach(filteredImages)
             })
-            .tableStyle(.automatic)
+            .tableStyle(.inset)
             .alternatingRowBackgrounds(.disabled)
             .overlay(alignment: .center, content: {
                 if !self.system.isRunning {
@@ -189,6 +173,17 @@ struct ImagesView: View {
                 await self.listImages()
             }
         })
+        .onChange(of: refreshTrigger) {
+            Task {
+                await self.listImages()
+            }
+        }
+        .onAppear {
+            Task {
+                guard system.isRunning else { return }
+                await self.listImages()
+            }
+        }
         .sheet(item: $createContainerForImage, onDismiss: {
             Task {
                 await self.listImages()
@@ -196,23 +191,11 @@ struct ImagesView: View {
         }, content: { image in
             CreateContainerView(imageReference: image.imageDescription.reference)
         })
-        .sheet(item: $showInUseContainerForImage, onDismiss: {
-            Task {
-                await self.listImages()
-            }
-        }, content: { image in
-        
-            RunningContainersView(containers: image.inUseContainers.map({ContainerViewModel($0)}), updateContainer: { id in
-                let container = try await containerManager.get(id: id)
-                
-                guard let index = self.showInUseContainerForImage?.inUseContainers.firstIndex(where: {$0.configuration.id == id }) else {
-                    return
-                }
-
-                self.showInUseContainerForImage?.inUseContainers[index] = container
-            }, deleteContainer: { id in
-                self.showInUseContainerForImage?.inUseContainers.removeAll(where: {$0.configuration.id == id})
-            })
+        .sheet(item: $showInUseContainerForImage, content: { image in
+            ImageContainersView(containers: image.inUseContainers.map({ContainerViewModel($0)}))
+        })
+        .sheet(item: $showImageDetails, content: { image in
+            ImageDetailView(image: image)
         })
         .sheet(isPresented: $showSaveImageView, onDismiss: {
             self.imagesToSave = ""
@@ -268,7 +251,9 @@ struct ImagesView: View {
             let images = try await imageManager.list()
 
             // Create display models from ImageDescription
-            let displayModels = images.map { ImageViewModel($0, containers: containers) }
+            let displayModels = images
+                .map { ImageViewModel($0, containers: containers) }
+                .sorted { ($0.name, $0.tag) < ($1.name, $1.tag) }
 
             self.images = displayModels
             self.lastUpdated = Date()
@@ -282,6 +267,7 @@ struct ImagesView: View {
 
 #Preview {
     ImagesView(
-        searchText: .constant("")
+        searchText: .constant(""),
+        refreshTrigger: 0
     )
 }

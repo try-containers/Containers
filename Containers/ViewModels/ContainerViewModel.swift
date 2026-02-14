@@ -11,15 +11,11 @@ import ContainerNetworkService
 import ContainerResource
 import ContainerizationExtras
 
-struct ContainerViewModel: Identifiable {
+struct ContainerViewModel: Identifiable, Hashable, Equatable {
     var id: String
     var image: ImageDescription
     var status: RuntimeStatus
     var snapshot: ContainerSnapshot
-
-    var name: String {
-        return self.id
-    }
     
     var imageName: String {
         return self.image.reference
@@ -30,6 +26,20 @@ struct ContainerViewModel: Identifiable {
         self.image = snapshot.configuration.image
         self.status = snapshot.status
         self.snapshot = snapshot
+    }
+    
+    // Hashable conformance
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(status)
+        hasher.combine(snapshot.configuration.image.digest)
+    }
+    
+    // Equatable conformance
+    static func == (lhs: ContainerViewModel, rhs: ContainerViewModel) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.status == rhs.status &&
+               lhs.snapshot.configuration.image.digest == rhs.snapshot.configuration.image.digest
     }
 }
 
@@ -74,5 +84,15 @@ extension ContainerViewModel {
     
     var formattedState: String {
         status.rawValue.localizedCapitalized
+    }
+    
+    var formattedStarted: String {
+        guard let startedDate = snapshot.startedDate else {
+            return ""
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter.string(from: startedDate)
     }
 }

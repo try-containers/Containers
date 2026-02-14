@@ -45,7 +45,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     // Timeout Configuration
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Label {
                             Text("Timeout Configuration")
                                 .font(.headline)
@@ -56,81 +56,55 @@ struct SettingsView: View {
                         
                         Divider()
                         
-                        // Start System
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
+                        VStack(spacing: 8) {
+                            // Start System
+                            HStack(spacing: 12) {
                                 Text("Start System")
-                                    .font(.body)
-                                Text("Timeout for starting the container system")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 4) {
-                                TextField("", value: $startSystemTimeoutSeconds, format: .number.precision(.fractionLength(0)))
-                                    .textFieldStyle(.roundedBorder)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(width: 60)
+                                    .frame(minWidth: 120, alignment: .leading)
                                 
-                                Text("sec")
-                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 4) {
+                                    TextField("", value: $startSystemTimeoutSeconds, format: .number.precision(.fractionLength(0)))
+                                        .textFieldStyle(.roundedBorder)
+                                        .multilineTextAlignment(.trailing)
+                                        .frame(width: 60)
+                                    
+                                    Text("sec")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                        }
-                        .padding(.horizontal, 4)
-                        
-                        Divider()
-                        
-                        // Stop System
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
+                            
+                            // Stop System
+                            HStack(spacing: 12) {
                                 Text("Stop System")
-                                    .font(.body)
-                                Text("Timeout for shutting down the container system")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                                    .frame(minWidth: 120, alignment: .leading)
+                                
+                                HStack(spacing: 4) {
+                                    TextField("", value: $shutdownSystemTimeoutSeconds, format: .number.precision(.fractionLength(0)))
+                                        .textFieldStyle(.roundedBorder)
+                                        .multilineTextAlignment(.trailing)
+                                        .frame(width: 60)
 
-                            Spacer()
+                                    Text("sec")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                             
-                            HStack(spacing: 4) {
-                                TextField("", value: $shutdownSystemTimeoutSeconds, format: .number.precision(.fractionLength(0)))
-                                    .textFieldStyle(.roundedBorder)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(width: 60)
-
-                                Text("sec")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.horizontal, 4)
-
-                        Divider()
-                        
-                        // Stop Container
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
+                            // Stop Container
+                            HStack(spacing: 12) {
                                 Text("Stop Container")
-                                    .font(.body)
-                                Text("Timeout for stopping individual containers")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            
-                            Spacer()
+                                    .frame(minWidth: 120, alignment: .leading)
 
-                            HStack(spacing: 4) {
-                                TextField("", value: $stopContainerTimeoutSeconds, format: .number.precision(.fractionLength(0)))
-                                    .textFieldStyle(.roundedBorder)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(width: 60)
+                                HStack(spacing: 4) {
+                                    TextField("", value: $stopContainerTimeoutSeconds, format: .number.precision(.fractionLength(0)))
+                                        .textFieldStyle(.roundedBorder)
+                                        .multilineTextAlignment(.trailing)
+                                        .frame(width: 60)
 
-                                Text("sec")
-                                    .foregroundStyle(.secondary)
+                                    Text("sec")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
-                        .padding(.horizontal, 4)
                     }
                     .padding(16)
                     .background(Color(nsColor: .controlBackgroundColor))
@@ -146,7 +120,7 @@ struct SettingsView: View {
                                 .foregroundStyle(.blue)
                         }
                         
-                        Text("DNS domains let containers access host services. Inside a container, reach the host via the domain name (e.g., host.containers.internal:8000). Admin password will be prompted for changes.")
+                        Text("DNS domains let containers access host services. Inside a container, reach the host via the domain name (e.g., host.containers.internal:8000).")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -175,15 +149,6 @@ struct SettingsView: View {
                                         }
 
                                         Spacer()
-
-                                        Button(action: {
-                                            deleteDomain(domain)
-                                        }) {
-                                            Image(systemName: "trash")
-                                                .foregroundStyle(.red)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .help("Delete domain")
                                     }
                                     .padding(.vertical, 4)
                                 }
@@ -191,17 +156,15 @@ struct SettingsView: View {
                         }
                         
                         Divider()
-
+                        
                         HStack(spacing: 8) {
-                            TextField("Domain name (e.g., host.containers.internal)", text: $newDNSDomain)
-                                .textFieldStyle(.roundedBorder)
-
-                            Button("Add Domain") {
-                                createDomain()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(newDNSDomain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                            Text("DNS domain management requires administrator privileges. To manage domains, manually create files in /etc/resolver/")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        .padding(.vertical, 8)
                     }
                     .padding(16)
                     .background(Color(nsColor: .controlBackgroundColor))
@@ -209,6 +172,7 @@ struct SettingsView: View {
                 }
                 .padding(20)
             }
+            .frame(maxWidth: 600)
         }
         .task {
             self.dnsDomains = dnsManager.listDomains()

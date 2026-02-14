@@ -64,7 +64,7 @@ struct DashboardView: View {
     @SwiftUI.State private var showCreateVolumeView: Bool = false
     @SwiftUI.State private var showBuildImageView: Bool = false
     
-    // Refresh trigger
+    // Refresh trigger (still needed for build image sheet dismiss)
     @SwiftUI.State private var refreshTrigger: Int = 0
     
     // Search state
@@ -85,18 +85,22 @@ struct DashboardView: View {
                         case .containers:
                             ContainersView(
                                 searchText: $searchText,
-                                runningContainersOnly: $runningContainersOnly
+                                runningContainersOnly: $runningContainersOnly,
+                                refreshTrigger: refreshTrigger
                             )
-                            .id("containers-\(refreshTrigger)")
                             .padding(.vertical)
                         case .images:
-                            ImagesView(searchText: $searchText)
-                                .id("images-\(refreshTrigger)")
-                                .padding(.vertical)
+                            ImagesView(
+                                searchText: $searchText,
+                                refreshTrigger: refreshTrigger
+                            )
+                            .padding(.vertical)
                         case .volumes:
-                            VolumesView(searchText: $searchText)
-                                .id("volumes-\(refreshTrigger)")
-                                .padding(.vertical)
+                            VolumesView(
+                                searchText: $searchText,
+                                refreshTrigger: refreshTrigger
+                            )
+                            .padding(.vertical)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -117,15 +121,6 @@ struct DashboardView: View {
                         .toggleStyle(.button)
                         .help("Running containers only")
                     }
-                }
-                
-                ToolbarItem(placement: .automatic) {
-                    Button(action: {
-                        refreshTrigger += 1
-                    }, label: {
-                        Image(systemName: "arrow.clockwise")
-                    })
-                    .help("Refresh")
                 }
                 
                 ToolbarItem(placement: .automatic) {

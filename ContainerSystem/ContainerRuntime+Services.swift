@@ -29,12 +29,11 @@ extension ContainerRuntime {
             return
         }
         
-        Self.logger.info("Initializing services (sandboxed mode)...")
-        Self.logger.info("App root: \(appRoot.path)")
+        Self.logger.info("Initializing services...")
         
         // Initialize images service (must come before containers service)
-        Self.logger.info("Initializing images service...")
         let imagesRoot = appRoot.appendingPathComponent("images")
+        
         try FileManager.default.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
 
         let imageStore = try ImageStore(path: imagesRoot)
@@ -49,35 +48,35 @@ extension ContainerRuntime {
         )
         self.imagesService = images
         self.contentStore = contentStore
-        Self.logger.info("Images service initialized")
 
         // Initialize sandboxed containers service
-        Self.logger.info("Initializing sandboxed containers service...")
         let sandboxedContainers = try SandboxedContainersService(appRoot: appRoot, imagesService: images, log: Self.logger)
+        
         self.sandboxedContainersService = sandboxedContainers
-        Self.logger.info("Sandboxed containers service initialized")
         
         // Initialize kernel service
-        Self.logger.info("Initializing kernel service...")
         let kernel = try KernelService(log: Self.logger, appRoot: appRoot)
-        self.kernelService = kernel
-        Self.logger.info("Kernel service initialized")
         
-        Self.logger.info("Built-in NAT networking (sandboxed mode)")
+        self.kernelService = kernel
         
         servicesInitialized = true
+        
         Self.logger.info("Services initialized successfully")
+        
+        // Register callback to update runtime state when containers change
+        await sandboxedContainers.addStateChangeCallback { @MainActor [weak self] in
+            guard let self = self else { return }
+            
+            self.lastContainerStateChange = Date()
+        }
     }
     
     /// Shutdown all services
     internal func shutdownServices() async {
-        Self.logger.info("Shutting down services...")
-        
         // Stop all running containers
         if let sandboxedContainers = sandboxedContainersService {
             let list = await sandboxedContainers.list()
             for container in list where container.status == .running {
-                Self.logger.info("Stopping container: \(container.configuration.id)")
                 do {
                     try await sandboxedContainers.stop(id: container.configuration.id, options: .default)
                 } catch {
@@ -93,8 +92,6 @@ extension ContainerRuntime {
         contentStore = nil
         pluginLoader = nil
         servicesInitialized = false
-        
-        Self.logger.info("Services shut down")
     }
     
 }

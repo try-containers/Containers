@@ -28,7 +28,7 @@ public final class DNSManager {
     /// Public initializer - creates instance
     public init() {
         var logger = Logger(label: "app.containers.manager.dns")
-        logger.logLevel = .info
+        logger.logLevel = .debug
         self.logger = logger
     }
     
@@ -48,71 +48,36 @@ public final class DNSManager {
     // MARK: - Create domain
 
     public func createDomain(name: String) throws {
-        logger.info("Creating DNS domain: \(name)")
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw DNSError.invalidDomainName
-        }
-
-        let filePath = "\(Self.resolverDirectory)/\(Self.filePrefix)\(trimmed)"
-        let fileContent = "nameserver \(Self.nameserver)\\nport \(Self.port)"
-
-        let script = """
-        do shell script "printf '\(fileContent)\\n' > \(filePath) && killall -HUP mDNSResponder" with administrator privileges
-        """
-
-        try Self.runAppleScript(script)
-        logger.info("DNS domain created: \(name)")
+        // DNS domain creation requires root privileges.
+        // This functionality is disabled in the GUI.
+        // Use the CLI with sudo: sudo container system dns create <domain>
+        throw DNSError.notSupported
     }
 
     // MARK: - Delete domain
 
     public func deleteDomain(name: String) throws {
-        logger.info("Deleting DNS domain: \(name)")
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw DNSError.invalidDomainName
-        }
-
-        let filePath = "\(Self.resolverDirectory)/\(Self.filePrefix)\(trimmed)"
-
-        let script = """
-        do shell script "rm -f \(filePath) && killall -HUP mDNSResponder" with administrator privileges
-        """
-
-        try Self.runAppleScript(script)
-        logger.info("DNS domain deleted: \(name)")
-    }
-
-    // MARK: - Private
-
-    private static func runAppleScript(_ source: String) throws {
-        var error: NSDictionary?
-        guard let script = NSAppleScript(source: source) else {
-            throw DNSError.scriptCreationFailed
-        }
-        script.executeAndReturnError(&error)
-        if let error {
-            let message = error[NSAppleScript.errorMessage] as? String ?? "Unknown AppleScript error"
-            throw DNSError.scriptExecutionFailed(message)
-        }
+        // DNS domain deletion requires root privileges.
+        // This functionality is disabled in the GUI.
+        // Use the CLI with sudo: sudo container system dns delete <domain>
+        throw DNSError.notSupported
     }
 
     // MARK: - Errors
 
     public enum DNSError: LocalizedError {
         case invalidDomainName
-        case scriptCreationFailed
-        case scriptExecutionFailed(String)
+        case notSupported
 
         public var errorDescription: String? {
             switch self {
             case .invalidDomainName:
                 return "Domain name cannot be empty."
-            case .scriptCreationFailed:
-                return "Failed to create AppleScript."
-            case .scriptExecutionFailed(let message):
-                return message
+            case .notSupported:
+                return """
+                DNS domain management requires administrator privileges and is not available in the GUI. 
+                You can manually create resolver files in /etc/resolver/ if needed.
+                """
             }
         }
     }
