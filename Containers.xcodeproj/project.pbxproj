@@ -239,12 +239,20 @@
 			path = Extensions;
 			sourceTree = "<group>";
 		};
+		77DB33FC2F4078A0006C9BD1 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Frameworks;
+			sourceTree = "<group>";
+		};
 		9829EC392E17BA3C00A9F8D3 = {
 			isa = PBXGroup;
 			children = (
 				9829EC442E17BA3C00A9F8D3 /* Containers */,
 				773509162F34EA7300C5471F /* ContainerSystem */,
 				773508652F34E40500C5471F /* ContainerSystemTests */,
+				77DB33FC2F4078A0006C9BD1 /* Frameworks */,
 				9829EC432E17BA3C00A9F8D3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -510,6 +518,7 @@
 				DEVELOPMENT_TEAM = ZTW69M5NDR;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@executable_path/../Frameworks";
 				EXECUTABLE_PREFIX = lib;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				OTHER_SWIFT_FLAGS = "";
@@ -525,6 +534,7 @@
 				DEVELOPMENT_TEAM = ZTW69M5NDR;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@executable_path/../Frameworks";
 				EXECUTABLE_PREFIX = lib;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				OTHER_SWIFT_FLAGS = "";
@@ -668,7 +678,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Containers/Supporting Files/Containers.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = ZTW69M5NDR;
 				ENABLE_APP_SANDBOX = YES;
@@ -723,7 +733,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Containers/Supporting Files/Containers.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = ZTW69M5NDR;
 				ENABLE_APP_SANDBOX = YES;
