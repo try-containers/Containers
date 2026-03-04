@@ -20,7 +20,6 @@
 		77350A7E2F35A14000C5471F /* ContainerLog in Frameworks */ = {isa = PBXBuildFile; productRef = 77350A7D2F35A14000C5471F /* ContainerLog */; };
 		77350A802F35A14000C5471F /* ContainerNetworkService in Frameworks */ = {isa = PBXBuildFile; productRef = 77350A7F2F35A14000C5471F /* ContainerNetworkService */; };
 		77350A822F35A14000C5471F /* ContainerPersistence in Frameworks */ = {isa = PBXBuildFile; productRef = 77350A812F35A14000C5471F /* ContainerPersistence */; };
-		77350AA02F35A32300C5471F /* ContainerSandboxService in Frameworks */ = {isa = PBXBuildFile; productRef = 77350A9F2F35A32300C5471F /* ContainerSandboxService */; };
 		77350BA92F35B17100C5471F /* libContainerSystem.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 773509102F34EA2F00C5471F /* libContainerSystem.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		77350BAB2F35B53700C5471F /* libContainerSystem.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 773509102F34EA2F00C5471F /* libContainerSystem.dylib */; };
 		77350BAC2F35B53700C5471F /* libContainerSystem.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 773509102F34EA2F00C5471F /* libContainerSystem.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
@@ -187,7 +186,6 @@
 				77350A7A2F35A14000C5471F /* ContainerCommands in Frameworks */,
 				77350A7E2F35A14000C5471F /* ContainerLog in Frameworks */,
 				77350A822F35A14000C5471F /* ContainerPersistence in Frameworks */,
-				77350AA02F35A32300C5471F /* ContainerSandboxService in Frameworks */,
 				77350A762F35A14000C5471F /* ContainerAPIService in Frameworks */,
 				77350A802F35A14000C5471F /* ContainerNetworkService in Frameworks */,
 				77350A7C2F35A14000C5471F /* ContainerImagesService in Frameworks */,
@@ -327,7 +325,6 @@
 				77350A7D2F35A14000C5471F /* ContainerLog */,
 				77350A7F2F35A14000C5471F /* ContainerNetworkService */,
 				77350A812F35A14000C5471F /* ContainerPersistence */,
-				77350A9F2F35A32300C5471F /* ContainerSandboxService */,
 			);
 			productName = ContainerSystem;
 			productReference = 773509102F34EA2F00C5471F /* libContainerSystem.dylib */;
@@ -678,7 +675,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Containers/Supporting Files/Containers.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = ZTW69M5NDR;
 				ENABLE_APP_SANDBOX = YES;
@@ -694,6 +691,7 @@
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
+				EXCLUDED_ARCHS = "x86-64";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Containers;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -733,7 +731,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Containers/Supporting Files/Containers.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = ZTW69M5NDR;
 				ENABLE_APP_SANDBOX = YES;
@@ -749,6 +747,7 @@
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
+				EXCLUDED_ARCHS = "x86-64";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Containers;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -871,11 +870,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 77350A722F35A14000C5471F /* XCRemoteSwiftPackageReference "container" */;
 			productName = ContainerPersistence;
-		};
-		77350A9F2F35A32300C5471F /* ContainerSandboxService */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 77350A722F35A14000C5471F /* XCRemoteSwiftPackageReference "container" */;
-			productName = ContainerSandboxService;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

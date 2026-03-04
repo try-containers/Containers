@@ -12,7 +12,6 @@ import Foundation
 import ContainerAPIClient
 import ContainerAPIService
 import ContainerPlugin
-import ContainerSandboxService
 import ContainerImagesService
 import ContainerNetworkService
 import Containerization
@@ -23,6 +22,24 @@ import SystemPackage
 import ContainerizationOCI
 import ContainerResource
 import Logging
+
+private struct FileHandleReader: ReaderStream {
+    let handle: FileHandle
+
+    func stream() -> AsyncStream<Data> {
+        .init { cont in
+            self.handle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    self.handle.readabilityHandler = nil
+                    cont.finish()
+                    return
+                }
+                cont.yield(data)
+            }
+        }
+    }
+}
 
 private struct MultiWriter: Writer {
     let handles: [FileHandle]
@@ -271,8 +288,11 @@ public actor SandboxedContainersService {
             return nil
         }()
 
-        let stdin: FileHandle? = {
-            stdio[0] ?? nil
+        let stdin: FileHandleReader? = {
+            if let h = stdio[0] {
+                return FileHandleReader(handle: h)
+            }
+            return nil
         }()
 
         let rootfs = try await MainActor.run { try bundle.containerRootfs.asMount }
