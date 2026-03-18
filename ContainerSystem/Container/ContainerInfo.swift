@@ -6,8 +6,7 @@
 //
 
 import Foundation
-import ContainerResource
-import ContainerAPIClient
+import ContainerizationOCI
 
 public struct ContainerInfo: Sendable {
     public var virtualFileSystem: [Filesystem] = []
@@ -18,7 +17,7 @@ public struct ContainerInfo: Sendable {
     public var entryPoint: String?
     public var platform: String?
     public var os = "linux"
-    public var arch: String = Arch.hostArchitecture().rawValue
+    public var arch: String = Platform.current.architecture
     public var kernel: String?
     public var networks: [String] = []
     public var cidfile = ""

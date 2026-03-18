@@ -8,9 +8,9 @@
 //
 
 import Foundation
-import ContainerAPIClient
+import Containerization
 import ContainerizationOCI
-import ContainerResource
+import ContainerSystem
 
 /// Protocol for types that provide access to container configuration
 protocol ContainerConfigurationProvider {
@@ -44,6 +44,3 @@ extension ContainerConfigurationProvider {
         return volumeNames
     }
 }
-
-extension ClientContainer: ContainerConfigurationProvider {}
-extension ContainerSnapshot: ContainerConfigurationProvider {}

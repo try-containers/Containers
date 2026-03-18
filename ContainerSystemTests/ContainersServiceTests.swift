@@ -1,5 +1,5 @@
 //
-//  SandboxedContainersServiceTests.swift
+//  ContainersServiceTests.swift
 //  ContainerSystemTests
 //
 //  Created by Axel Martinez on 2026/02/08.
@@ -10,7 +10,7 @@ import Foundation
 @testable import ContainerSystem
 
 @Suite(.serialized)
-struct SandboxedContainersServiceTests {
+struct ContainersServiceTests {
     
     @Test("Service initializes successfully")
     @MainActor

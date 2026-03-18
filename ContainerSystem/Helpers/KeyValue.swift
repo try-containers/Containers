@@ -6,8 +6,6 @@
 //
 
 import Foundation
-import ContainerAPIService
-import ContainerResource
 
 /// A mutable key-value pair model for SwiftUI forms and lists
 /// 

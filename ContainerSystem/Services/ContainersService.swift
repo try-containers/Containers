@@ -1,27 +1,19 @@
 //
-//  SandboxedContainersService.swift
+//  ContainersService.swift
 //  Containers
 //
 //  A containers service that runs LinuxContainer directly in-process,
-//  bypassing XPC and child process spawning entirely.
 //
 //  Created by Axel Martinez on 2026/02/04.
 //
 
 import Foundation
-import ContainerAPIClient
-import ContainerAPIService
-import ContainerPlugin
-import ContainerSandboxService
-import ContainerImagesService
-import ContainerNetworkService
 import Containerization
 import ContainerizationError
 import ContainerizationExtras
 import ContainerizationOS
 import SystemPackage
 import ContainerizationOCI
-import ContainerResource
 import Logging
 
 private struct MultiWriter: Writer {
@@ -40,6 +32,24 @@ private struct MultiWriter: Writer {
     func write(_ data: Data) throws {
         for handle in handles {
             try handle.write(contentsOf: data)
+        }
+    }
+}
+
+private struct FileHandleReader: ReaderStream {
+    let handle: FileHandle
+
+    func stream() -> AsyncStream<Data> {
+        .init { cont in
+            self.handle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                    cont.finish()
+                    return
+                }
+                cont.yield(data)
+            }
         }
     }
 }
@@ -88,12 +98,12 @@ private extension Filesystem {
 }
 
 /// A sandbox-compatible containers service that runs LinuxContainer in-process.
-public actor SandboxedContainersService {
+public actor ContainersService {
 
     private struct ContainerState {
         var snapshot: ContainerSnapshot
         var container: LinuxContainer?
-        var bundle: ContainerResource.Bundle?
+        var bundle: Bundle?
         var exitMonitorTask: Task<Void, Never>?
     }
 
@@ -103,6 +113,8 @@ public actor SandboxedContainersService {
     private let imagesService: ImagesService
     private var containers: [String: ContainerState] = [:]
     private var ipAllocations: [String: UInt8] = [:]
+    private var portForwarders: [String: PortForwarder] = [:]
+    private let containerLock = AsyncLock()
     
     /// Callbacks to invoke when container state changes
     private var stateChangeCallbacks: [@Sendable @MainActor () -> Void] = []
@@ -125,7 +137,7 @@ public actor SandboxedContainersService {
 
         let count = containers.count
         
-        log.info("SandboxedContainersService initialized with \(count) existing container(s)")
+        log.info("ContainersService initialized with \(count) existing container(s)")
     }
 
     private static func loadAtBoot(root: URL, log: Logger) -> [String: ContainerState] {
@@ -140,7 +152,7 @@ public actor SandboxedContainersService {
 
         for dir in directories where dir.isDirectory {
             do {
-                let bundle = ContainerResource.Bundle(path: dir)
+                let bundle = Bundle(path: dir)
                 let config = try bundle.configuration
                 results[config.id] = ContainerState(
                     snapshot: ContainerSnapshot(
@@ -164,6 +176,35 @@ public actor SandboxedContainersService {
     public func list() async -> [ContainerSnapshot] {
         return containers.values.map { $0.snapshot }.sorted { $0.configuration.id < $1.configuration.id }
     }
+    
+    /// List containers with optional filters.
+    public func list(
+        status: RuntimeStatus? = nil,
+        labelFilter: [String: String]? = nil,
+        namePattern: String? = nil
+    ) async -> [ContainerSnapshot] {
+        var results = containers.values.map { $0.snapshot }
+        
+        if let status {
+            results = results.filter { $0.status == status }
+        }
+        
+        if let labelFilter {
+            results = results.filter { snapshot in
+                labelFilter.allSatisfy { key, value in
+                    snapshot.configuration.labels[key] == value
+                }
+            }
+        }
+        
+        if let namePattern, !namePattern.isEmpty {
+            results = results.filter { snapshot in
+                snapshot.id.localizedCaseInsensitiveContains(namePattern)
+            }
+        }
+        
+        return results.sorted { $0.configuration.id < $1.configuration.id }
+    }
 
     public func create(configuration: ContainerConfiguration, kernel: Kernel, options: ContainerCreateOptions) async throws {
         // Creating container
@@ -179,7 +220,7 @@ public actor SandboxedContainersService {
         let initFs = try await getInitBlock(for: systemPlatform.ociPlatform())
 
         // Create container bundle
-        let bundle = try ContainerResource.Bundle.create(
+        let bundle = try Bundle.create(
             path: path,
             initialFilesystem: initFs,
             kernel: kernel,
@@ -213,27 +254,32 @@ public actor SandboxedContainersService {
     }
 
     public func bootstrap(id: String, stdio: [FileHandle?]) async throws {
+        try await containerLock.withLock { _ in
+            try await self._bootstrap(id: id, stdio: stdio)
+        }
+    }
+
+    private func _bootstrap(id: String, stdio: [FileHandle?]) async throws {
         guard var state = containers[id] else {
             throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
 
         // Already bootstrapped
         if state.container != nil {
-            // Container already bootstrapped
             return
         }
 
-        let bundle: ContainerResource.Bundle
+        let bundle: ContainerSystem.Bundle
         if let existingBundle = state.bundle {
             bundle = existingBundle
         } else {
             let path = containerRoot.appendingPathComponent(id)
-            bundle = ContainerResource.Bundle(path: path)
+            bundle = Bundle(path: path)
         }
 
         let config = try bundle.configuration
         let bundleKernel = try bundle.kernel
-        let initMount = await MainActor.run { bundle.initialFilesystem.asMount }
+        let initMount = try await MainActor.run { try bundle.initialFilesystem.asMount }
         let vmm = VZVirtualMachineManager(
             kernel: bundleKernel,
             initialFilesystem: initMount,
@@ -271,8 +317,11 @@ public actor SandboxedContainersService {
             return nil
         }()
 
-        let stdin: FileHandle? = {
-            stdio[0] ?? nil
+        let stdin: FileHandleReader? = {
+            if let handle = stdio[0] {
+                return FileHandleReader(handle: handle)
+            }
+            return nil
         }()
 
         let rootfs = try await MainActor.run { try bundle.containerRootfs.asMount }
@@ -297,8 +346,6 @@ public actor SandboxedContainersService {
         // Allocate IP before the closure (actor-isolated state)
         let (ip, gw) = try allocateIP(for: id)
         
-        // Container assigned IP
-        
         let container = try LinuxContainer(id, rootfs: rootfs, vmm: vmm, logger: self.log) { czConfig in
             try Self.configureContainer(
                 czConfig: &czConfig,
@@ -315,12 +362,10 @@ public actor SandboxedContainersService {
             czConfig.process.stdout = stdout
             czConfig.process.stderr = stderr
             czConfig.process.stdin = stdin
-            // bootlog configuration moved or removed in newer API
         }
 
         do {
             try await container.create()
-            // LinuxContainer VM created and booted
 
             state.container = container
             state.bundle = bundle
@@ -368,6 +413,20 @@ public actor SandboxedContainersService {
             state.snapshot.status = .running
             state.snapshot.startedDate = Date()
 
+            // Start port forwarding for published ports
+            let config = state.snapshot.configuration
+            if !config.publishedPorts.isEmpty {
+                let forwarder = PortForwarder(log: self.log)
+                for port in config.publishedPorts {
+                    do {
+                        try await forwarder.startForwarding(publishPort: port, container: container)
+                    } catch {
+                        log.warning("Failed to start port forwarding for \(port.hostPort) -> \(port.containerPort): \(error)")
+                    }
+                }
+                portForwarders[id] = forwarder
+            }
+
             // Monitor container exit in background
             let logger = self.log
             
@@ -389,6 +448,12 @@ public actor SandboxedContainersService {
     }
 
     public func stop(id: String, options: ContainerStopOptions) async throws {
+        try await containerLock.withLock { _ in
+            try await self._stop(id: id, options: options)
+        }
+    }
+
+    private func _stop(id: String, options: ContainerStopOptions) async throws {
         guard var state = containers[id] else {
             throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
@@ -411,6 +476,12 @@ public actor SandboxedContainersService {
         state.snapshot.networks = []
         state.container = nil
         releaseIP(for: id)
+        
+        // Stop port forwarding
+        if let forwarder = portForwarders.removeValue(forKey: id) {
+            await forwarder.stopAll()
+        }
+        
         containers[id] = state
         
         // Notify observers that container stopped
@@ -514,6 +585,12 @@ public actor SandboxedContainersService {
         state.exitMonitorTask?.cancel()
         state.exitMonitorTask = nil
         releaseIP(for: id)
+        
+        // Stop port forwarding
+        if let forwarder = portForwarders.removeValue(forKey: id) {
+            Task { await forwarder.stopAll() }
+        }
+        
         containers[id] = state
         
         notifyStateChange()
@@ -557,9 +634,7 @@ public actor SandboxedContainersService {
     ) throws {
         czConfig.cpus = config.resources.cpus
         czConfig.memoryInBytes = config.resources.memoryInBytes
-        czConfig.sysctl = config.sysctls.reduce(into: [String: String]()) {
-            $0[$1.key] = $1.value
-        }
+        czConfig.sysctl = config.sysctls
         czConfig.virtualization = config.virtualization
 
         // Use precomputed mounts and sockets

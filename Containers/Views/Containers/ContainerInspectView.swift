@@ -7,8 +7,8 @@
 
 import SwiftUI
 import AppKit
+import Containerization
 import ContainerSystem
-import ContainerResource
 import ContainerizationOCI
 import ContainerizationExtras
 

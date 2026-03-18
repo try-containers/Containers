@@ -5,7 +5,8 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
-import ContainerResource
+
+import Containerization
 import ContainerSystem
 import ContainerizationOCI
 import SwiftUI

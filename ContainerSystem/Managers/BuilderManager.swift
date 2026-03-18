@@ -4,19 +4,13 @@
 //
 //  Created by Axel Martinez on 2026/02/08.
 //
-
 import Foundation
 import Observation
-import ContainerBuild
-import ContainerNetworkService
-import ContainerPersistence
 import Containerization
 import ContainerizationError
 import ContainerizationExtras
 import ContainerizationOCI
 import ContainerizationOS
-import ContainerResource
-import ContainerAPIClient
 import Logging
 
 /// Manages BuildKit builder container for building images.
@@ -131,7 +125,7 @@ public final class BuilderManager {
             "--vsock",
         ]
 
-        try ContainerAPIClient.Utility.validEntityName(Self.buildkitContainerId)
+        try validEntityName(Self.buildkitContainerId)
 
         let processConfig = ProcessConfiguration(
             executable: "/usr/local/bin/container-builder-shim",
@@ -250,7 +244,25 @@ public final class BuilderManager {
     
     // MARK: - Private Methods
     
-    private func startBuildKitProcess(service: SandboxedContainersService) async throws {
+    /// Validate that a name is a valid entity name.
+    @discardableResult
+    public func validEntityName(_ name: String) throws -> Bool {
+        guard !name.isEmpty, name.count <= 255 else {
+            throw ContainerizationError(.invalidArgument, message: "invalid entity name '\(name)': must be between 1 and 255 characters")
+        }
+        
+        let entityNamePattern = "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        let regex = try NSRegularExpression(pattern: entityNamePattern)
+        let range = NSRange(name.startIndex..., in: name)
+        
+        guard regex.firstMatch(in: name, range: range) != nil else {
+            throw ContainerizationError(.invalidArgument, message: "invalid entity name '\(name)': must match \(entityNamePattern)")
+        }
+        
+        return true
+    }
+    
+    private func startBuildKitProcess(service: ContainersService) async throws {
         do {
             logger.info("Bootstrapping BuildKit container")
             

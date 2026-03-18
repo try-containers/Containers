@@ -6,8 +6,9 @@
 //
 
 import SwiftUI
+import ContainerSystem
 import ContainerizationOCI
-import ContainerResource
+
 
 struct VolumeSelectionView: View {
     var volumes: [Volume]

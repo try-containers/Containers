@@ -6,9 +6,9 @@
 //
 
 import Foundation
-import ContainerAPIService
+import Containerization
+import ContainerSystem
 import ContainerizationOCI
-import ContainerResource
 
 /// Represents the type of container volume
 enum VolumeType: String, CaseIterable, Identifiable {

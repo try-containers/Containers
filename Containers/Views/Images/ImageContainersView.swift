@@ -8,7 +8,7 @@
 import SwiftUI
 import ContainerSystem
 import ContainerizationError
-import ContainerResource
+
 
 struct ImageContainersView: View {
     var containers: [ContainerViewModel]

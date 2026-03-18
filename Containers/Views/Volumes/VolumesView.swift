@@ -7,7 +7,7 @@
 
 import SwiftUI
 import ContainerSystem
-import ContainerResource
+
 
 struct VolumesView: View {
     @Environment(ContainerManager.self) private var containerManager

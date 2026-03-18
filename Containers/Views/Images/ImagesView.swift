@@ -6,8 +6,9 @@
 //
 
 import SwiftUI
+import Containerization
 import ContainerSystem
-import ContainerResource
+
 
 struct ImagesView: View {
     @Environment(ContainerManager.self) private var containerManager

@@ -6,8 +6,9 @@
 //
 
 import SwiftUI
+import Containerization
 import ContainerSystem
-import ContainerResource
+
 import ContainerizationOCI
 
 struct ImageDetailView: View {

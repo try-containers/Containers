@@ -6,9 +6,9 @@
 //
 
 import Foundation
+import Containerization
 import ContainerizationOCI
-import ContainerNetworkService
-import ContainerResource
+import ContainerSystem
 import ContainerizationExtras
 
 struct ContainerViewModel: Identifiable, Hashable, Equatable {

@@ -9,11 +9,6 @@
 //
 
 import Foundation
-import ContainerAPIService
-import ContainerPlugin
-import ContainerNetworkService
-import ContainerImagesService
-import ContainerAPIClient
 import Containerization
 import ContainerizationError
 import ContainerizationOCI
@@ -36,23 +31,23 @@ extension ContainerRuntime {
         
         try FileManager.default.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
 
-        let imageStore = try ImageStore(path: imagesRoot)
-        let snapshotStore = try SnapshotStore(path: imagesRoot, unpackStrategy: SnapshotStore.defaultUnpackStrategy, log: Self.logger)
         let contentStore = try LocalContentStore(path: imagesRoot.appendingPathComponent("content"))
-        
+        let imageStore = try ImageStore(path: imagesRoot, contentStore: contentStore)
+        let snapshotsPath = imagesRoot.appendingPathComponent("snapshots")
         let images = try ImagesService(
             contentStore: contentStore,
             imageStore: imageStore,
-            snapshotStore: snapshotStore,
+            snapshotsPath: snapshotsPath,
             log: Self.logger
         )
+        
         self.imagesService = images
         self.contentStore = contentStore
 
         // Initialize sandboxed containers service
-        let sandboxedContainers = try SandboxedContainersService(appRoot: appRoot, imagesService: images, log: Self.logger)
+        let service = try ContainersService(appRoot: appRoot, imagesService: images, log: Self.logger)
         
-        self.sandboxedContainersService = sandboxedContainers
+        self.containersService = service
         
         // Initialize kernel service
         let kernel = try KernelService(log: Self.logger, appRoot: appRoot)
@@ -64,7 +59,7 @@ extension ContainerRuntime {
         Self.logger.info("Services initialized successfully")
         
         // Register callback to update runtime state when containers change
-        await sandboxedContainers.addStateChangeCallback { @MainActor [weak self] in
+        await service.addStateChangeCallback { @MainActor [weak self] in
             guard let self = self else { return }
             
             self.lastContainerStateChange = Date()
@@ -74,11 +69,11 @@ extension ContainerRuntime {
     /// Shutdown all services
     internal func shutdownServices() async {
         // Stop all running containers
-        if let sandboxedContainers = sandboxedContainersService {
-            let list = await sandboxedContainers.list()
+        if let service = containersService {
+            let list = await service.list()
             for container in list where container.status == .running {
                 do {
-                    try await sandboxedContainers.stop(id: container.configuration.id, options: .default)
+                    try await service.stop(id: container.configuration.id, options: .default)
                 } catch {
                     Self.logger.error("Error stopping container \(container.configuration.id): \(error)")
                 }
@@ -86,7 +81,6 @@ extension ContainerRuntime {
         }
         
         containersService = nil
-        sandboxedContainersService = nil
         imagesService = nil
         kernelService = nil
         contentStore = nil

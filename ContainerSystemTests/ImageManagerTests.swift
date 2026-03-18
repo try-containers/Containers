@@ -7,7 +7,7 @@
 
 import Testing
 import Foundation
-import ContainerResource
+import Containerization
 import ContainerizationOCI
 
 @testable import ContainerSystem

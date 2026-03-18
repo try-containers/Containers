@@ -6,10 +6,11 @@
 //
 
 import SwiftUI
+import Containerization
 import ContainerSystem
 import ContainerizationOCI
 import UniformTypeIdentifiers
-import ContainerResource
+
 
 struct SaveImageView: View {
     @Environment(ImageManager.self) private var imageManager

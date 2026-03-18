@@ -8,8 +8,6 @@
 import SwiftUI
 import ContainerSystem
 import ContainerizationOCI
-import ContainerResource
-import ContainerAPIClient
 import ContainerizationExtras
 
 private struct PortsConfiguration: Identifiable {

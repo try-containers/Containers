@@ -7,7 +7,6 @@
 
 import Testing
 import Foundation
-import ContainerResource
 import ContainerizationError
 @testable import ContainerSystem
 

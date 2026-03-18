@@ -7,7 +7,7 @@
 
 import SwiftUI
 import ContainerSystem
-import ContainerResource
+
 
 struct ContainersView: View {
     @Environment(ContainerManager.self) private var containerManager
@@ -15,6 +15,7 @@ struct ContainersView: View {
     
     @Binding var searchText: String
     @Binding var runningContainersOnly: Bool
+    
     var refreshTrigger: Int
     
     @State private var containers: [ContainerViewModel] = []

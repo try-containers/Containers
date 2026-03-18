@@ -9,7 +9,7 @@ import SwiftUI
 import AppKit
 import ContainerSystem
 import ContainerizationOCI
-import ContainerResource
+
 
 enum NavigationTab: String, Identifiable, Equatable {
     case containers

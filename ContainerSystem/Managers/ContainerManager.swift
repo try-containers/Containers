@@ -2,24 +2,17 @@
 //  ContainerManager.swift
 //  Containers
 //
-//  Manager for container operations - wraps SandboxedContainersService
+//  Manager for container operations - wraps ContainersService
 //  Architecture: Actor singleton that gets services from ContainerSystem
 //
 //  Created by Axel Martinez on 2026/02/05.
 //
 
 import Foundation
-import ContainerAPIClient
-import ContainerAPIService
-import ContainerImagesService
 import ContainerizationError
 import ContainerizationOS
-import ArgumentParser
-import ContainerPersistence
-import ContainerNetworkService
 import Containerization
 import ContainerizationOCI
-import ContainerResource
 import Logging
 
 /// Manages container operations.
@@ -501,8 +494,11 @@ public final class ContainerManager {
                 return AttachmentConfiguration(network: item.element, options: AttachmentOptions(hostname: fqdn ?? containerId))
             }
         }
+        
+        let defaultNetworkName = "default"
+        
         // if no networks specified, attach to the default network
-        return [AttachmentConfiguration(network: ClientNetwork.defaultNetworkName, options: AttachmentOptions(hostname: fqdn ?? containerId))]
+        return [AttachmentConfiguration(network: defaultNetworkName, options: AttachmentOptions(hostname: fqdn ?? containerId))]
     }
 
     private func getKernel(container: ContainerInfo) async throws -> Kernel {

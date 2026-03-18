@@ -1,5 +1,5 @@
 //
-//  SandboxedBuilder.swift
+//  Builder.swift
 //  Containers
 //
 //  Sandboxed version of Builder that implements build protocol without XPC dependencies
@@ -8,19 +8,15 @@
 //
 
 import Foundation
-import ContainerBuild
-import ContainerImagesService
-import ContainerResource
 import Containerization
 import ContainerizationOCI
 import ContainerizationError
 import ContainerizationOS
-import GRPC
 import NIO
 import Logging
 
-/// Standalone sandboxed builder that uses ImagesService instead of XPC-based ClientImage
-public struct SandboxedBuilder: Sendable {
+/// Builder that uses ImagesService instead of XPC-based ClientImage
+public struct Builder: Sendable {
     public static let builderContainerId = "buildkit"
     
     let client: BuilderClientProtocol
@@ -102,7 +98,7 @@ public struct SandboxedBuilder: Sendable {
         let respStream = self.clientAsync.performBuild(reqStream, callOptions: try CallOptions(config))
         
         logger.info("Initializing sandboxed build pipeline")
-        let pipeline = SandboxedBuildPipeline(
+        let pipeline = BuildPipeline(
             config: config,
             imagesService: self.imagesService,
             contentStore: self.contentStore
@@ -139,10 +135,10 @@ public struct SandboxedBuilder: Sendable {
     }
 }
 
-// MARK: - Sandboxed Build Pipeline
+// MARK: - Build Pipeline
 
 /// Custom build pipeline that uses ImagesService for image resolution instead of XPC
-private actor SandboxedBuildPipeline {
+private actor BuildPipeline {
     let config: Builder.BuildConfig
     let imagesService: ImagesService
     let contentStore: ContentStore
@@ -710,13 +706,7 @@ private actor SandboxedBuildPipeline {
             platform: platform,
             insecure: false,
             progressUpdate: { events in
-                if !self.config.quiet {
-                    for event in events {
-                        if case .setDescription(let desc) = event {
-                            self.logger.info("\(desc)")
-                        }
-                    }
-                }
+                // Progress events are string-based (e.g., "add-items", "add-size")
             }
         )
         

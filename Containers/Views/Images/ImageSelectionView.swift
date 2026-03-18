@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import Containerization
+import ContainerSystem
 import ContainerizationOCI
-import ContainerResource
+
 
 struct ImageSelectionView: View {
     var images: [ImageDescription]

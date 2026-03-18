@@ -7,7 +7,6 @@
 
 import Testing
 import Foundation
-import ContainerResource
 import ContainerizationError
 
 @testable import ContainerSystem
@@ -32,7 +31,7 @@ struct VolumeManagerTests {
     
     // MARK: - List Volumes Tests
     
-    @Test("List volumes returns array")
+    @Test("List volumes returns empty array initially")
     @MainActor
     func testListVolumes() async throws {
         let (_, testRuntime) = try await setupTestSystem()
@@ -40,12 +39,12 @@ struct VolumeManagerTests {
         let manager = VolumeManager(testRuntime: testRuntime)
         let volumes = try await manager.list()
         
-        #expect(type(of: volumes) == [Volume].self)
+        #expect(volumes.isEmpty)
     }
     
     // MARK: - Create Volume Tests
     
-    @Test("Create volume throws unsupported error in sandboxed mode")
+    @Test("Create volume succeeds and is listed")
     @MainActor
     func testCreateVolume() async throws {
         let (_, testRuntime) = try await setupTestSystem()
@@ -53,37 +52,93 @@ struct VolumeManagerTests {
         let volumeName = "test-volume-\(UUID().uuidString)"
         let manager = VolumeManager(testRuntime: testRuntime)
         
-        do {
+        let volume = try await manager.create(
+            name: volumeName,
+            labels: [],
+            options: [],
+            sizeInBytes: 1024 * 1024 // 1 MB
+        )
+        
+        #expect(volume.name == volumeName)
+        #expect(volume.driver == "local")
+        #expect(volume.format == "ext4")
+        
+        let volumes = try await manager.list()
+        #expect(volumes.contains(where: { $0.name == volumeName }))
+    }
+    
+    @Test("Create volume with invalid name throws error")
+    @MainActor
+    func testCreateVolumeInvalidName() async throws {
+        let (_, testRuntime) = try await setupTestSystem()
+        
+        let manager = VolumeManager(testRuntime: testRuntime)
+        
+        await #expect(throws: VolumeError.self) {
             _ = try await manager.create(
-                name: volumeName,
+                name: "invalid name!",
                 labels: [],
                 options: [],
                 sizeInBytes: nil
             )
-            
-            Issue.record("Expected ContainerizationError for unsupported operation")
-        } catch let error as ContainerizationError {
-            #expect(error.code == .internalError)
-            #expect(error.message.contains("not yet supported"))
+        }
+    }
+    
+    @Test("Create duplicate volume throws error")
+    @MainActor
+    func testCreateDuplicateVolume() async throws {
+        let (_, testRuntime) = try await setupTestSystem()
+        
+        let volumeName = "test-volume-\(UUID().uuidString)"
+        let manager = VolumeManager(testRuntime: testRuntime)
+        
+        _ = try await manager.create(
+            name: volumeName,
+            labels: [],
+            options: [],
+            sizeInBytes: 1024 * 1024
+        )
+        
+        await #expect(throws: VolumeError.self) {
+            _ = try await manager.create(
+                name: volumeName,
+                labels: [],
+                options: [],
+                sizeInBytes: 1024 * 1024
+            )
         }
     }
     
     // MARK: - Delete Volume Tests
     
-    @Test("Delete volumes throws unsupported error in sandboxed mode")
+    @Test("Delete empty volume list succeeds")
     @MainActor
     func testDeleteEmptyVolumeList() async throws {
         let (_, testRuntime) = try await setupTestSystem()
         
         let manager = VolumeManager(testRuntime: testRuntime)
         
-        do {
-            try await manager.delete(volumes: [])
-            
-            Issue.record("Expected ContainerizationError for unsupported operation")
-        } catch let error as ContainerizationError {
-            #expect(error.code == .internalError)
-            #expect(error.message.contains("not yet supported"))
-        }
+        try await manager.delete(volumes: [])
+    }
+    
+    @Test("Delete volume removes it from list")
+    @MainActor
+    func testDeleteVolume() async throws {
+        let (_, testRuntime) = try await setupTestSystem()
+        
+        let volumeName = "test-volume-\(UUID().uuidString)"
+        let manager = VolumeManager(testRuntime: testRuntime)
+        
+        let volume = try await manager.create(
+            name: volumeName,
+            labels: [],
+            options: [],
+            sizeInBytes: 1024 * 1024
+        )
+        
+        try await manager.delete(volumes: [volume])
+        
+        let volumes = try await manager.list()
+        #expect(!volumes.contains(where: { $0.name == volumeName }))
     }
 }

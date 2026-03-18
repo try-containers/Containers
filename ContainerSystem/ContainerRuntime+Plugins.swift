@@ -10,7 +10,6 @@
 //
 
 import Foundation
-import ContainerPlugin
 import ContainerizationError
 import Logging
 

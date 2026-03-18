@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import ContainerResource
+import ContainerSystem
 
 @dynamicMemberLookup
 struct VolumeViewModel: Identifiable, Hashable, Equatable {

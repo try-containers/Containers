@@ -1,0 +1,53 @@
+//
+//  ContainerSnapshot.swift
+//  Containers
+//
+//  Local implementation of ContainerSnapshot (replaces ContainerResource.ContainerSnapshot)
+//
+
+import Foundation
+import ContainerizationOCI
+
+/// Runtime status of a container.
+public enum RuntimeStatus: String, Sendable, Codable, Hashable {
+    case running
+    case stopped
+    case stopping
+    case unknown
+}
+
+/// A snapshot of a container's current state.
+public struct ContainerSnapshot: Sendable, Codable {
+    public var configuration: ContainerConfiguration
+    public var status: RuntimeStatus
+    public var networks: [Attachment]
+    public var startedDate: Date?
+    
+    public var id: String {
+        configuration.id
+    }
+    
+    public var platform: Platform {
+        configuration.platform
+    }
+    
+    public var volumeNames: [String] {
+        configuration.mounts.compactMap(\.volumeName)
+    }
+    
+    public var volumeFSs: [Filesystem] {
+        configuration.mounts.filter(\.isVolume)
+    }
+    
+    public init(
+        configuration: ContainerConfiguration,
+        status: RuntimeStatus,
+        networks: [Attachment],
+        startedDate: Date? = nil
+    ) {
+        self.configuration = configuration
+        self.status = status
+        self.networks = networks
+        self.startedDate = startedDate
+    }
+}

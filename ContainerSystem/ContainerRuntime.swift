@@ -8,10 +8,6 @@
 //
 
 import Foundation
-import ContainerImagesService
-import ContainerAPIService
-import ContainerPlugin
-import ContainerPersistence
 import ContainerizationError
 import ContainerizationOCI
 import Logging
@@ -43,7 +39,7 @@ internal class ContainerRuntime {
     
     internal struct PluginProcessInfo {
         let process: Foundation.Process
-        let plugin: ContainerPlugin.Plugin
+        let plugin: Plugin
         let instanceId: String
         let standardOutput: Pipe?
         let standardError: Pipe?
@@ -68,11 +64,10 @@ internal class ContainerRuntime {
     
     // Service storage (used by ContainerRuntime+Services extension)
     internal var servicesInitialized = false
-    internal var pluginLoader: ContainerPlugin.PluginLoader?
-    internal var containersService: ContainerAPIService.ContainersService?
-    internal var sandboxedContainersService: SandboxedContainersService?
-    internal var imagesService: ContainerImagesService.ImagesService?
-    internal var kernelService: ContainerAPIService.KernelService?
+    internal var pluginLoader: PluginLoader?
+    internal var containersService: ContainersService?
+    internal var imagesService: ImagesService?
+    internal var kernelService: KernelService?
     internal var contentStore: ContentStore?
 
     // System status for UI
@@ -103,7 +98,7 @@ internal class ContainerRuntime {
     // ServiceManager is a @MainActor singleton that manages services
     
     // Current configuration
-    private var appRoot: URL?
+    internal var appRoot: URL?
     
     internal static let logger: Logger = {
         LoggingSystem.bootstrap(StreamLogHandler.standardError)
@@ -120,8 +115,8 @@ internal class ContainerRuntime {
     
     /// Get containers service. Only accessible to managers in ContainerSystem module.
     /// Can be overridden in tests to provide mock services.
-    internal func getContainersService() async throws -> SandboxedContainersService {
-        guard let service = sandboxedContainersService else {
+    internal func getContainersService() async throws -> ContainersService {
+        guard let service = containersService else {
             throw ContainerizationError(.internalError, message: "Containers service not initialized")
         }
         return service
@@ -133,6 +128,7 @@ internal class ContainerRuntime {
         guard let service = imagesService else {
             throw ContainerizationError(.internalError, message: "Images service not initialized")
         }
+        
         return service
     }
     
@@ -142,6 +138,7 @@ internal class ContainerRuntime {
         guard let service = kernelService else {
             throw ContainerizationError(.internalError, message: "Kernel service not initialized")
         }
+        
         return service
     }
     
@@ -150,6 +147,7 @@ internal class ContainerRuntime {
         guard let appRoot = appRoot else {
             throw ContainerizationError(.internalError, message: "App root not initialized")
         }
+        
         return appRoot
     }
     
@@ -158,6 +156,7 @@ internal class ContainerRuntime {
         guard let contentStore = contentStore else {
             throw ContainerizationError(.internalError, message: "Content store not initialized")
         }
+        
         return contentStore
     }
     
@@ -196,14 +195,15 @@ internal class ContainerRuntime {
             Self.logger.info("Container system started successfully")
             
         } catch {
-            isRunning = false
-            startupError = error
+            self.isRunning = false
+            self.startupError = error
             self.appRoot = nil
             
             // Cleanup on failure
             stopAllPlugins()
             
             Self.logger.error("Failed to start system: \(error)")
+            
             throw error
         }
     }
@@ -216,6 +216,7 @@ internal class ContainerRuntime {
         }
         
         isStopping = true
+        
         defer { isStopping = false }
         
         Self.logger.info("Stopping container system...")
