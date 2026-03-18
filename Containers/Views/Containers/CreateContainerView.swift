@@ -324,127 +324,100 @@ struct CreateContainerView: View {
             
             // Ports
             GroupBox {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Port Mappings")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Spacer()
-                        Text("[Host-ip:]Host:Container")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    
-                    Text("Ports set to 0 will be ignored. Host-ip defaults to 127.0.0.1")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    if ports.isEmpty {
-                        Button {
-                            self.ports.append(.init())
-                        } label: {
-                            Label("Add Port Mapping", systemImage: "plus.circle")
+                EditableListSection(
+                    items: $ports,
+                    title: "Port Mappings",
+                    formatHint: "[Host-ip:]Host:Container",
+                    description: "Ports set to 0 will be ignored. Host-ip defaults to 127.0.0.1",
+                    addLabel: "Add Port Mapping",
+                    newItem: { PortsConfiguration() },
+                    rowContent: { $port in
+                        TextField("127.0.0.1", text: $port.hostAddress)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 100)
+                        Text(":")
+                        TextField("8080", value: $port.host, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                        Text(":")
+                        TextField("80", value: $port.container, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                        Picker("", selection: $port.publishProtocol) {
+                            Text("TCP").tag(PublishProtocol.tcp)
+                            Text("UDP").tag(PublishProtocol.udp)
                         }
-                        .buttonStyle(.borderless)
-                    } else {
-                        ForEach($ports) { $port in
-                            EditableRow(content: {
-                                TextField("127.0.0.1", text: $port.hostAddress)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(maxWidth: 100)
-                                Text(":")
-                                TextField("8080", value: $port.host, format: .number)
-                                    .textFieldStyle(.roundedBorder)
-                                Text(":")
-                                TextField("80", value: $port.container, format: .number)
-                                    .textFieldStyle(.roundedBorder)
-                                Picker("", selection: $port.publishProtocol) {
-                                    Text("TCP").tag(PublishProtocol.tcp)
-                                    Text("UDP").tag(PublishProtocol.udp)
-                                }
-                                .labelsHidden()
-                                .fixedSize()
-                            }, onAdd: {
-                                self.ports.append(.init())
-                            }, onDelete: {
-                                self.ports.removeAll(where: {$0.id == port.id})
-                            })
-                        }
+                        .labelsHidden()
+                        .fixedSize()
                     }
-                }
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
             }
             
             // Environment Variables
             GroupBox {
-                VStack(alignment: .leading, spacing: 12) {
-                    KeyValuesEditView(keyValues: $environments, title: "Environment Variables")
-                }
+                EditableListSection(
+                    items: $environments,
+                    title: "Environment Variables",
+                    formatHint: "key=value",
+                    description: "Empty keys will be removed when creating",
+                    addLabel: "Add Environment Variable",
+                    newItem: { KeyValue() },
+                    rowContent: { $keyValue in
+                        TextField("key", text: $keyValue.key)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
+                        
+                        Text("=")
+                            .foregroundStyle(.secondary)
+                            .font(.system(.body, design: .monospaced))
+                        
+                        TextField("value", text: $keyValue.value)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
             }
             
-            /*/ Volumes
+            // Volumes
             GroupBox {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Volume Mounts")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Spacer()
-                        Text("<name>:/path")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("If volume name is empty or not found, a new volume will be created")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    if self.volumes.isEmpty {
-                        Button {
-                            self.volumes.append(.init())
-                        } label: {
-                            Label("Add Volume Mount", systemImage: "plus.circle")
-                        }
-                        .buttonStyle(.borderless)
-                    } else {
-                        ForEach($volumes) { $volume in
-                            EditableRow(content: {
-                                VolumeRow(
-                                    volumeName: $volume.name,
-                                    path: $volume.path,
-                                    showPickVolume: $showPickVolume,
-                                    availableVolumes: $availableVolumes,
-                                    showAvailableVolume: {
-                                        guard !self.volumeInitialized else {
-                                            self.showPickVolume = true
-                                            return
-                                        }
+                EditableListSection(
+                    items: $volumes,
+                    title: "Volume Mounts",
+                    formatHint: "<name>:/path",
+                    description: "If volume name is empty or not found, a new volume will be created",
+                    addLabel: "Add Volume Mount",
+                    newItem: { VolumeConfiguration() },
+                    rowContent: { $volume in
+                        VolumeRow(
+                            volumeName: $volume.name,
+                            path: $volume.path,
+                            showPickVolume: $showPickVolume,
+                            availableVolumes: $availableVolumes,
+                            showAvailableVolume: {
+                                guard !self.volumeInitialized else {
+                                    self.showPickVolume = true
+                                    return
+                                }
 
-                                        Task {
-                                            do {
-                                                self.showProgressView = true
-                                                self.availableVolumes = try await volumeManager.list()
-                                                self.showProgressView = false
-                                                self.volumeInitialized = true
-                                                self.showPickVolume = true
-                                            } catch (let error) {
-                                                self.errorMessage = "\(error)"
-                                            }
-                                        }
-                                    })
-                            }, onAdd: {
-                                self.volumes.append(.init())
-                            }, onDelete: {
-                                self.volumes.removeAll(where: {$0.id == volume.id})
+                                Task {
+                                    do {
+                                        self.showProgressView = true
+                                        self.availableVolumes = try await volumeManager.list()
+                                        self.showProgressView = false
+                                        self.volumeInitialized = true
+                                        self.showPickVolume = true
+                                    } catch (let error) {
+                                        self.errorMessage = "\(error)"
+                                    }
+                                }
                             })
-                        }
                     }
-                }
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-            }*/
+            }
         }
     }
 }

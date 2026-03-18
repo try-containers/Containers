@@ -116,12 +116,52 @@ struct CreateVolumeView: View {
                                 Divider()
                                 
                                 // Labels
-                                KeyValuesEditView(keyValues: $labels, title: "Volume Metadata (Label)")
+                                EditableListSection(
+                                    items: $labels,
+                                    title: "Volume Metadata (Label)",
+                                    formatHint: "key=value",
+                                    description: "Empty keys will be removed when creating",
+                                    addLabel: "Add Label",
+                                    newItem: { KeyValue() },
+                                    rowContent: { $keyValue in
+                                        TextField("key", text: $keyValue.key)
+                                            .textFieldStyle(.roundedBorder)
+                                            .font(.system(.body, design: .monospaced))
+                                        
+                                        Text("=")
+                                            .foregroundStyle(.secondary)
+                                            .font(.system(.body, design: .monospaced))
+                                        
+                                        TextField("value", text: $keyValue.value)
+                                            .textFieldStyle(.roundedBorder)
+                                            .font(.system(.body, design: .monospaced))
+                                    }
+                                )
                                 
                                 Divider()
                                 
                                 // Options
-                                KeyValuesEditView(keyValues: $options, title: "Driver Specific Options")
+                                EditableListSection(
+                                    items: $options,
+                                    title: "Driver Specific Options",
+                                    formatHint: "key=value",
+                                    description: "Empty keys will be removed when creating",
+                                    addLabel: "Add Option",
+                                    newItem: { KeyValue() },
+                                    rowContent: { $keyValue in
+                                        TextField("key", text: $keyValue.key)
+                                            .textFieldStyle(.roundedBorder)
+                                            .font(.system(.body, design: .monospaced))
+                                        
+                                        Text("=")
+                                            .foregroundStyle(.secondary)
+                                            .font(.system(.body, design: .monospaced))
+                                        
+                                        TextField("value", text: $keyValue.value)
+                                            .textFieldStyle(.roundedBorder)
+                                            .font(.system(.body, design: .monospaced))
+                                    }
+                                )
                             }
                             .padding(.top, 12)
                         },
