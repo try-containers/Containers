@@ -45,9 +45,8 @@ struct ContainersApp: App {
     @State private var containerManager = ContainerManager()
     @State private var imageManager = ImageManager()
     @State private var volumeManager = VolumeManager()
-    @State private var builderManager = BuilderManager()
     @State private var systemManager = SystemManager()
-    @State private var dnsManager = DNSManager()
+    @State private var networkManager = NetworkManager()
     
     var body: some Scene {
         
@@ -56,9 +55,8 @@ struct ContainersApp: App {
                 .environment(containerManager)
                 .environment(imageManager)
                 .environment(volumeManager)
-                .environment(builderManager)
                 .environment(systemManager)
-                .environment(dnsManager)
+                .environment(networkManager)
                 .onAppear {
                     // Show dock icon when dashboard appears
                     NSApp.setActivationPolicy(.regular)
@@ -78,7 +76,8 @@ struct ContainersApp: App {
         
         Settings {
             SettingsView()
-                .environment(dnsManager)
+                .environment(networkManager)
+                .environment(systemManager)
                 .fixedSize(horizontal: true, vertical: true)
         }
         .defaultSize(width: 600, height: 400)

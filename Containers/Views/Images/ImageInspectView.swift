@@ -22,97 +22,51 @@ struct ImageInspectView: View {
                 spacing: 20,
                 content: {
                     // Image Information
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionHeader(title: "Image", subtitle: nil)
-                        
-                        infoRow(label: "Reference", value: image.imageDescription.reference)
-                        infoRow(label: "Tag", value: image.tag)
-                        
+                    InfoSection(title: "Image", subtitle: nil) {
+                        InfoRow(label: "Reference", value: image.imageDescription.reference)
+                        InfoRow(label: "Tag", value: image.tag)
                     }
-
+                    
                     // Platform
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionHeader(title: "Platform", subtitle: nil)
+                    InfoSection(title: "Platform", subtitle: nil) {
+                        InfoRow(label: "OS", value: image.formattedOS)
+                        InfoRow(label: "Architecture", value: image.formattedArch)
                         
-                        infoRow(label: "OS", value: image.formattedOS)
-                        infoRow(label: "Architecture", value: image.formattedArch)
                         if !image.variant.isEmpty {
-                            infoRow(label: "Variant", value: image.variant)
+                            InfoRow(label: "Variant", value: image.variant)
                         }
                     }
                     
                     // Size Information
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionHeader(title: "Size", subtitle: nil)
-                        
-                        infoRow(label: "Total Size", value: image.formattedSize)
-                        infoRow(label: "Descriptor Size", value: ByteCountFormatter.string(fromByteCount: image.imageDescription.descriptor.size, countStyle: .file))
+                    InfoSection(title: "Size", subtitle: nil) {
+                        InfoRow(label: "Total Size", value: image.formattedSize)
+                        InfoRow(label: "Descriptor Size", value: ByteCountFormatter.string(fromByteCount: image.imageDescription.descriptor.size, countStyle: .file))
                     }
                     
                     // Descriptor Details
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionHeader(title: "Descriptor", subtitle: nil)
-                        
-                        infoRow(label: "Media Type", value: image.imageDescription.descriptor.mediaType)
+                    InfoSection(title: "Descriptor", subtitle: nil){
+                        InfoRow(label: "Media Type", value: image.imageDescription.descriptor.mediaType)
                     }
                     
                     // Created Date
-                    
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionHeader(title: "Metadata", subtitle: nil)
-                        
-                        infoRow(label: "Created", value: image.formattedCreated)
+                    InfoSection(title: "Metadata", subtitle: nil) {
+                        InfoRow(label: "Created", value: image.formattedCreated)
                     }
-                    
                     
                     // Usage Information
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionHeader(title: "Usage", subtitle: nil)
-                        
+                    InfoSection(title: "Usage", subtitle: nil){
                         if image.inUse {
-                            infoRow(label: "In Use", value: "Yes")
-                            infoRow(label: "Containers", value: "\(image.inUseContainers.count)")
+                            InfoRow(label: "In Use", value: "Yes")
+                            InfoRow(label: "Containers", value: "\(image.inUseContainers.count)")
                         } else {
-                            infoRow(label: "In Use", value: "No")
+                            InfoRow(label: "In Use", value: "No")
                         }
                     }
+                    
                 }
             )
             .padding(20)
         }
     }
-    
-    private func sectionHeader(title: String, subtitle: String?) -> some View {
-        HStack(alignment: .lastTextBaseline, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-    
-    private func infoRow(label: String, value: String) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(.body)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 140, alignment: .leading)
-            
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(6)
-    }
+  
 }

@@ -37,6 +37,10 @@ private struct VolumeConfiguration: Identifiable {
     var path: String = ""
 }
 
+private struct VolumePickerTarget: Identifiable {
+    let id: UUID
+}
+
 struct CreateContainerView: View {
     @Environment(ImageManager.self) private var imageManager
     @Environment(VolumeManager.self) private var volumeManager
@@ -59,7 +63,7 @@ struct CreateContainerView: View {
     @SwiftUI.State private var showProgressView: Bool = false
     @SwiftUI.State private var showAdditionalSettings: Bool = false
     @SwiftUI.State private var showPickLocalImage: Bool = false
-    @SwiftUI.State private var showPickVolume: Bool = false
+    @SwiftUI.State private var volumePickerTarget: VolumePickerTarget?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -136,12 +140,15 @@ struct CreateContainerView: View {
                         .padding(12)
                     }
                     
+                    containerNameSection
+                    
+                    volumeMountsSection
+                    
                     // Optional Settings Disclosure
                     DisclosureGroup(
                         isExpanded: $showAdditionalSettings,
                         content: {
                             VStack(alignment: .leading, spacing: 16) {
-                                Divider()
                                 additionalSettings
                             }
                             .padding(.top, 12)
@@ -164,6 +171,7 @@ struct CreateContainerView: View {
             }
             
             Divider()
+            
             // Bottom Bar
             HStack {
                 if showProgressView {
@@ -203,13 +211,19 @@ struct CreateContainerView: View {
             .padding(16)
             .background(Color(nsColor: .controlBackgroundColor))
         }
-        .frame(width: 600, height: 500)
+        .frame(width: 450, height: 500)
         .sheet(isPresented: $showProgressView, content: {
             ProgressView()
         })
         .sheet(isPresented: $showPickLocalImage, content: {
             ImageSelectionView(images: self.localImages, onImageSelect: {
                 self.imageReference = $0
+            })
+        })
+        .sheet(item: $volumePickerTarget, content: { target in
+            VolumeSelectionView(volumes: self.availableVolumes, onVolumeSelect: { selectedName in
+                guard let index = self.volumes.firstIndex(where: { $0.id == target.id }) else { return }
+                self.volumes[index].name = selectedName
             })
         })
         .animation(.default, value: self.ports.count)
@@ -235,27 +249,38 @@ struct CreateContainerView: View {
             do {
                 var validVolumeFSs: [Filesystem] = []
                 let mountOptions: [String] = []
+                let existingVolumes = try await volumeManager.list()
                 
                 for volumeConfig in self.volumes {
-                    var volume: Volume
+                    let trimmedName = volumeConfig.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let destination = volumeConfig.path.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let hasMountInput = !trimmedName.isEmpty || !destination.isEmpty
                     
-                    if let first = self.availableVolumes.first(where: {$0.name == volumeConfig.name}) {
-                        volume = first
+                    guard hasMountInput else {
+                        continue
+                    }
+                    
+                    guard destination.hasPrefix("/") else {
+                        self.errorMessage = "Volume mount path must be an absolute container path."
+                        return
+                    }
+                    
+                    let volume: Volume
+                    if let existingVolume = existingVolumes.first(where: { $0.name == trimmedName }) {
+                        volume = existingVolume
                     } else {
-                        var trimmedName = volumeConfig.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        var volumeName = trimmedName
                         var labels: [KeyValue] = []
 
-                        if trimmedName.isEmpty {
-                            trimmedName = VolumeStorage.generateAnonymousVolumeName()
+                        if volumeName.isEmpty {
+                            volumeName = VolumeStorage.generateAnonymousVolumeName()
                             labels.append(.init(key: Volume.anonymousLabel))
                         }
 
-                        let vol = try await volumeManager.create(name: trimmedName, labels: labels, options: [], sizeInBytes: nil)
-                        
-                        volume = vol
+                        volume = try await volumeManager.create(name: volumeName, labels: labels, options: [], sizeInBytes: nil)
                     }
                     
-                    let fs = Filesystem.volume(name: volume.name, format: volume.format, source: volume.source, destination: volumeConfig.path, options: mountOptions)
+                    let fs = Filesystem.volume(name: volume.name, format: volume.format, source: volume.source, destination: destination, options: mountOptions)
                     
                     validVolumeFSs.append(fs)
                 }
@@ -299,6 +324,49 @@ struct CreateContainerView: View {
     }
     
     @ViewBuilder
+    private var containerNameSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Name")
+                    .font(.headline)
+
+                TextField("my-container", text: $container.name)
+                    .textFieldStyle(.roundedBorder)
+
+                Text("Leave empty to generate a unique name automatically.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+        }
+    }
+    
+    @ViewBuilder
+    private var volumeMountsSection: some View {
+        GroupBox {
+            EditableListSection(
+                items: $volumes,
+                title: "Volume Mounts",
+                description: "Use an existing volume, enter a new volume name, or leave the name empty to create an anonymous volume.",
+                addLabel: "Add Volume Mount",
+                newItem: { VolumeConfiguration() },
+                rowSummary: volumeMountSummary,
+                editorContent: { $volume in
+                    VolumeRow(
+                        volumeName: $volume.name,
+                        path: $volume.path,
+                        showAvailableVolume: {
+                            showAvailableVolumes(for: volume.id)
+                        }
+                    )
+                }
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+        }
+    }
+    
+    @ViewBuilder
     private var additionalSettings: some View {
         VStack(spacing: 16) {
             // Entrypoint
@@ -327,26 +395,12 @@ struct CreateContainerView: View {
                 EditableListSection(
                     items: $ports,
                     title: "Port Mappings",
-                    formatHint: "[Host-ip:]Host:Container",
                     description: "Ports set to 0 will be ignored. Host-ip defaults to 127.0.0.1",
                     addLabel: "Add Port Mapping",
                     newItem: { PortsConfiguration() },
-                    rowContent: { $port in
-                        TextField("127.0.0.1", text: $port.hostAddress)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 100)
-                        Text(":")
-                        TextField("8080", value: $port.host, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                        Text(":")
-                        TextField("80", value: $port.container, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                        Picker("", selection: $port.publishProtocol) {
-                            Text("TCP").tag(PublishProtocol.tcp)
-                            Text("UDP").tag(PublishProtocol.udp)
-                        }
-                        .labelsHidden()
-                        .fixedSize()
+                    rowSummary: portSummary,
+                    editorContent: { $port in
+                        PortMappingEditor(port: $port)
                     }
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -358,66 +412,72 @@ struct CreateContainerView: View {
                 EditableListSection(
                     items: $environments,
                     title: "Environment Variables",
-                    formatHint: "key=value",
                     description: "Empty keys will be removed when creating",
                     addLabel: "Add Environment Variable",
                     newItem: { KeyValue() },
-                    rowContent: { $keyValue in
-                        TextField("key", text: $keyValue.key)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
-                        
-                        Text("=")
-                            .foregroundStyle(.secondary)
-                            .font(.system(.body, design: .monospaced))
-                        
-                        TextField("value", text: $keyValue.value)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
+                    rowSummary: keyValueSummary,
+                    editorContent: { $keyValue in
+                        KeyValueEditor(keyValue: $keyValue)
                     }
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
             }
-            
-            // Volumes
-            GroupBox {
-                EditableListSection(
-                    items: $volumes,
-                    title: "Volume Mounts",
-                    formatHint: "<name>:/path",
-                    description: "If volume name is empty or not found, a new volume will be created",
-                    addLabel: "Add Volume Mount",
-                    newItem: { VolumeConfiguration() },
-                    rowContent: { $volume in
-                        VolumeRow(
-                            volumeName: $volume.name,
-                            path: $volume.path,
-                            showPickVolume: $showPickVolume,
-                            availableVolumes: $availableVolumes,
-                            showAvailableVolume: {
-                                guard !self.volumeInitialized else {
-                                    self.showPickVolume = true
-                                    return
-                                }
 
-                                Task {
-                                    do {
-                                        self.showProgressView = true
-                                        self.availableVolumes = try await volumeManager.list()
-                                        self.showProgressView = false
-                                        self.volumeInitialized = true
-                                        self.showPickVolume = true
-                                    } catch (let error) {
-                                        self.errorMessage = "\(error)"
-                                    }
-                                }
-                            })
-                    }
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+        }
+    }
+    private func volumeMountSummary(_ volume: VolumeConfiguration) -> String {
+        let name = volume.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = volume.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = name.isEmpty ? "Anonymous volume" : name
+        return path.isEmpty ? displayName : "\(displayName) -> \(path)"
+    }
+
+    private func portSummary(_ port: PortsConfiguration) -> String {
+        "\(port.hostAddress):\(port.host):\(port.container)/\(port.publishProtocol.rawValue.uppercased())"
+    }
+
+    private func showAvailableVolumes(for id: VolumeConfiguration.ID) {
+        guard !self.volumeInitialized else {
+            self.volumePickerTarget = VolumePickerTarget(id: id)
+            return
+        }
+
+        Task {
+            do {
+                self.showProgressView = true
+                self.availableVolumes = try await volumeManager.list()
+                self.showProgressView = false
+                self.volumeInitialized = true
+                self.volumePickerTarget = VolumePickerTarget(id: id)
+            } catch (let error) {
+                self.showProgressView = false
+                self.errorMessage = "\(error)"
             }
+        }
+    }
+}
+
+private struct PortMappingEditor: View {
+    @Binding var port: PortsConfiguration
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Host Address", text: $port.hostAddress)
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 8) {
+                TextField("Host Port", value: $port.host, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Container Port", value: $port.container, format: .number)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Picker("Protocol", selection: $port.publishProtocol) {
+                Text("TCP").tag(PublishProtocol.tcp)
+                Text("UDP").tag(PublishProtocol.udp)
+            }
+            .pickerStyle(.segmented)
         }
     }
 }
@@ -425,8 +485,6 @@ struct CreateContainerView: View {
 private struct VolumeRow: View {
     @Binding var volumeName: String
     @Binding var path: String
-    @Binding var showPickVolume: Bool
-    @Binding var availableVolumes: [Volume]
     
     var showAvailableVolume: () -> Void
     
@@ -442,9 +500,10 @@ private struct VolumeRow: View {
                     Button(action: {
                         self.showAvailableVolume()
                     }, label: {
-                        Image(systemName: "ellipsis.circle")
+                        Label("Choose", systemImage: "ellipsis.circle")
+                            .labelStyle(.iconOnly)
                     })
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
                     .help("Choose from existing volumes")
                 }
             }
@@ -457,10 +516,5 @@ private struct VolumeRow: View {
                     .textFieldStyle(.roundedBorder)
             }
         }
-        .sheet(isPresented: $showPickVolume, content: {
-            VolumeSelectionView(volumes: self.availableVolumes, onVolumeSelect: {
-                self.volumeName = $0
-            })
-        })
     }
 }

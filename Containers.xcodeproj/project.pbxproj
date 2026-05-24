@@ -146,20 +146,12 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		77C44FAA2F6AAA5200167C4D /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Frameworks;
-			sourceTree = "<group>";
-		};
 		9829EC392E17BA3C00A9F8D3 = {
 			isa = PBXGroup;
 			children = (
 				9829EC442E17BA3C00A9F8D3 /* Containers */,
 				77C44F6E2F69C4EE00167C4D /* ContainerSystem */,
 				773508652F34E40500C5471F /* ContainerSystemTests */,
-				77C44FAA2F6AAA5200167C4D /* Frameworks */,
 				9829EC432E17BA3C00A9F8D3 /* Products */,
 			);
 			sourceTree = "<group>";

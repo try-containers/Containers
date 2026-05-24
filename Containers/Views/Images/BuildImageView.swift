@@ -250,7 +250,9 @@ struct BuildImageView: View {
                                     .font(.system(size: 24))
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
+                        .contentShape(Rectangle())
                         .background(
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(selectedMethod == method ? Color.accentColor.opacity(0.1) : Color.clear)

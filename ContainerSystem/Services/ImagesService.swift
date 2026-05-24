@@ -16,14 +16,14 @@ import ContainerizationOS
 import Logging
 
 /// A service that manages container images, wrapping ImageStore and EXT4Unpacker.
-public actor ImagesService {
+internal actor ImagesService {
 
     private let imageStore: ImageStore
     private let contentStore: ContentStore
     private let snapshotsPath: URL
     private let log: Logger
 
-    public init(
+    internal init(
         contentStore: ContentStore,
         imageStore: ImageStore,
         snapshotsPath: URL,
@@ -37,16 +37,16 @@ public actor ImagesService {
         try FileManager.default.createDirectory(at: snapshotsPath, withIntermediateDirectories: true)
     }
 
-    // MARK: - Public API
+    // MARK: - Internal API
 
     /// List all images in the store.
-    public func list() async throws -> [ImageDescription] {
+    internal func list() async throws -> [ImageDescription] {
         let images = try await imageStore.list()
         return images.map { $0.description }
     }
 
     /// Pull an image from a remote registry.
-    public func pull(
+    internal func pull(
         reference: String,
         platform: Platform?,
         insecure: Bool,
@@ -67,7 +67,7 @@ public actor ImagesService {
     }
 
     /// Unpack an image to an EXT4 block device for use as a container rootfs.
-    public func unpack(
+    internal func unpack(
         description: ImageDescription,
         platform: Platform?,
         progressUpdate: ProgressHandler?
@@ -88,7 +88,7 @@ public actor ImagesService {
     }
 
     /// Get a Filesystem representing the unpacked image snapshot.
-    public func getImageSnapshot(description: ImageDescription, platform: Platform) async throws -> Filesystem {
+    internal func getImageSnapshot(description: ImageDescription, platform: Platform) async throws -> Filesystem {
         let ext4Path = snapshotFilePath(for: description, platform: platform)
 
         guard FileManager.default.fileExists(atPath: ext4Path.path) else {
@@ -104,7 +104,7 @@ public actor ImagesService {
     }
 
     /// Load images from an OCI layout directory on disk.
-    public func load(
+    internal func load(
         from directory: URL,
         force: Bool = false
     ) async throws -> ([ImageDescription], [String]) {
@@ -115,18 +115,18 @@ public actor ImagesService {
     }
 
     /// Tag an image with a new reference.
-    public func tag(existing: String, new: String) async throws -> ImageDescription {
+    internal func tag(existing: String, new: String) async throws -> ImageDescription {
         let image = try await imageStore.tag(existing: existing, new: new)
         return image.description
     }
 
     /// Save images to an OCI layout directory.
-    public func save(references: [String], out: URL, platform: Platform?) async throws {
+    internal func save(references: [String], out: URL, platform: Platform?) async throws {
         try await imageStore.save(references: references, out: out, platform: platform)
     }
 
     /// Push an image to a remote registry.
-    public func push(
+    internal func push(
         reference: String,
         platform: Platform?,
         insecure: Bool,
@@ -145,7 +145,7 @@ public actor ImagesService {
     }
     
     /// Delete an image by reference.
-    public func delete(reference: String, garbageCollect: Bool = false) async throws {
+    internal func delete(reference: String, garbageCollect: Bool = false) async throws {
         try await imageStore.delete(reference: reference, performCleanup: garbageCollect)
     }
 

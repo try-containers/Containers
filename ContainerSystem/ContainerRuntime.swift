@@ -99,6 +99,7 @@ internal class ContainerRuntime {
     
     // Current configuration
     internal var appRoot: URL?
+    internal var isAccessingAppRootSecurityScope = false
     
     internal static let logger: Logger = {
         LoggingSystem.bootstrap(StreamLogHandler.standardError)
@@ -174,6 +175,7 @@ internal class ContainerRuntime {
         self.isStarting = true
         self.startupError = nil
         self.appRoot = appRoot
+        self.isAccessingAppRootSecurityScope = appRoot.startAccessingSecurityScopedResource()
         
         defer {
             isStarting = false
@@ -197,6 +199,10 @@ internal class ContainerRuntime {
         } catch {
             self.isRunning = false
             self.startupError = error
+            if isAccessingAppRootSecurityScope {
+                appRoot.stopAccessingSecurityScopedResource()
+                isAccessingAppRootSecurityScope = false
+            }
             self.appRoot = nil
             
             // Cleanup on failure
@@ -228,6 +234,10 @@ internal class ContainerRuntime {
         await shutdownServices()
         
         isRunning = false
+        if isAccessingAppRootSecurityScope {
+            appRoot?.stopAccessingSecurityScopedResource()
+            isAccessingAppRootSecurityScope = false
+        }
         appRoot = nil
         
         Self.logger.info("Container system stopped")

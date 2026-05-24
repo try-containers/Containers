@@ -34,18 +34,18 @@ extension ContainerRuntime {
         let contentStore = try LocalContentStore(path: imagesRoot.appendingPathComponent("content"))
         let imageStore = try ImageStore(path: imagesRoot, contentStore: contentStore)
         let snapshotsPath = imagesRoot.appendingPathComponent("snapshots")
-        let images = try ImagesService(
+        let imagesService = try ImagesService(
             contentStore: contentStore,
             imageStore: imageStore,
             snapshotsPath: snapshotsPath,
             log: Self.logger
         )
         
-        self.imagesService = images
+        self.imagesService = imagesService
         self.contentStore = contentStore
 
         // Initialize sandboxed containers service
-        let service = try ContainersService(appRoot: appRoot, imagesService: images, log: Self.logger)
+        let service = try ContainersService(appRoot: appRoot, imagesService: imagesService, log: Self.logger)
         
         self.containersService = service
         

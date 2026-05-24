@@ -59,6 +59,7 @@ struct FileSelectionView: View {
                     .fontWeight(.semibold)
             }
             .buttonStyle(.link)
+            .pointerStyle(.link)
             .disabled(fileURL == nil)
 
 
@@ -72,6 +73,7 @@ struct FileSelectionView: View {
                     .frame(maxHeight: .infinity)
             })
             .buttonStyle(.bordered)
+            .pointerStyle(.link)
 
         }
         .fixedSize(horizontal: false, vertical: true)

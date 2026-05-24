@@ -19,9 +19,6 @@ struct VolumesView: View {
 
     @State private var volumes: [VolumeViewModel] = []
     @State private var lastUpdated: Date? = nil
-    @State private var selections = Set<VolumeViewModel.ID>()
-    @State private var showLabelForVolume: VolumeViewModel?
-    @State private var showOptionForVolume: VolumeViewModel?
     @State private var showInUseContainerForVolume: VolumeViewModel?
     @State private var showCreateVolumeView: Bool = false
     @State private var error: Error?
@@ -44,7 +41,8 @@ struct VolumesView: View {
 
     var body: some View {
         VStack(alignment: .leading , spacing: 0) {
-            Table(of: VolumeViewModel.self, selection: $selections, columns: {
+            if system.isRunning {
+                Table(of: VolumeViewModel.self, columns: {
                 
                 TableColumn("Name") { volume in
                     Text(volume.name)
@@ -71,6 +69,7 @@ struct VolumesView: View {
 
                             })
                             .buttonStyle(.link)
+                            .pointerStyle(.link)
                         } else {
                             Text("Unused")
                         }
@@ -110,49 +109,6 @@ struct VolumesView: View {
                 }
                 .width(64)
 
-                TableColumn("Source") { volume in
-                    let source = volume.source
-                    let fileURL = URL(filePath: source)
-                    HStack(spacing: 8) {
-                        Text(source)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(maxWidth: 200)
-                    
-                        Button {
-                            self.openFile(fileURL)
-                        } label: {
-                            Image(systemName: "arrow.right")
-                                .contentShape(Rectangle())
-                                .fontWeight(.semibold)
-                        }
-                        .buttonStyle(.link)
-                    }
-
-                }
-                .width(min: 160, ideal: 160, max: 240)
-                                
-                TableColumn("Label & Option") { volume in
-                    let labels = volume.labels
-                    let options = volume.options
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button(action: {
-                            self.showLabelForVolume = volume
-                        }, label: {
-                            Text("- Labels")
-                        })
-                        .disabled(labels.isEmpty)
-                        Button(action: {
-                            self.showOptionForVolume = volume
-                        }, label: {
-                            Text("- Options")
-                        })
-                        .disabled(options.isEmpty)
-                    }
-                    .buttonStyle(.link)
-                }
-                .width(120)
-
                 TableColumn("Actions") { volume in
 
                     HStack(spacing: 12) {
@@ -181,18 +137,19 @@ struct VolumesView: View {
             }, rows: {
                 ForEach(filteredVolumes)
             })
-            .tableStyle(.inset)
-            .alternatingRowBackgrounds(.disabled)
-            .overlay(alignment: .center, content: {
-                if !self.system.isRunning {
-                    ContainerSystemView()
-                } else if filteredVolumes.isEmpty {
-                    ContentUnavailableView(
-                        trimmedText.isEmpty ? "No Volumes Found" : "No Matching Volumes",
-                        systemImage: NavigationTab.volumes.icon
-                    )
-                }
-            })
+                .tableStyle(.inset)
+                .alternatingRowBackgrounds(.disabled)
+                .overlay(alignment: .center, content: {
+                    if filteredVolumes.isEmpty {
+                        ContentUnavailableView(
+                            trimmedText.isEmpty ? "No Volumes Found" : "No Matching Volumes",
+                            systemImage: NavigationTab.volumes.icon
+                        )
+                    }
+                })
+            } else {
+                ContainerSystemView()
+            }
         }
         .onChange(of: self.system.isRunning, initial: true, {
             guard self.system.isRunning else {
@@ -229,12 +186,6 @@ struct VolumesView: View {
         .sheet(item: $showInUseContainerForVolume, content: { volume in
             ImageContainersView(containers: volume.inUseContainers.map({ContainerViewModel($0)}))
         })
-        .sheet(item: $showLabelForVolume, content: { volume in
-            VolumeDetailOptionView(dictionary: volume.labels, title: "Metadata", emptyText: "No Metadata Specified.")
-        })
-        .sheet(item: $showOptionForVolume, content: { volume in
-            VolumeDetailOptionView(dictionary: volume.options, title: "Driver Specific Options", emptyText: "No Options Specified.")
-        })
         .alert("Error", isPresented: $showError, actions: {
             Button("OK") {
                 self.showError = false
@@ -262,53 +213,5 @@ struct VolumesView: View {
             self.showError = true
         }
     }
-
-    private func openFile(_ url: URL) {
-        let _ = NSWorkspace.shared.selectFile(
-            url.absoluteString,
-            inFileViewerRootedAtPath: url.parent.absoluteString
-        )
-    }
 }
 
-private struct VolumeDetailOptionView: View {
-    var dictionary: [String : String]
-    var title: String
-    var emptyText: String
-
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        let keyValueModels = KeyValue.from(dictionary: dictionary)
-        
-        VStack(alignment: .leading, spacing: 24) {
-            Text(title)
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text("Key=Value")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            KeyValuesView(keyValues: keyValueModels, emptyText: emptyText, leftColumnWidth: 120)
-            
-        }
-        .padding(.all, 24)
-        .frame(width: 320, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
-        .overlay(alignment: .topTrailing, content: {
-            Button(action: {
-                self.dismiss()
-            }, label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            })
-            .buttonStyle(.plain)
-            .padding(.all, 24)
-        })
-        .interactiveDismissDisabled(false)
-
-    }
-        
-}

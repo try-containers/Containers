@@ -98,7 +98,7 @@ private extension Filesystem {
 }
 
 /// A sandbox-compatible containers service that runs LinuxContainer in-process.
-public actor ContainersService {
+internal actor ContainersService {
 
     private struct ContainerState {
         var snapshot: ContainerSnapshot
@@ -120,11 +120,11 @@ public actor ContainersService {
     private var stateChangeCallbacks: [@Sendable @MainActor () -> Void] = []
     
     /// Register a callback to be invoked when container state changes
-    public func addStateChangeCallback(_ callback: @escaping @Sendable @MainActor () -> Void) {
+    internal func addStateChangeCallback(_ callback: @escaping @Sendable @MainActor () -> Void) {
         stateChangeCallbacks.append(callback)
     }
 
-    init(appRoot: URL, imagesService: ImagesService, log: Logger) throws {
+    internal init(appRoot: URL, imagesService: ImagesService, log: Logger) throws {
         let containerRoot = appRoot.appendingPathComponent("containers")
         
         try FileManager.default.createDirectory(at: containerRoot, withIntermediateDirectories: true)
@@ -171,14 +171,14 @@ public actor ContainersService {
         return results
     }
 
-    // MARK: - Public API
+    // MARK: - Internal API
 
-    public func list() async -> [ContainerSnapshot] {
+    internal func list() async -> [ContainerSnapshot] {
         return containers.values.map { $0.snapshot }.sorted { $0.configuration.id < $1.configuration.id }
     }
     
     /// List containers with optional filters.
-    public func list(
+    internal func list(
         status: RuntimeStatus? = nil,
         labelFilter: [String: String]? = nil,
         namePattern: String? = nil
@@ -206,7 +206,7 @@ public actor ContainersService {
         return results.sorted { $0.configuration.id < $1.configuration.id }
     }
 
-    public func create(configuration: ContainerConfiguration, kernel: Kernel, options: ContainerCreateOptions) async throws {
+    internal func create(configuration: ContainerConfiguration, kernel: Kernel, options: ContainerCreateOptions) async throws {
         // Creating container
 
         guard containers[configuration.id] == nil else {
@@ -253,7 +253,7 @@ public actor ContainersService {
         }
     }
 
-    public func bootstrap(id: String, stdio: [FileHandle?]) async throws {
+    internal func bootstrap(id: String, stdio: [FileHandle?]) async throws {
         try await containerLock.withLock { _ in
             try await self._bootstrap(id: id, stdio: stdio)
         }
@@ -390,7 +390,7 @@ public actor ContainersService {
         }
     }
 
-    public func startProcess(id: String, processID: String) async throws {
+    internal func startProcess(id: String, processID: String) async throws {
         // Starting process in container
 
         guard var state = containers[id] else {
@@ -447,7 +447,7 @@ public actor ContainersService {
         }
     }
 
-    public func stop(id: String, options: ContainerStopOptions) async throws {
+    internal func stop(id: String, options: ContainerStopOptions) async throws {
         try await containerLock.withLock { _ in
             try await self._stop(id: id, options: options)
         }
@@ -488,7 +488,7 @@ public actor ContainersService {
         notifyStateChange()
     }
 
-    public func delete(id: String) async throws {
+    internal func delete(id: String) async throws {
         guard let state = containers[id] else {
             throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
@@ -503,10 +503,31 @@ public actor ContainersService {
 
         releaseIP(for: id)
         containers.removeValue(forKey: id)
+        notifyStateChange()
+    }
+    
+    internal func updateMounts(id: String, mounts: [Filesystem]) async throws {
+        guard var state = containers[id] else {
+            throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
+        }
+        
+        guard state.snapshot.status == .stopped else {
+            throw ContainerizationError(.invalidState, message: "container must be stopped before changing volume mounts")
+        }
+        
+        let bundle = state.bundle ?? Bundle(path: containerRoot.appendingPathComponent(id))
+        var configuration = state.snapshot.configuration
+        configuration.mounts = mounts
+        
+        try bundle.setConfiguration(configuration)
+        state.snapshot.configuration = configuration
+        state.bundle = bundle
+        containers[id] = state
+        notifyStateChange()
     }
 
     /// Execute a command in a running container and return its output (uses vsock, no networking needed).
-    public func exec(id: String, arguments: [String]) async throws -> String {
+    internal func exec(id: String, arguments: [String]) async throws -> String {
         guard let state = containers[id], let container = state.container else {
             throw ContainerizationError(.invalidState, message: "container not running: \(id)")
         }
@@ -541,7 +562,7 @@ public actor ContainersService {
         return output
     }
 
-    public func dial(id: String, port: UInt32) async throws -> FileHandle {
+    internal func dial(id: String, port: UInt32) async throws -> FileHandle {
         guard let state = containers[id], let container = state.container else {
             throw ContainerizationError(.invalidState, message: "container not running: \(id)")
         }
@@ -604,9 +625,9 @@ public actor ContainersService {
                     try await lc.wait()
                 }
                 group.addTask {
-                    try await lc.kill(stopOpts.signal)
+                    try await lc.kill(Signal(rawValue: stopOpts.signal))
                     try await Task.sleep(for: .seconds(stopOpts.timeoutInSeconds))
-                    try await lc.kill(SIGKILL)
+                    try await lc.kill(Signal(rawValue: SIGKILL))
                     return ExitStatus(exitCode: 137)
                 }
                 guard let code = try await group.next() else {

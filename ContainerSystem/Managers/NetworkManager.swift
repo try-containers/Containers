@@ -16,7 +16,7 @@ import Logging
 /// Create instances via public init() - stateless utility manager.
 @Observable
 @MainActor
-public final class DNSManager {
+public final class NetworkManager {
 
     private static let resolverDirectory = "/etc/resolver"
     private static let filePrefix = "containerization."

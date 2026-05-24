@@ -13,12 +13,12 @@ import ContainerizationError
 import Logging
 
 /// Service for managing Linux kernel binaries used by container VMs.
-public actor KernelService {
+internal actor KernelService {
     
     private let log: Logger
     private let kernelsRoot: URL
     
-    init(log: Logger, appRoot: URL) throws {
+    internal init(log: Logger, appRoot: URL) throws {
         self.log = log
         self.kernelsRoot = appRoot.appendingPathComponent("kernels")
         
@@ -26,7 +26,7 @@ public actor KernelService {
     }
     
     /// Get the default kernel for the given platform.
-    public func getDefaultKernel(platform: SystemPlatform) async throws -> Kernel {
+    internal func getDefaultKernel(platform: SystemPlatform) async throws -> Kernel {
         let kernelPath = kernelsRoot.appendingPathComponent("default-\(platform.architecture.rawValue)")
         
         guard FileManager.default.fileExists(atPath: kernelPath.path) else {
@@ -37,7 +37,7 @@ public actor KernelService {
     }
     
     /// Install a kernel binary for the given platform.
-    public func installKernel(kernelFile: URL, platform: SystemPlatform, force: Bool = false) async throws {
+    internal func installKernel(kernelFile: URL, platform: SystemPlatform, force: Bool = false) async throws {
         let destination = kernelsRoot.appendingPathComponent("default-\(platform.architecture.rawValue)")
         
         if FileManager.default.fileExists(atPath: destination.path) {

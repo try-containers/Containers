@@ -55,7 +55,7 @@ public final class ContainerManager {
     }
     #endif
     
-    // MARK: - Public API (similar to Apple's ClientContainer static methods)
+    // MARK: - Public API
     
     public func create(
         imageReference: String,
@@ -67,8 +67,14 @@ public final class ContainerManager {
         registryScheme: String = RequestScheme.auto.rawValue
     ) async throws {
         let service = try await runtime.getContainersService()
+        let containerID = try Self.createContainerID(name: container.name)
+        let existingContainers = await service.list()
+        guard !existingContainers.contains(where: { $0.configuration.id == containerID }) else {
+            throw ContainerizationError(.exists, message: "container already exists: \(containerID)")
+        }
 
         let (configuration, kernel) = try await createContainerConfig(
+            id: containerID,
             imageReference: imageReference,
             imagesDir: imagesDir,
             arguments: arguments.map { "\($0.key)=\($0.value)" },
@@ -168,6 +174,40 @@ public final class ContainerManager {
         }
     }
     
+    public func mountVolume(containerID: String, volume: Volume, destination: String) async throws {
+        let service = try await runtime.getContainersService()
+        let snapshots = await service.list()
+        
+        guard let snapshot = snapshots.first(where: { $0.configuration.id == containerID }) else {
+            throw ContainerizationError(.notFound, message: "Container not found: \(containerID)")
+        }
+        
+        guard snapshot.status == .stopped else {
+            throw ContainerizationError(.invalidState, message: "container must be stopped before changing volume mounts")
+        }
+        
+        let trimmedDestination = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedDestination.hasPrefix("/") else {
+            throw ContainerizationError(.invalidArgument, message: "Volume mount path must be an absolute container path")
+        }
+        
+        var mounts = snapshot.configuration.mounts
+        guard !mounts.contains(where: { $0.destination == trimmedDestination }) else {
+            throw ContainerizationError(.exists, message: "a mount already exists at \(trimmedDestination)")
+        }
+        
+        mounts.append(
+            Filesystem.volume(
+                name: volume.name,
+                format: volume.format,
+                source: volume.source,
+                destination: trimmedDestination
+            )
+        )
+        
+        try await service.updateMounts(id: containerID, mounts: mounts)
+    }
+    
     public func delete(snapshots: [ContainerSnapshot], force: Bool) async throws {
         let service = try await runtime.getContainersService()
 
@@ -243,11 +283,25 @@ public final class ContainerManager {
         return tokens
     }
 
-    private static func createContainerID(name: String?) -> String {
-        guard let name, !name.isEmpty else {
+    private static func createContainerID(name: String?) throws -> String {
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmedName.isEmpty else {
             return UUID().uuidString.lowercased()
         }
-        return name
+
+        guard isValidContainerName(trimmedName) else {
+            throw ContainerizationError(
+                .invalidArgument,
+                message: "invalid container name '\(trimmedName)': must start with a letter or number and contain only letters, numbers, underscores, periods, and hyphens"
+            )
+        }
+
+        return trimmedName
+    }
+
+    private static func isValidContainerName(_ name: String) -> Bool {
+        guard !name.isEmpty, name.count <= 255 else { return false }
+        return name.range(of: "^[A-Za-z0-9][A-Za-z0-9_.-]*$", options: .regularExpression) != nil
     }
 
     private func resolveImage(
@@ -354,6 +408,7 @@ public final class ContainerManager {
     }
     
     private func createContainerConfig(
+        id: String,
         imageReference: String,
         imagesDir: URL,
         arguments: [String],
@@ -419,8 +474,7 @@ public final class ContainerManager {
             config: imageConfig
         )
 
-        let containerId = Self.createContainerID(name: nil)
-        var config = ContainerConfiguration(id: containerId, image: imageDescription, process: pc)
+        var config = ContainerConfiguration(id: id, image: imageDescription, process: pc)
         config.platform = requestedPlatform
         config.resources = resource
 

@@ -97,6 +97,11 @@ public struct Bundle: Sendable {
         try write(filename: Self.rootFsFilename, value: rootFs)
     }
     
+    /// Persist an updated container configuration to disk.
+    public func setConfiguration(_ configuration: ContainerConfiguration) throws {
+        try write(filename: Self.configFilename, value: configuration)
+    }
+    
     /// Delete this bundle and all its contents from disk.
     public func delete() throws {
         let fm = FileManager.default

@@ -2,8 +2,6 @@
 //  ContainerSnapshot.swift
 //  Containers
 //
-//  Local implementation of ContainerSnapshot (replaces ContainerResource.ContainerSnapshot)
-//
 
 import Foundation
 import ContainerizationOCI

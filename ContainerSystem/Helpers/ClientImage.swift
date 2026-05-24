@@ -17,11 +17,33 @@ public enum ClientImage {
     }
     
     /// Normalize a short image reference to a fully qualified reference.
-    /// Adds `docker.io/library/` prefix for short names and `:latest` tag if missing.
+    /// Adds `docker.io/library/` prefix for Docker Hub official images and `:latest` tag if missing.
     public static func normalizeReference(_ reference: String) throws -> String {
-        // Use the OCI Reference parser for proper normalization
-        let parsed = try Reference.parse(reference)
+        let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsed = try Reference.parse(trimmedReference)
         parsed.normalize()
-        return parsed.description
+
+        let normalizedReference = parsed.description
+        let normalizedParsed = try Reference.parse(normalizedReference)
+        if normalizedParsed.domain != nil {
+            return normalizedReference
+        }
+
+        let dockerHubReference: String
+        if normalizedReference.contains("/") {
+            let firstComponent = normalizedReference.split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
+            let hasExplicitRegistry = firstComponent.contains(".") || firstComponent.contains(":") || firstComponent == "localhost"
+            guard !hasExplicitRegistry else {
+                return normalizedReference
+            }
+
+            dockerHubReference = "docker.io/\(normalizedReference)"
+        } else {
+            dockerHubReference = "docker.io/library/\(normalizedReference)"
+        }
+
+        let dockerHubParsed = try Reference.parse(dockerHubReference)
+        dockerHubParsed.normalize()
+        return dockerHubParsed.description
     }
 }

@@ -151,14 +151,15 @@ public final class ImageManager {
         let exportDestination = buildIDDir.appendingPathComponent("out.tar")
 
         // STEP 2: Start/restart the builder NOW with the directory already in place
-        let builderManager = BuilderManager()
-        try await builderManager.restart(cpus: cpus, memory: memory)
+        let builderController = BuilderController()
+        
+        try await builderController.restart(cpus: cpus, memory: memory)
         
         // STEP 3: Connect to the (re)started builder
         let timeout: Duration = .seconds(120)
-        let buildkitId = BuilderManager.buildkitContainerId
+        let buildkitId = BuilderController.builderContainerId
 
-        let sandboxedBuilder: SandboxedBuilder = try await withThrowingTaskGroup(of: SandboxedBuilder.self) { group in
+        let builder: Builder = try await withThrowingTaskGroup(of: Builder.self) { group in
             defer {
                 group.cancelAll()
             }
@@ -184,7 +185,7 @@ public final class ImageManager {
                         let threadGroup: MultiThreadedEventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
                         
                         // Use SandboxedBuilder to avoid XPC-based ClientImage calls
-                        let sandboxedBuilder = try SandboxedBuilder(
+                        let builder = try Builder(
                             socket: fileHandle,
                             group: threadGroup,
                             imagesService: imagesService,
@@ -192,9 +193,9 @@ public final class ImageManager {
                         )
                         
                         // If this call succeeds, then BuildKit is running.
-                        let _ = try await sandboxedBuilder.info()
+                        let _ = try await builder.info()
                         
-                        return sandboxedBuilder
+                        return builder
                     } catch {
                         // wait (seconds) for builder to start listening on vSock
                         try await Task.sleep(for: .seconds(5))
@@ -282,9 +283,9 @@ public final class ImageManager {
         logger.info("Starting sandboxed build with config: buildID=\(buildID), contextDir=\(tempContextDir.path)")
         
         // Use sandboxed builder which handles image resolution without XPC
-        try await sandboxedBuilder.build(config)
+        try await builder.build(config)
         
-        logger.info("Sandboxed build completed successfully")
+        logger.info("Build completed successfully")
 
         // Currently, only a single export can be specified.
         for exp in exports {

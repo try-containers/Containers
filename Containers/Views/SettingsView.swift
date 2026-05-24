@@ -5,31 +5,27 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
+import AppKit
 import SwiftUI
 import ContainerSystem
-import UniformTypeIdentifiers
 
 struct SettingsView: View {
-    @Environment(\.openURL) private var openURL
-    @Environment(DNSManager.self) private var dnsManager
-    
+    @Environment(NetworkManager.self) private var networkManager
+    @Environment(SystemManager.self) private var system
+
     @State private var errorMessage: String?
     @State private var showError: Bool = false
-    @State private var startSystemTimeoutSeconds = UserDefaults.startSystemTimeoutSeconds
-    @State private var stopContainerTimeoutSeconds = UserDefaults.stopContainerTimeoutSeconds
-    @State private var shutdownSystemTimeoutSeconds = UserDefaults.shutdownSystemTimeoutSeconds
+    @State private var storageLocation = UserDefaults.applicationDataRoot
     @State private var dnsDomains: [String] = []
-    @State private var newDNSDomain: String = ""
-        
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Settings")
                         .font(.title2)
                         .fontWeight(.semibold)
-                    
+
                     Text("Configure application preferences")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -38,204 +34,215 @@ struct SettingsView: View {
             }
             .padding(20)
             .background(Color(nsColor: .controlBackgroundColor))
-            
+
             Divider()
-            
-            // Content
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Timeout Configuration
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label {
-                            Text("Timeout Configuration")
-                                .font(.headline)
-                        } icon: {
-                            Image(systemName: "clock")
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        Divider()
-                        
-                        VStack(spacing: 8) {
-                            // Start System
-                            HStack(spacing: 12) {
-                                Text("Start System")
-                                    .frame(minWidth: 120, alignment: .leading)
-                                
-                                HStack(spacing: 4) {
-                                    TextField("", value: $startSystemTimeoutSeconds, format: .number.precision(.fractionLength(0)))
-                                        .textFieldStyle(.roundedBorder)
-                                        .multilineTextAlignment(.trailing)
-                                        .frame(width: 60)
-                                    
-                                    Text("sec")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            
-                            // Stop System
-                            HStack(spacing: 12) {
-                                Text("Stop System")
-                                    .frame(minWidth: 120, alignment: .leading)
-                                
-                                HStack(spacing: 4) {
-                                    TextField("", value: $shutdownSystemTimeoutSeconds, format: .number.precision(.fractionLength(0)))
-                                        .textFieldStyle(.roundedBorder)
-                                        .multilineTextAlignment(.trailing)
-                                        .frame(width: 60)
-
-                                    Text("sec")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            
-                            // Stop Container
-                            HStack(spacing: 12) {
-                                Text("Stop Container")
-                                    .frame(minWidth: 120, alignment: .leading)
-
-                                HStack(spacing: 4) {
-                                    TextField("", value: $stopContainerTimeoutSeconds, format: .number.precision(.fractionLength(0)))
-                                        .textFieldStyle(.roundedBorder)
-                                        .multilineTextAlignment(.trailing)
-                                        .frame(width: 60)
-
-                                    Text("sec")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    // DNS Domains
-                    VStack(alignment: .leading, spacing: 16) {
-                        Label {
-                            Text("DNS Domains")
-                                .font(.headline)
-                        } icon: {
-                            Image(systemName: "network")
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        Text("DNS domains let containers access host services. Inside a container, reach the host via the domain name (e.g., host.containers.internal:8000).")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        
-                        Divider()
-
-                        if dnsDomains.isEmpty {
-                            HStack {
-                                Image(systemName: "info.circle")
-                                    .foregroundStyle(.secondary)
-                                Text("No domains configured.")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 8)
-                        } else {
-                            VStack(spacing: 8) {
-                                ForEach(dnsDomains, id: \.self) { domain in
-                                    HStack {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: "circle.fill")
-                                                .font(.system(size: 6))
-                                                .foregroundStyle(.blue)
-                                            
-                                            Text(domain)
-                                                .font(.system(.body, design: .monospaced))
-                                        }
-
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 4)
-                                }
-                            }
-                        }
-                        
-                        Divider()
-                        
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(.orange)
-                            Text("DNS domain management requires administrator privileges. To manage domains, manually create files in /etc/resolver/")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 8)
-                    }
-                    .padding(16)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    storageLocationSection
+                    dnsDomainsSection
                 }
                 .padding(20)
             }
             .frame(maxWidth: 600)
         }
         .task {
-            self.dnsDomains = dnsManager.listDomains()
+            storageLocation = UserDefaults.applicationDataRoot
+            dnsDomains = networkManager.listDomains()
         }
         .alert("Error", isPresented: $showError, actions: {
             Button("OK") {
-                self.showError = false
+                showError = false
             }
         }, message: {
-            Text(self.errorMessage ?? "Unknown Error")
+            Text(errorMessage ?? "Unknown Error")
         })
-        .onChange(of: self.errorMessage) {
+        .onChange(of: errorMessage) {
             if errorMessage != nil {
-                self.showError = true
+                showError = true
             }
         }
-        .onChange(of: self.showError) {
+        .onChange(of: showError) {
             if !showError {
-                self.errorMessage = nil
+                errorMessage = nil
             }
-        }
-        .onChange(of: startSystemTimeoutSeconds) {
-            UserDefaults.startSystemTimeoutSeconds = startSystemTimeoutSeconds
-        }
-        .onChange(of: stopContainerTimeoutSeconds) {
-            UserDefaults.stopContainerTimeoutSeconds = stopContainerTimeoutSeconds
-        }
-        .onChange(of: shutdownSystemTimeoutSeconds) {
-            UserDefaults.shutdownSystemTimeoutSeconds = shutdownSystemTimeoutSeconds
-        }
-    }
-    
-    private func createDomain() {
-        do {
-            try dnsManager.createDomain(name: newDNSDomain)
-            self.newDNSDomain = ""
-            self.dnsDomains = dnsManager.listDomains()
-        } catch {
-            self.errorMessage = error.localizedDescription
-        }
-    }
-    
-    private func deleteDomain(_ domain: String) {
-        do {
-            try dnsManager.deleteDomain(name: domain)
-            self.dnsDomains = dnsManager.listDomains()
-        } catch {
-            self.errorMessage = error.localizedDescription
-        }
-    }
-    
-    private func openFile(_ url: URL) {
-        let result = NSWorkspace.shared.selectFile(
-            url.absoluteString,
-            inFileViewerRootedAtPath: url.parent.absoluteString
-        )
-        if !result {
-            self.errorMessage = "Failed to open the File."
         }
     }
 
+    private var storageLocationSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label {
+                Text("Storage Location")
+                    .font(.headline)
+            } icon: {
+                Image(systemName: "internaldrive")
+                    .foregroundStyle(.blue)
+            }
+
+            Text("Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "folder")
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(storageLocation.lastPathComponent)
+                        .font(.body)
+                        .fontWeight(.medium)
+
+                    Text(storageLocation.path)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+            }
+            .padding(12)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            if system.isRunning {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Text("Stop the container system before changing the storage location.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button(action: chooseStorageLocation) {
+                    Label("Choose Folder", systemImage: "folder.badge.gearshape")
+                }
+                .disabled(system.isRunning)
+
+                Button(action: resetStorageLocation) {
+                    Text("Use Default")
+                }
+                .disabled(system.isRunning || UserDefaults.usesDefaultApplicationDataRoot)
+
+                Spacer()
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var dnsDomainsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label {
+                Text("DNS Domains")
+                    .font(.headline)
+            } icon: {
+                Image(systemName: "network")
+                    .foregroundStyle(.blue)
+            }
+
+            Text("DNS domains let containers access host services. Inside a container, reach the host via the domain name (e.g., host.containers.internal:8000).")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            if dnsDomains.isEmpty {
+                HStack {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                    Text("No domains configured.")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(dnsDomains, id: \.self) { domain in
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "circle.fill")
+                                    .font(.system(size: 6))
+                                    .foregroundStyle(.blue)
+
+                                Text(domain)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                Text("DNS domain management requires administrator privileges. To manage domains, manually create files in /etc/resolver/")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 8)
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func chooseStorageLocation() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = storageLocation
+        panel.prompt = "Choose"
+        panel.message = "Choose where Containers stores containers, images, volumes, kernels, and build data."
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            let bookmarkData = try url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if didAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            UserDefaults.setApplicationDataRoot(url, bookmarkData: bookmarkData)
+            storageLocation = UserDefaults.applicationDataRoot
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func resetStorageLocation() {
+        UserDefaults.resetApplicationDataRoot()
+        storageLocation = UserDefaults.applicationDataRoot
+    }
 }
 
 #Preview {
     SettingsView()
+        .environment(NetworkManager())
+        .environment(SystemManager())
 }

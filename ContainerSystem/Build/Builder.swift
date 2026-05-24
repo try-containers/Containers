@@ -26,9 +26,15 @@ public struct Builder: Sendable {
     let channel: GRPCChannel
     let imagesService: ImagesService
     let contentStore: ContentStore
+    
     private let logger: Logger
     
-    public init(socket: FileHandle, group: EventLoopGroup, imagesService: ImagesService, contentStore: ContentStore) throws {
+    internal init(
+        socket: FileHandle,
+        group: EventLoopGroup,
+        imagesService: ImagesService,
+        contentStore: ContentStore
+    ) throws {
         // Socket buffer configuration would be done here if the APIs were public
         // For now we skip this as setSendBufSize/setRecvBufSize are internal
         var config = ClientConnection.Configuration.default(

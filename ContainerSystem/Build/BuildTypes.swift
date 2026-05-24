@@ -299,9 +299,6 @@ public struct TimeAmount: Sendable {
 
 // MARK: - Typealiases
 
-/// Typealias for backward compatibility.
-public typealias SandboxedBuilder = Builder
-
 /// Plugin loader placeholder.
 public struct PluginLoader: Sendable {
     public init() {}

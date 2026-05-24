@@ -9,6 +9,7 @@ import Foundation
 import ContainerizationOCI
 
 public struct ContainerInfo: Sendable {
+    public var name = ""
     public var virtualFileSystem: [Filesystem] = []
     public var volumes: [Filesystem] = []
     public var publishPorts: [PublishPort] = []

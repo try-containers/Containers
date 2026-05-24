@@ -8,7 +8,6 @@
 import SwiftUI
 import ContainerSystem
 
-
 struct ContainersView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(SystemManager.self) private var system
@@ -48,8 +47,9 @@ struct ContainersView: View {
     
     var body: some View {
         VStack(alignment: .leading , spacing: 0) {
-            Table(
-                of: ContainerViewModel.self,
+            if system.isRunning {
+                Table(
+                    of: ContainerViewModel.self,
                 columns: {
                     TableColumn("ID") { container in
                         Button(action: {
@@ -57,11 +57,11 @@ struct ContainersView: View {
                             showContainerDetail = true
                         }, label: {
                             Text(container.id)
-                                .font(.headline)
                                 .lineLimit(1)
                                 .underline()
                         })
                         .buttonStyle(.link)
+                        .pointerStyle(.link)
                         .frame(height: 48) // to set minimum row height
                     }
                     .width(min: 100, ideal: 150, max: 250)
@@ -95,18 +95,6 @@ struct ContainersView: View {
                             .textSelection(.enabled)
                     }
                     .width(min: 100, ideal: 120, max: 140)
-                    
-                    TableColumn("CPUs") { container in
-                        Text(container.formattedCPUs)
-                            .lineLimit(1)
-                    }
-                    .width(min: 36, ideal: 48, max: 64)
-                    
-                    TableColumn("Memory") { container in
-                        Text(container.formattedMemory)
-                            .lineLimit(1)
-                    }
-                    .width(min: 56, ideal: 72, max: 96)
                     
                     TableColumn("Started") { container in
                         Text(container.formattedStarted)
@@ -188,19 +176,20 @@ struct ContainersView: View {
                 rows: {
                     ForEach(filteredContainers)
                 })
-            .tableStyle(.inset)
-            .alternatingRowBackgrounds(.disabled)
-            .overlay(alignment: .center, content: {
-                if !self.system.isRunning {
-                    ContainerSystemView()
-                } else if filteredContainers.isEmpty {
-                    ContentUnavailableView(
-                        self.trimmedText.isEmpty && !self.runningContainersOnly ?
-                        "No Containers Found" : "No Matching Containers",
-                        systemImage: NavigationTab.containers.icon
-                    )
-                }
-            })
+                .tableStyle(.inset)
+                .alternatingRowBackgrounds(.disabled)
+                .overlay(alignment: .center, content: {
+                    if filteredContainers.isEmpty {
+                        ContentUnavailableView(
+                            self.trimmedText.isEmpty && !self.runningContainersOnly ?
+                            "No Containers Found" : "No Matching Containers",
+                            systemImage: NavigationTab.containers.icon
+                        )
+                    }
+                })
+            } else {
+                ContainerSystemView()
+            }
         }
         .onChange(of: self.system.isRunning, initial: true, {
             guard self.system.isRunning else {
@@ -323,4 +312,6 @@ struct ContainersView: View {
         runningContainersOnly: .constant(false),
         refreshTrigger: 0
     )
+    .environment(ContainerManager())
+    .environment(SystemManager())
 }

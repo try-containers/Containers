@@ -8,64 +8,61 @@
 import SwiftUI
 import Containerization
 import ContainerSystem
-
 import ContainerizationOCI
 
 struct ImageDetailView: View {
     let image: ImageViewModel
+    let createContainer: () -> Void
     
     @Environment(\.dismiss) private var dismiss
     
-    @SwiftUI.State private var selectedCategory: DetailCategory = .history
+    @Binding var showSaveImage: Bool
+    @Binding var showDeleteConfirmation: Bool
     
-    enum DetailCategory: String, CaseIterable, Identifiable {
-        case inspect = "Inspect"
-        case history = "History"
-        
-        var id: String {
-            return self.rawValue
-        }
-        
-        static let allCases: [DetailCategory] = [.inspect, .history]
+    @SwiftUI.State private var selectedCategory: DetailCategory = .inspect
+    
+    enum DetailCategory: String, CaseIterable, Hashable {
+        case inspect
+        case history
     }
     
-    init(image: ImageViewModel, selectedTab: DetailCategory = .inspect) {
+    init(
+        image: ImageViewModel,
+        selectedTab: DetailCategory = .inspect,
+        createContainer: @escaping ()-> Void,
+        showSaveImage: Binding<Bool>,
+        showDeleteConfirmation: Binding<Bool>
+    ) {
         self.image = image
+        self.createContainer = createContainer
         self._selectedCategory = State(initialValue: selectedTab)
+        self._showDeleteConfirmation = showDeleteConfirmation
+        self._showSaveImage = showSaveImage
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(image.name)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-
-                }
-                
-                Spacer()
-                
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(20)
-            .background(Color(nsColor: .controlBackgroundColor))
-            
-            Divider()
-            
-            // Content
-            Group {
-                switch self.selectedCategory {
+        DetailView(
+            selectedTab: $selectedCategory,
+            showTabs: false,
+            onClose: {
+                dismiss()
+            },
+            header: {
+                Text(image.name)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+            },
+            actionButtons: {
+                actionButtons
+            },
+            tabTitle: { category in
+                category.rawValue.localizedCapitalized
+            },
+            tabContent: { category in
+                switch category {
                 case .inspect:
                     ImageInspectView(image: image)
+                    
                 case .history:
                     ImageHistoryView(
                         imageReference: image.imageDescription.reference,
@@ -73,8 +70,35 @@ struct ImageDetailView: View {
                     )
                 }
             }
-            .frame(maxHeight: .infinity)
-        }
+        )
         .frame(width: 700, height: 600)
+    }
+    
+    @ViewBuilder
+    private var actionButtons: some View {
+        ActionButton(
+            label: "Container",
+            icon: "cube.fill",
+            help: "Create container"
+        ) {
+            createContainer()
+        }
+        
+        ActionButton(
+            label: "Save",
+            icon: "folder.fill",
+            help: "Save image"
+        ) {
+            showSaveImage = true
+        }
+        
+        ActionButton(
+            label: "Delete",
+            icon: "trash",
+            help: "Delete image",
+            role: .destructive
+        ) {
+            showDeleteConfirmation = true
+        }
     }
 }

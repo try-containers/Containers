@@ -10,7 +10,6 @@ import AppKit
 import ContainerSystem
 import ContainerizationOCI
 
-
 enum NavigationTab: String, Identifiable, Equatable {
     case containers
     case images
@@ -112,6 +111,14 @@ struct DashboardView: View {
                 }
             }
             .tabViewStyle(.automatic)
+            .disabled(!system.isRunning)
+            .overlay {
+                if !system.isRunning {
+                    ContainerSystemView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color(nsColor: .windowBackgroundColor))
+                }
+            }
             .toolbar {
                 if selectedTab == .containers {
                     ToolbarItem(placement: .automatic) {
@@ -119,6 +126,7 @@ struct DashboardView: View {
                             Image(systemName: "line.3.horizontal.decrease")
                         })
                         .toggleStyle(.button)
+                        .disabled(!system.isRunning)
                         .help("Running containers only")
                     }
                 }
@@ -129,7 +137,7 @@ struct DashboardView: View {
                     }, label: {
                         Image(systemName: "plus")
                     })
-                    .disabled(selectedTab == .volumes)
+                    .disabled(!system.isRunning)
                     .help("New")
                 }
                 
@@ -137,6 +145,7 @@ struct DashboardView: View {
                 
                 ToolbarItem(placement: .automatic) {
                     SearchField(text: $searchText)
+                        .disabled(!system.isRunning)
                 }
             }
             .task {
@@ -167,10 +176,14 @@ struct DashboardView: View {
                 Text(message)
                     .lineLimit(5)
             })
-            .sheet(isPresented: $showCreateContainerView, content: {
+            .sheet(isPresented: $showCreateContainerView, onDismiss: {
+                refreshTrigger += 1
+            }, content: {
                 CreateContainerView(imageReference: "")
             })
-            .sheet(isPresented: $showCreateVolumeView, content: {
+            .sheet(isPresented: $showCreateVolumeView, onDismiss: {
+                refreshTrigger += 1
+            }, content: {
                 CreateVolumeView()
             })
             .sheet(isPresented: $showBuildImageView, onDismiss: {
@@ -322,6 +335,8 @@ struct DashboardView: View {
     }
     
     private func handlePlusButton() {
+        guard system.isRunning else { return }
+
         switch selectedTab {
         case .containers:
             showCreateContainerView = true
