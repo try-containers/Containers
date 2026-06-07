@@ -7,17 +7,61 @@
 
 import SwiftUI
 
-struct InfoSection<Content: View>: View {
-    let title: String
+struct InfoSection: View {
+    let title: String?
     let subtitle: String?
-    @ViewBuilder let content: () -> Content
+    let emptyImage: String?
+    let emptyMessage: String?
+    let rows: [InfoRow]
+    
+    init(
+        title: String? = nil,
+        subtitle: String? = nil,
+        emptyImage: String? = nil,
+        emptyMessage: String? = nil,
+        rows: [InfoRow]
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.emptyImage = emptyImage
+        self.emptyMessage = emptyMessage
+        self.rows = rows
+    }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .lastTextBaseline, spacing: 8) {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
+        GroupBox(content: {
+            if rows.isEmpty {
+                Group {
+                    if let emptyImage {
+                        Image(systemName: emptyImage)
+                            .font(.title3)
+                            .foregroundStyle(.tertiary)
+                    }
+                    
+                    if let emptyMessage {
+                        Text(emptyMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    if index != 0 {
+                        Divider()
+                            .padding(.horizontal, 12)
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    }
+                    
+                    row
+                }
+            }
+        }, label: {
+            Group {
+                if let title {
+                    Text(title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                }
                 
                 if let subtitle {
                     Text(subtitle)
@@ -25,15 +69,15 @@ struct InfoSection<Content: View>: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.leading, 12)
-            
-            VStack(spacing: 0) {
-                content()
-            }
-            .background {
-                RoundedRectangle(cornerRadius: 15)
-                    .fill(.quinary)
-            }
-        }
+            .padding(.bottom, 5)
+        })
+        
     }
+}
+
+#Preview {
+    InfoSection(title: "Test Section", subtitle: "Test subtitle", rows: [
+        InfoRow(label: "Test title", value: "Test vaue"),
+        InfoRow(label: "Test title 2", value: "Test value 2")
+    ])
 }

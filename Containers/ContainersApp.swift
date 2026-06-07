@@ -38,8 +38,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct ContainersApp: App {
-    static let dashboardWindowId = "dashboard"
-
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     @State private var containerManager = ContainerManager()
@@ -48,8 +46,9 @@ struct ContainersApp: App {
     @State private var systemManager = SystemManager()
     @State private var networkManager = NetworkManager()
     
+    static let dashboardWindowId = "dashboard"
+    
     var body: some Scene {
-        
         Window("Containers", id: Self.dashboardWindowId, content: {
             DashboardView()
                 .environment(containerManager)
@@ -78,10 +77,6 @@ struct ContainersApp: App {
             SettingsView()
                 .environment(networkManager)
                 .environment(systemManager)
-                .fixedSize(horizontal: true, vertical: true)
         }
-        .defaultSize(width: 600, height: 400)
-        .defaultPosition(.center)
-        .windowResizability(.contentSize)
     }
 }

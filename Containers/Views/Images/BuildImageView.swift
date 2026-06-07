@@ -40,14 +40,6 @@ struct BuildImageView: View {
         case method = 0
         case configuration = 1
         case review = 2
-        
-        var title: String {
-            switch self {
-            case .method: return "Method"
-            case .configuration: return "Configuration"
-            case .review: return "Review"
-            }
-        }
     }
     
     @Environment(ImageManager.self) private var imageManager
@@ -96,44 +88,6 @@ struct BuildImageView: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
             .padding(.bottom, 16)
-            
-            // Step indicator
-            HStack(spacing: 0) {
-                ForEach(Array(Step.allCases.enumerated()), id: \.element) { index, step in
-                    HStack(spacing: 8) {
-                        // Step circle
-                        ZStack {
-                            Circle()
-                                .fill(currentStep.rawValue >= step.rawValue ? Color.accentColor : Color.secondary.opacity(0.3))
-                                .frame(width: 32, height: 32)
-                            
-                            if currentStep.rawValue > step.rawValue {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.white)
-                                    .font(.system(size: 12, weight: .bold))
-                            } else {
-                                Text("\(step.rawValue + 1)")
-                                    .foregroundStyle(currentStep.rawValue >= step.rawValue ? .white : .secondary)
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                        }
-                        
-                        Text(step.title)
-                            .font(.system(size: 13, weight: currentStep == step ? .semibold : .regular))
-                            .foregroundStyle(currentStep.rawValue >= step.rawValue ? .primary : .secondary)
-                        
-                        // Connector line
-                        if index < Step.allCases.count - 1 {
-                            Rectangle()
-                                .fill(currentStep.rawValue > step.rawValue ? Color.accentColor : Color.secondary.opacity(0.3))
-                                .frame(height: 2)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
             
             Divider()
             
@@ -287,34 +241,30 @@ struct BuildImageView: View {
     @ViewBuilder
     func pullConfiguration() -> some View {
         VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Image Name")
-                    .font(.headline)
-                Text("Enter the image name from the registry")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                
-                TextField(text: $imageName, prompt: Text("Ex: nginx, ubuntu, redis"), label: {})
-            }
+            EditableField(
+                title: "Image Name",
+                subtitle: "Enter the image name from the registry",
+                placeholder: "Ex: nginx, ubuntu, redis",
+                value: $imageName
+            )
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Tag")
-                    .font(.headline)
-                Text("Specify the image tag or version")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            HStack {
+                EditableField(
+                    title: "Tag",
+                    subtitle: "Specify the image tag or version",
+                    placeholder: "Ex: latest, 1.0, stable",
+                    value: $tag
+                )
                 
-                TextField(text: $tag, prompt: Text("Ex: latest, 1.0, stable"), label: {})
-            }
-            
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Platform")
-                    .font(.headline)
-                Text("Target platform for the image")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Spacer()
+                    .frame(width: 24)
                 
-                TextField(text: $platformString, prompt: Text("Ex: linux/amd64"), label: {})
+                EditableField(
+                    title: "Platform",
+                    subtitle: "Target platform for the image",
+                    placeholder: "Ex: linux/amd64",
+                    value: $platformString
+                )
             }
         }
     }
@@ -328,7 +278,7 @@ struct BuildImageView: View {
                 Text("Select the Dockerfile to use")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                FileSelectionView(fileURL: $dockerFile, errorMessage: $errorMessage, allowedContentTypes: [.item])
+                FileSelection(fileURL: $dockerFile, errorMessage: $errorMessage, allowedContentTypes: [.item])
                     .onChange(of: dockerFile, {
                         guard let url = dockerFile else { return }
                         // Auto-set build directory to Dockerfile's parent if not already set
@@ -344,7 +294,7 @@ struct BuildImageView: View {
                 Text("Root directory for the build context (defaults to Dockerfile's directory)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                FileSelectionView(fileURL: $contextDirectory, errorMessage: $errorMessage, allowedContentTypes: [.directory])
+                FileSelection(fileURL: $contextDirectory, errorMessage: $errorMessage, allowedContentTypes: [.directory])
                     .onChange(of: contextDirectory, {
                         guard let url = contextDirectory, dockerFile == nil else { return }
                         // Auto-suggest Dockerfile in the build directory
@@ -355,25 +305,20 @@ struct BuildImageView: View {
                     })
             }
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Image Tag")
-                    .font(.headline)
-                Text("⭑ If empty, a generated UUID will be used")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                
-                TextField(text: $buildTag, prompt: Text("Ex: myapp:latest"), label: {})
-            }
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Target Stage (Optional)")
-                    .font(.headline)
-                Text("For multi-stage builds")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                
-                TextField(text: $targetStage, prompt: Text("Ex: production"), label: {})
-            }
+            EditableField(
+                title: "Image Tag",
+                subtitle: "⭑ If empty, a generated UUID will be used",
+                placeholder: "Ex: myapp:latest",
+                value: $buildTag
+            )
+            
+            EditableField(
+                title: "Target Stage (Optional)",
+                subtitle: "For multi-stage builds",
+                placeholder: "Ex: production",
+                value: $targetStage
+            )
         }
     }
     
@@ -387,7 +332,7 @@ struct BuildImageView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 
-                FileSelectionView(fileURL: $tarFile, errorMessage: $errorMessage, allowedContentTypes: [UTType(filenameExtension: "tar")].compactMap { $0 })
+                FileSelection(fileURL: $tarFile, errorMessage: $errorMessage, allowedContentTypes: [UTType(filenameExtension: "tar")].compactMap { $0 })
             }
         }
     }

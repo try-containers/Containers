@@ -30,7 +30,6 @@ struct ActionButton: View {
     var body : some View {
         Button(role: role) {
             action()
-            
         } label: {
             Label(label, systemImage: icon)
                 .labelStyle(.iconOnly)
@@ -38,5 +37,14 @@ struct ActionButton: View {
         }
         .buttonStyle(.bordered)
         .help(help)
+    }
+}
+
+extension ActionButton: Equatable {
+    static func == (lhs: ActionButton, rhs: ActionButton) -> Bool {
+        return lhs.help == rhs.help &&
+               lhs.label == rhs.label &&
+               lhs.icon == rhs.icon &&
+               lhs.role == rhs.role
     }
 }

@@ -11,11 +11,7 @@ import ContainerSystem
 @dynamicMemberLookup
 struct VolumeViewModel: Identifiable, Hashable, Equatable {
     var volume: Volume
-    var inUseContainers: [ContainerSnapshot]
-    
-    var inUse: Bool {
-        return !inUseContainers.isEmpty
-    }
+    var inUse: Bool
     
     var volumeType: VolumeType {
         self.volume.isAnonymous ? .anonymous : .named
@@ -33,25 +29,28 @@ struct VolumeViewModel: Identifiable, Hashable, Equatable {
         return volume.id
     }
     
-    init(_ volume: Volume, containers: [ContainerSnapshot]) {
+    init(_ item: VolumeListItem) {
+        self.volume = item.volume
+        self.inUse = item.inUse
+    }
+    
+    init(_ volume: Volume, inUse: Bool = false) {
         self.volume = volume
-        self.inUseContainers = containers.filter({ container in
-            container.volumeNames.contains(volume.name)
-        })
+        self.inUse = inUse
     }
     
     // Hashable conformance
     func hash(into hasher: inout Hasher) {
         hasher.combine(volume.id)
         hasher.combine(volume.name)
-        hasher.combine(inUseContainers.count)
+        hasher.combine(inUse)
     }
     
     // Equatable conformance
     static func == (lhs: VolumeViewModel, rhs: VolumeViewModel) -> Bool {
         return lhs.volume.id == rhs.volume.id &&
                lhs.volume.name == rhs.volume.name &&
-               lhs.inUseContainers.count == rhs.inUseContainers.count
+               lhs.inUse == rhs.inUse
     }
 
 }

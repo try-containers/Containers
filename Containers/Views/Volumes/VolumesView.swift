@@ -10,7 +10,6 @@ import ContainerSystem
 
 
 struct VolumesView: View {
-    @Environment(ContainerManager.self) private var containerManager
     @Environment(VolumeManager.self) private var volumeManager
     @Environment(SystemManager.self) private var system
 
@@ -20,6 +19,8 @@ struct VolumesView: View {
     @State private var volumes: [VolumeViewModel] = []
     @State private var lastUpdated: Date? = nil
     @State private var showInUseContainerForVolume: VolumeViewModel?
+    @State private var selectedVolume: VolumeViewModel?
+    @State private var showVolumeDetail: Bool = false
     @State private var showCreateVolumeView: Bool = false
     @State private var error: Error?
     @State private var showError: Bool = false
@@ -45,10 +46,18 @@ struct VolumesView: View {
                 Table(of: VolumeViewModel.self, columns: {
                 
                 TableColumn("Name") { volume in
-                    Text(volume.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .frame(height: 48)
+                    Button(action: {
+                        selectedVolume = volume
+                        showVolumeDetail = true
+                    }, label: {
+                        Text(volume.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .underline()
+                    })
+                    .buttonStyle(.link)
+                    .pointerStyle(.link)
+                    .frame(height: 32)
                 }
                 .width(min: 80, ideal: 80)
                 
@@ -95,20 +104,6 @@ struct VolumesView: View {
                 }
                 .width(min: 80, ideal: 80, max: 160)
                 
-                
-                TableColumn("Driver") { volume in
-                    Text(volume.driver)
-                        .lineLimit(1)
-                }
-                .width(64)
-
-                
-                TableColumn("Format") { volume in
-                    Text(volume.format)
-                        .lineLimit(1)
-                }
-                .width(64)
-
                 TableColumn("Actions") { volume in
 
                     HStack(spacing: 12) {
@@ -183,8 +178,20 @@ struct VolumesView: View {
         }, content: {
             CreateVolumeView()
         })
+        .sheet(isPresented: $showVolumeDetail, onDismiss: {
+            selectedVolume = nil
+        }) {
+            if let volume = selectedVolume {
+                VolumeDetailView(
+                    volume: volume,
+                    onClose: {
+                        showVolumeDetail = false
+                    }
+                )
+            }
+        }
         .sheet(item: $showInUseContainerForVolume, content: { volume in
-            ImageContainersView(containers: volume.inUseContainers.map({ContainerViewModel($0)}))
+            ImageContainersView(volume: volume)
         })
         .alert("Error", isPresented: $showError, actions: {
             Button("OK") {
@@ -199,10 +206,8 @@ struct VolumesView: View {
 
     func listVolumes() async {
         do {
-            let containers = try await containerManager.list()
-            let volumes = try await volumeManager.list()
-            let displayModels: [VolumeViewModel] = volumes
-                .map({VolumeViewModel($0, containers: containers)})
+            let displayModels: [VolumeViewModel] = try await volumeManager.listWithUsage()
+                .map(VolumeViewModel.init)
                 .sorted { $0.name < $1.name }
 
             self.volumes = displayModels

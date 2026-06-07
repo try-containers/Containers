@@ -19,16 +19,17 @@ struct ImageDetailView: View {
     @Binding var showSaveImage: Bool
     @Binding var showDeleteConfirmation: Bool
     
-    @SwiftUI.State private var selectedCategory: DetailCategory = .inspect
+    @SwiftUI.State private var selectedCategory: DetailCategory = .overview
     
     enum DetailCategory: String, CaseIterable, Hashable {
-        case inspect
+        case overview
         case history
+        case inspect
     }
     
     init(
         image: ImageViewModel,
-        selectedTab: DetailCategory = .inspect,
+        selectedTab: DetailCategory = .overview,
         createContainer: @escaping ()-> Void,
         showSaveImage: Binding<Bool>,
         showDeleteConfirmation: Binding<Bool>
@@ -43,7 +44,7 @@ struct ImageDetailView: View {
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
-            showTabs: false,
+            showTabs: true,
             onClose: {
                 dismiss()
             },
@@ -60,18 +61,20 @@ struct ImageDetailView: View {
             },
             tabContent: { category in
                 switch category {
+                case .overview:
+                    ImageOverview(image: image)
+                    
                 case .inspect:
-                    ImageInspectView(image: image)
+                    ImageInspect(image: image)
                     
                 case .history:
-                    ImageHistoryView(
+                    ImageHistory(
                         imageReference: image.imageDescription.reference,
                         platform: Platform.current
                     )
                 }
             }
         )
-        .frame(width: 700, height: 600)
     }
     
     @ViewBuilder
@@ -100,5 +103,6 @@ struct ImageDetailView: View {
         ) {
             showDeleteConfirmation = true
         }
+        .foregroundStyle(Color.red)
     }
 }

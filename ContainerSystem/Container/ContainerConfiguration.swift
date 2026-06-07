@@ -59,8 +59,69 @@ public struct ContainerConfiguration: Sendable, Codable {
     public var initProcess: ProcessConfiguration
     public var platform: Platform = .current
     public var resources: Resources = Resources()
+    public var runtimeHandler: String = "container-runtime-linux"
     public var virtualization: Bool = false
     public var ssh: Bool = false
+    public var readOnly: Bool = false
+    public var useInit: Bool = false
+    public var capAdd: [String] = []
+    public var capDrop: [String] = []
+    public var shmSize: UInt64?
+    public var stopSignal: String?
+    public var creationDate: Date = Date()
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case image
+        case mounts
+        case publishedPorts
+        case publishedSockets
+        case labels
+        case sysctls
+        case networks
+        case dns
+        case rosetta
+        case initProcess
+        case platform
+        case resources
+        case runtimeHandler
+        case virtualization
+        case ssh
+        case readOnly
+        case useInit
+        case capAdd
+        case capDrop
+        case shmSize
+        case stopSignal
+        case creationDate
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.image = try container.decode(ImageDescription.self, forKey: .image)
+        self.mounts = try container.decodeIfPresent([Filesystem].self, forKey: .mounts) ?? []
+        self.publishedPorts = try container.decodeIfPresent([PublishPort].self, forKey: .publishedPorts) ?? []
+        self.publishedSockets = try container.decodeIfPresent([PublishSocket].self, forKey: .publishedSockets) ?? []
+        self.labels = try container.decodeIfPresent([String: String].self, forKey: .labels) ?? [:]
+        self.sysctls = try container.decodeIfPresent([String: String].self, forKey: .sysctls) ?? [:]
+        self.networks = try container.decodeIfPresent([AttachmentConfiguration].self, forKey: .networks) ?? []
+        self.dns = try container.decodeIfPresent(DNSConfiguration.self, forKey: .dns)
+        self.rosetta = try container.decodeIfPresent(Bool.self, forKey: .rosetta) ?? false
+        self.initProcess = try container.decode(ProcessConfiguration.self, forKey: .initProcess)
+        self.platform = try container.decodeIfPresent(Platform.self, forKey: .platform) ?? .current
+        self.resources = try container.decodeIfPresent(Resources.self, forKey: .resources) ?? Resources()
+        self.runtimeHandler = try container.decodeIfPresent(String.self, forKey: .runtimeHandler) ?? "container-runtime-linux"
+        self.virtualization = try container.decodeIfPresent(Bool.self, forKey: .virtualization) ?? false
+        self.ssh = try container.decodeIfPresent(Bool.self, forKey: .ssh) ?? false
+        self.readOnly = try container.decodeIfPresent(Bool.self, forKey: .readOnly) ?? false
+        self.useInit = try container.decodeIfPresent(Bool.self, forKey: .useInit) ?? false
+        self.capAdd = try container.decodeIfPresent([String].self, forKey: .capAdd) ?? []
+        self.capDrop = try container.decodeIfPresent([String].self, forKey: .capDrop) ?? []
+        self.shmSize = try container.decodeIfPresent(UInt64.self, forKey: .shmSize)
+        self.stopSignal = try container.decodeIfPresent(String.self, forKey: .stopSignal)
+        self.creationDate = try container.decodeIfPresent(Date.self, forKey: .creationDate) ?? Date(timeIntervalSince1970: 0)
+    }
     
     public init(id: String, image: ImageDescription, process: ProcessConfiguration) {
         self.id = id

@@ -23,6 +23,13 @@ public struct ContainerInfo: Sendable {
     public var networks: [String] = []
     public var cidfile = ""
     public var labels: [String: String] = [:]
+    public var runtimeHandler: String = "container-runtime-linux"
+    public var readOnly: Bool = false
+    public var useInit: Bool = false
+    public var capAdd: [String] = []
+    public var capDrop: [String] = []
+    public var shmSize: UInt64?
+    public var stopSignal: String?
     
     // PRAGMA: DNS
     

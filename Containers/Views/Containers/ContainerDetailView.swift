@@ -9,29 +9,30 @@ import Containerization
 import ContainerSystem
 import ContainerizationOCI
 import SwiftUI
-import Logging
 
 struct ContainerDetailView: View {
     let onClose: () -> Void
-
+    
     @Environment(ContainerManager.self) private var containerManager
     @Environment(VolumeManager.self) private var volumeManager
-
+    
     @SwiftUI.State private var container: ContainerViewModel
+    @SwiftUI.State private var snapshot: ContainerSnapshot?
     @SwiftUI.State private var status: RuntimeStatus
-    @SwiftUI.State private var selectedCategory: DetailCategory = .inspect
-
+    @SwiftUI.State private var selectedCategory: DetailCategory = .overview
     @SwiftUI.State private var error: Error?
     @SwiftUI.State private var showError: Bool = false
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
     @SwiftUI.State private var showAddVolumeMount: Bool = false
+    @SwiftUI.State private var isLoadingSnapshot: Bool = false
     @SwiftUI.State private var isOperationInProgress: Bool = false
-
+    
     enum DetailCategory: String, CaseIterable, Hashable {
-        case inspect
+        case overview
         case logs
+        case inspect
     }
-
+    
     init(
         container: ContainerViewModel,
         onClose: @escaping () -> Void
@@ -40,7 +41,7 @@ struct ContainerDetailView: View {
         self._container = State(initialValue: container)
         self._status = State(initialValue: container.status)
     }
-
+    
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
@@ -50,8 +51,6 @@ struct ContainerDetailView: View {
                     Text(container.id)
                         .font(.title2)
                         .fontWeight(.semibold)
-
-                    statusBadge
                 }
             },
             actionButtons: {
@@ -62,14 +61,22 @@ struct ContainerDetailView: View {
             },
             tabContent: { tab in
                 switch tab {
+                case .overview:
+                    snapshotContent { snapshot in
+                        ContainerOverview(snapshot: snapshot)
+                    }
                 case .inspect:
-                    ContainerInspectView(container: container)
-
+                    snapshotContent { snapshot in
+                        ContainerInspect(snapshot: snapshot)
+                    }
                 case .logs:
-                    ContainerLogsView(containerID: container.id)
+                    ContainerLogs(containerID: container.id)
                 }
             }
         )
+        .task(id: container.id) {
+            await refreshSnapshot()
+        }
         .alert(
             "Error",
             isPresented: $showError,
@@ -87,13 +94,14 @@ struct ContainerDetailView: View {
         .sheet(isPresented: $showAddVolumeMount) {
             AddVolumeMountView(
                 containerID: container.id,
-                existingMountDestinations: container.snapshot.configuration.mounts.map(\.destination),
+                existingMountDestinations: snapshot?.configuration.mounts.map(\.destination) ?? [],
                 onMount: { volume, destination in
                     try await containerManager.mountVolume(
                         containerID: container.id,
                         volume: volume,
                         destination: destination
                     )
+                    await refreshSnapshot()
                 }
             )
             .environment(volumeManager)
@@ -106,11 +114,8 @@ struct ContainerDetailView: View {
             Button("Delete", role: .destructive) {
                 Task {
                     do {
-                        try await containerManager.delete(
-                            snapshots: [container.snapshot],
-                            force: true
-                        )
-
+                        try await containerManager.delete(ids: [container.id], force: true)
+                        
                         error = nil
                         onClose()
                     } catch {
@@ -119,9 +124,8 @@ struct ContainerDetailView: View {
                     }
                 }
             }
-
+            
             Button("Cancel", role: .cancel) {}
-
         } message: {
             Text(
                 "Are you sure you want to delete container '\(container.id)'? This action cannot be undone."
@@ -129,34 +133,34 @@ struct ContainerDetailView: View {
         }
         .onChange(of: containerManager.lastContainerChange) {
             Task {
-                do {
-                    let containers = try await containerManager.list()
-
-                    if let updatedSnapshot = containers.first(
-                        where: { $0.configuration.id == container.id }
-                    ) {
-                        let updatedContainer = ContainerViewModel(updatedSnapshot)
-
-                        if updatedContainer.status != status {
-                            status = updatedContainer.status
-                        }
-
-                        container = updatedContainer
-                    }
-                } catch {
-                    self.error = error
-                    showError = true
-                }
+                await refreshSnapshot()
             }
         }
     }
-
+    
+    @ViewBuilder
+    private func snapshotContent<Content: View>(@ViewBuilder content: (ContainerSnapshot) -> Content) -> some View {
+        if let snapshot {
+            content(snapshot)
+        } else if isLoadingSnapshot {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ContentUnavailableView(
+                "Container Details Unavailable",
+                systemImage: "shippingbox",
+                description: Text("The full container snapshot could not be loaded.")
+            )
+        }
+    }
+    
     @ViewBuilder
     private var actionButtons: some View {
         if isOperationInProgress {
             ProgressView()
                 .controlSize(.small)
-
+            
         } else {
             switch status {
             case .running:
@@ -167,16 +171,8 @@ struct ContainerDetailView: View {
                 ) {
                     stopContainer()
                 }
-
+                
             case .stopped:
-                ActionButton(
-                    label: "Add Volume",
-                    icon: "externaldrive.badge.plus",
-                    help: "Mount volume"
-                ) {
-                    showAddVolumeMount = true
-                }
-
                 ActionButton(
                     label: "Start",
                     icon: "play.fill",
@@ -184,15 +180,24 @@ struct ContainerDetailView: View {
                 ) {
                     startContainer()
                 }
-
+                
+                ActionButton(
+                    label: "Add Volume",
+                    icon: "externaldrive.badge.plus",
+                    help: "Mount volume"
+                ) {
+                    showAddVolumeMount = true
+                }
+                .disabled(snapshot == nil)
+                
             case .stopping:
                 ProgressView()
                     .controlSize(.small)
-
+                
             case .unknown:
                 EmptyView()
             }
-
+            
             ActionButton(
                 label: "Delete",
                 icon: "trash",
@@ -201,79 +206,73 @@ struct ContainerDetailView: View {
             ) {
                 showDeleteConfirmation = true
             }
+            .foregroundStyle(Color.red)
             .disabled(isOperationInProgress)
         }
     }
-
-    private var statusBadge: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(
-                    status == .running
-                    ? Color.green
-                    : Color.red
-                )
-                .frame(width: 8, height: 8)
-
-            Text(status.rawValue.localizedCapitalized)
-                .font(.caption)
-                .fontWeight(.medium)
+    
+    private func refreshSnapshot() async {
+        isLoadingSnapshot = snapshot == nil
+        defer {
+            isLoadingSnapshot = false
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(
-                    (
-                        status == .running
-                        ? Color.green
-                        : Color.red
-                    )
-                    .opacity(0.1)
-                )
-        )
+        
+        do {
+            let updatedSnapshot = try await containerManager.get(id: container.id)
+            let updatedContainer = ContainerViewModel(updatedSnapshot)
+            
+            snapshot = updatedSnapshot
+            container = updatedContainer
+            status = updatedContainer.status
+            error = nil
+        } catch {
+            self.error = error
+            showError = true
+        }
     }
-
+    
     private func startContainer() {
         Task {
             isOperationInProgress = true
-
+            
             defer {
                 isOperationInProgress = false
             }
-
+            
             do {
                 try await containerManager.start(
-                    id: container.snapshot.configuration.id,
+                    id: container.id,
                     attachStdout: false,
                     attachStdin: false
                 )
-
+                
                 error = nil
-
+                await refreshSnapshot()
+                
             } catch {
                 self.error = error
                 showError = true
             }
         }
     }
-
+    
     private func stopContainer() {
         Task {
             isOperationInProgress = true
-
+            
             defer {
                 isOperationInProgress = false
             }
-
+            
             do {
                 try await containerManager.stop(
-                    snapshots: [container.snapshot],
+                    ids: [container.id],
                     timeoutSeconds: UserDefaults.stopContainerTimeoutSeconds
                 )
-
+                
                 error = nil
-
+                await refreshSnapshot()
+                
             } catch {
                 self.error = error
                 showError = true

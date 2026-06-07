@@ -46,6 +46,7 @@ struct CreateVolumeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     // Error message
+                    
                     if let errorMessage = self.errorMessage {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -61,89 +62,50 @@ struct CreateVolumeView: View {
                     }
                     
                     // Volume Name Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label {
-                            Text("Volume Name")
-                                .font(.headline)
-                        } icon: {
-                            Image(systemName: "internaldrive")
-                                .foregroundStyle(.blue)
+                    
+                    EditableField(
+                        title: "Name",
+                        placeholder: "Ex: volume-1",
+                        value: $name
+                    )
+                   
+                    // Volume Size
+                    
+                    EditableField(
+                        title: "Size",
+                        placeholder: "Size",
+                        value: $sizeValue,
+                        format: .number,
+                        fieldWidth: 200,
+                        options: [.megabytes, .gigabytes, .terabytes],
+                        selection: $sizeUnit
+                    )
+                    
+                    // Labels
+                    
+                    EditableList(
+                        items: $labels,
+                        title: "Metadata",
+                        addLabel: "Add Label",
+                        newItem: { KeyValue() },
+                        rowSummary: keyValueSummary,
+                        editorContent: { $keyValue in
+                            KeyValueEditor(keyValue: $keyValue)
                         }
-                        
-                        TextField("Ex: volume-1", text: $name)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    .padding(16)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    )
                     
-                    // Optional Settings
+                    // Options
                     
-                    VStack(alignment: .leading, spacing: 16) {
-                        Divider()
-                        
-                        // Volume Size
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label {
-                                Text("Volume Size")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                            } icon: {
-                                Image(systemName: "archivebox")
-                                    .foregroundStyle(.secondary)
-                                    .font(.caption)
-                            }
-                            
-                            HStack {
-                                TextField("Size", value: $sizeValue, format: .number)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 100)
-                                
-                                Picker("", selection: $sizeUnit) {
-                                    Text("MB").tag(UnitInformationStorage.megabytes)
-                                    Text("GB").tag(UnitInformationStorage.gigabytes)
-                                    Text("TB").tag(UnitInformationStorage.terabytes)
-                                }
-                                .labelsHidden()
-                                .frame(width: 80)
-                                
-                                Spacer()
-                            }
+                    EditableList(
+                        items: $options,
+                        title: "Driver Specific Options",
+                        addLabel: "Add Option",
+                        newItem: { KeyValue() },
+                        rowSummary: keyValueSummary,
+                        editorContent: { $keyValue in
+                            KeyValueEditor(keyValue: $keyValue)
                         }
-                        
-                        Divider()
-                        
-                        // Labels
-                        EditableListSection(
-                            items: $labels,
-                            title: "Volume Metadata (Label)",
-                            description: "Empty keys will be removed when creating",
-                            addLabel: "Add Label",
-                            newItem: { KeyValue() },
-                            rowSummary: keyValueSummary,
-                            editorContent: { $keyValue in
-                                KeyValueEditor(keyValue: $keyValue)
-                            }
-                        )
-                        
-                        Divider()
-                        
-                        // Options
-                        EditableListSection(
-                            items: $options,
-                            title: "Driver Specific Options",
-                            description: "Empty keys will be removed when creating",
-                            addLabel: "Add Option",
-                            newItem: { KeyValue() },
-                            rowSummary: keyValueSummary,
-                            editorContent: { $keyValue in
-                                KeyValueEditor(keyValue: $keyValue)
-                            }
-                        )
-                    }
-                    .padding(.top, 12)
-                    
-                    
+                    )
                 }
                 .padding(20)
             }
@@ -188,6 +150,25 @@ struct CreateVolumeView: View {
         }
     }
     
+    private func keyValueSummary(_ keyValue: KeyValue) -> String {
+        let key = keyValue.key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = keyValue.value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if key.isEmpty && value.isEmpty {
+            return "New Item"
+        }
+
+        if value.isEmpty {
+            return key
+        }
+
+        if key.isEmpty {
+            return value
+        }
+
+        return "\(key)=\(value)"
+    }
+    
     private func createVolume() {
         let trimmedName = self.name.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -230,3 +211,4 @@ struct CreateVolumeView: View {
         }
     }
 }
+

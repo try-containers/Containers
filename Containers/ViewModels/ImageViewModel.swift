@@ -25,25 +25,41 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
     var name: String
     var tag: String
     var indexDigest: String
-    var rawOS: String
-    var rawArch: String
+    var os: String
+    var arch: String
     var variant: String
     var sizeInBytes: Int64
-    var createdDate: Date?
+    var createdDate: Date
     var manifestDigest: String
-    var inUseContainers: [ContainerSnapshot]
+    var inUse: Bool
     var imageDescription: ImageDescription
-
-    var inUse: Bool {
-        return !inUseContainers.isEmpty
-    }
     
     var id: String {
-        return indexDigest + manifestDigest + (createdDate?.description ?? "")
+        return indexDigest + manifestDigest + createdDate.description
+    }
+    
+    init(_ item: ImageListItem) {
+        self.init(
+            item.description,
+            variant: item.info?.variant,
+            created: item.info?.created,
+            os: item.info?.os,
+            architecture: item.info?.architecture,
+            inUse: item.inUse,
+            sizeInBytes: item.info?.size
+        )
     }
     
     /// Initialize from ImageDescription (simplified, without full image details)
-    init(_ description: ImageDescription, containers: [ContainerSnapshot], variant: String? = nil, created: Date? = nil, os: String? = nil, architecture: String? = nil) {
+    init(
+        _ description: ImageDescription,
+        variant: String? = nil,
+        created: Date? = nil,
+        os: String? = nil,
+        architecture: String? = nil,
+        inUse: Bool,
+        sizeInBytes: Int64? = nil
+    ) {
         self.imageDescription = description
         
         // Parse reference to get name and tag
@@ -57,27 +73,24 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
         
         self.indexDigest = description.digest
         self.manifestDigest = description.digest
-        self.rawOS = os ?? "Linux"
-        self.rawArch = architecture ?? Platform.current.architecture
+        self.os = os ?? Platform.current.os
+        self.arch = architecture ?? Platform.current.architecture
         self.variant = variant ?? ""
-        self.sizeInBytes = description.descriptor.size
-        self.createdDate = created
-        
-        self.inUseContainers = containers.filter { $0.configuration.image.digest == description.digest }
+        self.sizeInBytes = sizeInBytes ?? description.descriptor.size
+        self.createdDate = created ?? ImageInfo.unknownCreationDate
+        self.inUse = inUse
     }
     
     // Hashable conformance
     func hash(into hasher: inout Hasher) {
         hasher.combine(indexDigest)
         hasher.combine(manifestDigest)
-        hasher.combine(inUseContainers.count)
     }
     
     // Equatable conformance
     static func == (lhs: ImageViewModel, rhs: ImageViewModel) -> Bool {
         return lhs.indexDigest == rhs.indexDigest &&
-               lhs.manifestDigest == rhs.manifestDigest &&
-               lhs.inUseContainers.count == rhs.inUseContainers.count
+               lhs.manifestDigest == rhs.manifestDigest
     }
 }
 
@@ -85,6 +98,14 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
 
 extension ImageViewModel {
     var formattedDigest: String {
+        String(digestWithoutAlgorithm.prefix(12))
+    }
+    
+    var fullDigestWithoutAlgorithm: String {
+        digestWithoutAlgorithm
+    }
+    
+    private var digestWithoutAlgorithm: String {
         var d = indexDigest
         if d.hasPrefix("sha256:") {
             d = String(d.dropFirst("sha256:".count))
@@ -97,20 +118,13 @@ extension ImageViewModel {
     }
     
     var formattedOS: String {
-        rawOS.localizedCapitalized
-    }
-    
-    var formattedArch: String {
-        rawArch.localizedCapitalized
+        os.localizedCapitalized
     }
     
     var formattedCreated: String {
-        guard let date = createdDate else {
-            return ""
-        }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return formatter.string(from: createdDate)
     }
 }

@@ -1,5 +1,5 @@
 //
-//  ImageHistoryView.swift
+//  ImageHistory.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/02/12.
@@ -8,10 +8,9 @@
 import SwiftUI
 import Containerization
 import ContainerSystem
-
 import ContainerizationOCI
 
-struct ImageHistoryView: View {
+struct ImageHistory: View {
     let imageReference: String
     let platform: Platform
     
@@ -24,13 +23,16 @@ struct ImageHistoryView: View {
     
     struct LayerInfo: Identifiable {
         let id = UUID()
-        let digest: String
+        let digest: String?
         let size: Int64
         let command: String?
         let comment: String?
+        let emptyLayer: Bool
         
         var formattedDigest: String {
-            var d = digest
+            guard var d = digest else {
+                return "<missing>"
+            }
             if d.hasPrefix("sha256:") {
                 d = String(d.dropFirst("sha256:".count))
             }
@@ -99,40 +101,14 @@ struct ImageHistoryView: View {
     
     private var layersListView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Header
-                sectionHeader(
-                    title: "Layer History",
-                    subtitle: "\(layers.count) layer\(layers.count == 1 ? "" : "s")"
-                )
-                
-                // Total size
-                let totalSize = layers.reduce(0) { $0 + $1.size }
-                
-                HStack {
-                    Label("Total Size", systemImage: "arrow.down.circle")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundStyle(.primary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(6)
-                
-                Divider()
-                    .padding(.vertical, 8)
-                
-                // Layers list
-                VStack(spacing: 8) {
-                    ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
-                        layerRow(layer: layer, index: index)
-                    }
+            
+            // Layers list
+            VStack(spacing: 8) {
+                ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
+                    layerRow(layer: layer, index: index)
                 }
             }
+            
             .padding(20)
         }
     }
@@ -160,12 +136,17 @@ struct ImageHistoryView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                                 .truncationMode(.tail)
+                        } else if layer.emptyLayer {
+                            Text("Metadata step")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.secondary)
                         } else {
                             Text(layer.formattedDigest)
                                 .font(.system(.body, design: .monospaced))
                                 .foregroundStyle(.primary)
                         }
-
+                        
                         Spacer()
                         
                         Text(layer.formattedSize)
@@ -219,7 +200,8 @@ struct ImageHistoryView: View {
                     digest: detail.digest,
                     size: detail.size,
                     command: detail.createdBy,
-                    comment: detail.comment
+                    comment: detail.comment,
+                    emptyLayer: detail.emptyLayer
                 )
             }
             

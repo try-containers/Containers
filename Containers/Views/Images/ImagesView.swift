@@ -8,10 +8,10 @@
 import SwiftUI
 import Containerization
 import ContainerSystem
+import ContainerizationOCI
 
 
 struct ImagesView: View {
-    @Environment(ContainerManager.self) private var containerManager
     @Environment(ImageManager.self) private var imageManager
     @Environment(SystemManager.self) private var system
     
@@ -20,17 +20,17 @@ struct ImagesView: View {
     
     var onRefresh: (() async -> Void)? = nil
     
-    @State private var images: [ImageViewModel] = []
-    @State private var lastUpdated: Date? = nil
-    @State private var createContainerForImage: ImageViewModel? = nil
-    @State private var imagesToSave: String =  ""
-    @State private var imageToDelete: ImageViewModel?
-    @State private var error: Error?
-    @State private var showError: Bool = false
-    @State private var showDeleteConfirmation: Bool = false
-    @State private var showInUseContainerForImage: ImageViewModel?
-    @State private var showSaveImage: Bool = false
-    @State private var showImageDetails: ImageViewModel?
+    @SwiftUI.State private var images: [ImageViewModel] = []
+    @SwiftUI.State private var lastUpdated: Date? = nil
+    @SwiftUI.State private var createContainerForImage: ImageViewModel? = nil
+    @SwiftUI.State private var imagesToSave: String =  ""
+    @SwiftUI.State private var imageToDelete: ImageViewModel?
+    @SwiftUI.State private var error: Error?
+    @SwiftUI.State private var showError: Bool = false
+    @SwiftUI.State private var showDeleteConfirmation: Bool = false
+    @SwiftUI.State private var showInUseContainerForImage: ImageViewModel?
+    @SwiftUI.State private var showSaveImage: Bool = false
+    @SwiftUI.State private var showImageDetails: ImageViewModel?
     
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -64,7 +64,7 @@ struct ImagesView: View {
                         .buttonStyle(.link)
                         .pointerStyle(.link)
                         .underline()
-                        .frame(height: 48)
+                        .frame(height: 36) // to set minimum row height
                     }
                     .width(min: 150, ideal: 80)
                     
@@ -80,7 +80,7 @@ struct ImagesView: View {
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                     }
-                    .width(min: 100, ideal: 400)
+                    .width(min: 100, ideal: 120, max: 140)
                     
                     TableColumn("State") { image in
                         
@@ -133,8 +133,7 @@ struct ImagesView: View {
                         .padding(.horizontal, 8)
                     }
                     .width(128)
-                    
-                    
+
                 }, rows: {
                     ForEach(filteredImages)
                 })
@@ -186,7 +185,7 @@ struct ImagesView: View {
             CreateContainerView(imageReference: image.imageDescription.reference)
         })
         .sheet(item: $showInUseContainerForImage, content: { image in
-            ImageContainersView(containers: image.inUseContainers.map({ContainerViewModel($0)}))
+            ImageContainersView(image: image)
         })
         .sheet(item: $showImageDetails, content: { image in
             ImageDetailView(
@@ -248,15 +247,11 @@ struct ImagesView: View {
     
     func listImages() async {
         do {
-            let containers = try await containerManager.list()
-            let images = try await imageManager.list()
+            let images = try await imageManager.list(platform: .current)
             
-            // Create display models from ImageDescription
-            let displayModels = images
-                .map { ImageViewModel($0, containers: containers) }
+            self.images = images
+                .map(ImageViewModel.init)
                 .sorted { ($0.name, $0.tag) < ($1.name, $1.tag) }
-            
-            self.images = displayModels
             self.lastUpdated = Date()
             
         } catch(let err) {

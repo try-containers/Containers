@@ -2,8 +2,7 @@
 //  ContainerManager.swift
 //  Containers
 //
-//  Manager for container operations - wraps ContainersService
-//  Architecture: Actor singleton that gets services from ContainerSystem
+//  Manager for container operations
 //
 //  Created by Axel Martinez on 2026/02/05.
 //
@@ -147,7 +146,7 @@ public final class ContainerManager {
         return logs.trimmingCharacters(in: .newlines)
     }
     
-    public func stop(snapshots: [ContainerSnapshot], timeoutSeconds: Int32) async throws {
+    public func stop(ids: [String], timeoutSeconds: Int32) async throws {
         let service = try await runtime.getContainersService()
 
         let stopOptions = ContainerStopOptions(
@@ -157,12 +156,12 @@ public final class ContainerManager {
 
         var failed: [(String, Error)] = []
         
-        for container in snapshots {
+        for id in ids {
             do {
-                try await service.stop(id: container.configuration.id, options: stopOptions)
+                try await service.stop(id: id, options: stopOptions)
             } catch {
-                logger.error("Failed to stop container \(container.configuration.id): \(error)")
-                failed.append((container.configuration.id, error))
+                logger.error("Failed to stop container \(id): \(error)")
+                failed.append((id, error))
             }
         }
 
@@ -172,6 +171,10 @@ public final class ContainerManager {
                 message: "Failed to stop one or more containers: \n\(failed.map({"\($0.0): \($0.1)"}).joined(separator: "\n"))"
             )
         }
+    }
+
+    public func stop(snapshots: [ContainerSnapshot], timeoutSeconds: Int32) async throws {
+        try await stop(ids: snapshots.map(\.configuration.id), timeoutSeconds: timeoutSeconds)
     }
     
     public func mountVolume(containerID: String, volume: Volume, destination: String) async throws {
@@ -208,25 +211,30 @@ public final class ContainerManager {
         try await service.updateMounts(id: containerID, mounts: mounts)
     }
     
-    public func delete(snapshots: [ContainerSnapshot], force: Bool) async throws {
+    public func delete(ids: [String], force: Bool) async throws {
         let service = try await runtime.getContainersService()
+        let snapshots = await service.list()
 
         var failed: [(String, Error)] = []
         
-        for container in snapshots {
+        for id in ids {
             do {
+                guard let container = snapshots.first(where: { $0.configuration.id == id }) else {
+                    throw ContainerizationError(.notFound, message: "Container not found: \(id)")
+                }
+
                 if container.status == .running && !force {
-                    throw ContainerizationError(.invalidState, message: "container: \(container.configuration.id) is running")
+                    throw ContainerizationError(.invalidState, message: "container: \(id) is running")
                 }
                 
                 if container.status == .running && force {
-                    try await service.stop(id: container.configuration.id, options: .default)
+                    try await service.stop(id: id, options: .default)
                 }
 
-                try await service.delete(id: container.configuration.id)
+                try await service.delete(id: id)
             } catch {
-                logger.error("Failed to delete container \(container.configuration.id): \(error)")
-                failed.append((container.configuration.id, error))
+                logger.error("Failed to delete container \(id): \(error)")
+                failed.append((id, error))
             }
         }
 
@@ -236,6 +244,10 @@ public final class ContainerManager {
                 message: "Failed to delete one or more containers: \n\(failed.map({"\($0.0): \($0.1)"}).joined(separator: "\n"))"
             )
         }
+    }
+
+    public func delete(snapshots: [ContainerSnapshot], force: Bool) async throws {
+        try await delete(ids: snapshots.map(\.configuration.id), force: force)
     }
     
     // MARK: - Private Helper Methods
@@ -477,6 +489,14 @@ public final class ContainerManager {
         var config = ContainerConfiguration(id: id, image: imageDescription, process: pc)
         config.platform = requestedPlatform
         config.resources = resource
+        config.creationDate = Date()
+        config.runtimeHandler = container.runtimeHandler
+        config.readOnly = container.readOnly
+        config.useInit = container.useInit
+        config.capAdd = container.capAdd
+        config.capDrop = container.capDrop
+        config.shmSize = container.shmSize
+        config.stopSignal = container.stopSignal ?? imageConfig?.stopSignal
 
         let resolvedMounts: [Filesystem] = container.virtualFileSystem + container.temporaryFileSystem + container.volumes
 

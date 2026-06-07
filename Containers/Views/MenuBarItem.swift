@@ -5,96 +5,93 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
+import AppKit
 import SwiftUI
 import ContainerSystem
 
 struct MenuBarItem: View {
     @Environment(SystemManager.self) var system
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     @State private var isTogglingSystem: Bool = false
     @State private var isReloading: Bool = false
 
     var body: some View {
-        Group {
-            StatusButton(isRunning: system.isRunning)
-            
-            Divider()
-            
-            MenuButton(
-                title: "Dashboard",
-                icon: "square.grid.2x2",
-                keyEquivalent: "d"
-            ) {
-                NSApplication.shared.activate(ignoringOtherApps: true)
-                openWindow(id: ContainersApp.dashboardWindowId)
-            }
-            
-            MenuButton(
-                title: "Settings",
-                icon: "gearshape",
-                keyEquivalent: ","
-            ) {
-                NSApplication.shared.activate(ignoringOtherApps: true)
-                openSettings()
-            }
+        StatusButton(isRunning: system.isRunning)
+        
+        Divider()
+        
+        MenuButton(
+            title: "Dashboard",
+            icon: "square.grid.2x2",
+            keyEquivalent: "d"
+        ) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            openWindow(id: ContainersApp.dashboardWindowId)
+        }
+        
+        MenuButton(
+            title: "Settings",
+            icon: "gearshape",
+            keyEquivalent: ","
+        ) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            openSettings()
         }
         
         Divider()
         
-        Group {
-            MenuButton(
-                title: system.isRunning ? "Stop" : "Start",
-                icon: system.isRunning ? "stop.fill" : "play.fill",
-                isLoading: isTogglingSystem,
-                isDisabled: isTogglingSystem || isReloading
-            ) {
-                Task { @MainActor in
-                    isTogglingSystem = true
-                    
-                    defer { isTogglingSystem = false }
-                    
-                    do {
-                        if system.isRunning {
-                            try await system.stop()
-                        } else {
-                            try await system.start(
-                                appRoot: UserDefaults.applicationDataRoot
-                            )
-                        }
-                    } catch {
-                        openWindow(id: ContainersApp.dashboardWindowId)
-                    }
-                }
-            }
-            
-            MenuButton(
-                title: "Reload",
-                icon: "arrow.clockwise",
-                isLoading: isReloading,
-                isDisabled: isTogglingSystem || isReloading || !system.isRunning
-            ) {
-                Task { @MainActor in
-                    isReloading = true
-                    
-                    defer { isReloading = false }
-                    
-                    do {
+        MenuButton(
+            title: system.isRunning ? "Stop" : "Start",
+            icon: system.isRunning ? "stop.fill" : "play.fill",
+            isLoading: isTogglingSystem,
+            isDisabled: isTogglingSystem || isReloading
+        ) {
+            Task { @MainActor in
+                isTogglingSystem = true
+                
+                defer { isTogglingSystem = false }
+                
+                do {
+                    if system.isRunning {
                         try await system.stop()
+                    } else {
                         try await system.start(
                             appRoot: UserDefaults.applicationDataRoot
                         )
-                    } catch {
-                        openWindow(id: ContainersApp.dashboardWindowId)
                     }
+                } catch {
+                    openWindow(id: ContainersApp.dashboardWindowId)
+                }
+            }
+        }
+        
+        MenuButton(
+            title: "Reload",
+            icon: "arrow.clockwise",
+            isLoading: isReloading,
+            isDisabled: isTogglingSystem || isReloading || !system.isRunning
+        ) {
+            Task { @MainActor in
+                isReloading = true
+                
+                defer { isReloading = false }
+                
+                do {
+                    try await system.stop()
+                    try await system.start(
+                        appRoot: UserDefaults.applicationDataRoot
+                    )
+                } catch {
+                    openWindow(id: ContainersApp.dashboardWindowId)
                 }
             }
         }
             
-            Divider()
+        Divider()
             
-            MenuButton(
+        MenuButton(
             title: "Quit",
             icon: "power",
             keyEquivalent: "q",

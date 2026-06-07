@@ -199,15 +199,17 @@ struct DashboardView: View {
     
     private var statusBar: some View {
         HStack(spacing: 16) {
-            // Status indicator dot
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-            
-            // Status message
-            Text(statusMessage)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                // Status indicator dot
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+                
+                // Status message
+                Text(statusMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             
             // Control buttons (play/stop/restart)
             HStack(spacing: 8) {
@@ -311,11 +313,11 @@ struct DashboardView: View {
     private var statusColor: Color {
         switch system.systemStatus {
         case .running:
-            return .green
+            return Color(nsColor: .systemGreen)
         case .starting, .stopping:
-            return .orange
+            return Color(nsColor: .systemOrange)
         case .notStarted, .failed:
-            return .red
+            return Color(nsColor: .systemRed)
         }
     }
     

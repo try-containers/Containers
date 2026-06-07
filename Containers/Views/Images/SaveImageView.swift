@@ -67,7 +67,7 @@ struct SaveImageView: View {
             
             VStack(alignment: .leading, spacing: 8) {
                 Text("Output Directory")
-                FileSelectionView(fileURL: $outputDirectory, errorMessage: $errorMessage, allowedContentTypes: [.directory])
+                FileSelection(fileURL: $outputDirectory, errorMessage: $errorMessage, allowedContentTypes: [.directory])
             }
             
             Divider()

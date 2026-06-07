@@ -1,5 +1,5 @@
 //
-//  FileSelectionView.swift
+//  FileSelection.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/02/08.
@@ -8,7 +8,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-extension FileSelectionView {
+extension FileSelection {
     init(fileURL: Binding<URL>, errorMessage: Binding<String?>, allowedContentTypes: [UTType]) {
         let fileBinding = Binding<URL?> (
             get: {
@@ -26,7 +26,7 @@ extension FileSelectionView {
     }
 }
 
-struct FileSelectionView: View {
+struct FileSelection: View {
     // file scheme, ie: file://
     @Binding var fileURL: URL?
     @Binding var errorMessage: String?

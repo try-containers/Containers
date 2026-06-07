@@ -62,7 +62,7 @@ struct ContainersView: View {
                         })
                         .buttonStyle(.link)
                         .pointerStyle(.link)
-                        .frame(height: 48) // to set minimum row height
+                        .frame(height: 32) // to set minimum row height
                     }
                     .width(min: 100, ideal: 150, max: 250)
                     
@@ -72,18 +72,8 @@ struct ContainersView: View {
                     }
                     .width(min: 120, ideal: 180, max: 300)
                     
-                    TableColumn("OS") { container in
-                        Text(container.formattedOS)
-                    }
-                    .width(min: 36, ideal: 36, max: 72)
-                    
-                    TableColumn("Arch") { container in
-                        Text(container.formattedArch)
-                    }
-                    .width(min: 48, ideal: 48, max: 72)
-                    
                     TableColumn("State") { container in
-                        Text(container.formattedState)
+                        StatusBadge(status: container.status)
                     }
                     .width(min: 64, ideal: 80, max: 100)
                     
@@ -96,12 +86,13 @@ struct ContainersView: View {
                     }
                     .width(min: 100, ideal: 120, max: 140)
                     
-                    TableColumn("Started") { container in
-                        Text(container.formattedStarted)
+                    TableColumn("Uptime") { container in
+                        Text(container.formattedUptime)
                             .lineLimit(1)
                             .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(container.status == .running ? .primary : .secondary)
                     }
-                    .width(min: 120, ideal: 160, max: 200)
+                    .width(min: 80, ideal: 100, max: 140)
                     
                     TableColumn("Actions") { container in
                         
@@ -113,7 +104,7 @@ struct ContainersView: View {
                                         Task {
                                             do {
                                                 try await containerManager.stop(
-                                                    snapshots: [container.snapshot],
+                                                    ids: [container.id],
                                                     timeoutSeconds: Int32(UserDefaults.stopContainerTimeoutSeconds)
                                                 )
                                                 
@@ -134,7 +125,7 @@ struct ContainersView: View {
                                     Task {
                                         do {
                                             try await containerManager.start(
-                                                id: container.snapshot.configuration.id,
+                                                id: container.id,
                                                 attachStdout: false,
                                                 attachStdin: false
                                             )
@@ -176,7 +167,7 @@ struct ContainersView: View {
                 rows: {
                     ForEach(filteredContainers)
                 })
-                .tableStyle(.inset)
+                .tableStyle(.automatic)
                 .alternatingRowBackgrounds(.disabled)
                 .overlay(alignment: .center, content: {
                     if filteredContainers.isEmpty {
@@ -246,7 +237,6 @@ struct ContainersView: View {
                         showContainerDetail = false
                     }
                 )
-                .frame(minWidth: 800, minHeight: 600)
                 .environment(containerManager)
             }
         }
@@ -271,7 +261,7 @@ struct ContainersView: View {
                 
                 Task {
                     do {
-                        try await containerManager.delete(snapshots: [container.snapshot], force: true)
+                        try await containerManager.delete(ids: [container.id], force: true)
                         await refreshContainers()
                     } catch (let err) {
                         self.error = err

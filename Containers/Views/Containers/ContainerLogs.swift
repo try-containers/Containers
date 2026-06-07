@@ -8,7 +8,7 @@
 import SwiftUI
 import ContainerSystem
 
-struct ContainerLogsView: View {
+struct ContainerLogs: View {
     var containerID: String
 
     @Environment(ContainerManager.self) private var containerManager

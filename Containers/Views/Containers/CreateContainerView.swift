@@ -41,14 +41,20 @@ private struct VolumePickerTarget: Identifiable {
     let id: UUID
 }
 
+private struct ContainerPlatformOption: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let detail: String
+}
+
 struct CreateContainerView: View {
     @Environment(ImageManager.self) private var imageManager
     @Environment(VolumeManager.self) private var volumeManager
     @Environment(ContainerManager.self) private var containerManager
     @Environment(\.dismiss) private var dismiss
-
+    
     @SwiftUI.State var imageReference: String
-
+    
     @SwiftUI.State private var process: ContainerProcess = .init()
     @SwiftUI.State private var container: ContainerInfo = .init()
     @SwiftUI.State private var volumes: [VolumeConfiguration] = []
@@ -56,6 +62,10 @@ struct CreateContainerView: View {
     @SwiftUI.State private var environments: [KeyValue] = []
     @SwiftUI.State private var resource: ContainerConfiguration.Resources = .init()
     @SwiftUI.State private var registryScheme: String = RequestScheme.auto.rawValue
+    @SwiftUI.State private var platformString: String = Platform.current.description
+    @SwiftUI.State private var shmSizeInMiB: Int = 0
+    @SwiftUI.State private var capAddText: String = ""
+    @SwiftUI.State private var capDropText: String = ""
     @SwiftUI.State private var errorMessage: String?
     @SwiftUI.State private var localImages: [ImageDescription] = []
     @SwiftUI.State private var availableVolumes: [Volume] = []
@@ -104,45 +114,51 @@ struct CreateContainerView: View {
                     }
                     
                     // Image Section
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Image")
-                                    .font(.headline)
-                                Spacer()
-                                Text("Local or Remote")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            
-                            HStack(spacing: 8) {
-                                TextField("alpine:latest", text: $imageReference)
-                                    .textFieldStyle(.roundedBorder)
-                                
-                                Button(action: {
-                                    Task {
-                                        do {
-                                            self.showProgressView = true
-                                            self.localImages = try await imageManager.list()
-                                            self.showProgressView = false
-                                            self.showPickLocalImage = true
-                                        } catch (let error) {
-                                            self.errorMessage = "\(error)"
-                                        }
-                                    }
-                                }, label: {
-                                    Image(systemName: "ellipsis.circle")
-                                })
-                                .buttonStyle(.plain)
-                                .help("Choose from local images")
+                    
+                    EditableField(
+                        title: "Image",
+                        placeholder: "alpine:latest",
+                        value: $imageReference,
+                        actionLabel: {
+                            Image(systemName: "ellipsis.circle")
+                        },
+                        action: {
+                            Task {
+                                do {
+                                    self.showProgressView = true
+                                    self.localImages = try await imageManager.list().map(\.description)
+                                    self.showProgressView = false
+                                    self.showPickLocalImage = true
+                                } catch (let error) {
+                                    self.errorMessage = "\(error)"
+                                }
                             }
                         }
-                        .padding(12)
-                    }
+                    )
                     
-                    containerNameSection
-                    
-                    volumeMountsSection
+                    EditableField(
+                        title: "Name",
+                        description: "Leave empty to generate a unique name automatically.",
+                        placeholder: "my-container",
+                        value: $container.name
+                    )
+
+                    EditableList(
+                        items: $volumes,
+                        title: "Volume Mounts",
+                        addLabel: "Add Volume Mount",
+                        newItem: { VolumeConfiguration() },
+                        rowSummary: volumeMountSummary,
+                        editorContent: { $volume in
+                            VolumeRow(
+                                volumeName: $volume.name,
+                                path: $volume.path,
+                                showAvailableVolume: {
+                                    showAvailableVolumes(for: volume.id)
+                                }
+                            )
+                        }
+                    )
                     
                     // Optional Settings Disclosure
                     DisclosureGroup(
@@ -154,22 +170,16 @@ struct CreateContainerView: View {
                             .padding(.top, 12)
                         },
                         label: {
-                            Label {
+                         
                                 Text("Optional Settings")
                                     .font(.headline)
-                            } icon: {
-                                Image(systemName: "gearshape")
-                                    .foregroundStyle(.secondary)
-                            }
+                           
                         }
                     )
-                    .padding(16)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .padding(20)
             }
-            
+
             Divider()
             
             // Bottom Bar
@@ -234,8 +244,30 @@ struct CreateContainerView: View {
         .interactiveDismissDisabled()
     }
     
-    func createContainer() {
+    private static var platformOptions: [ContainerPlatformOption] {
+        let current = Platform.current
+        var options: [ContainerPlatformOption] = [
+            ContainerPlatformOption(
+                id: current.description,
+                title: "Linux \(current.architecture.uppercased())",
+                detail: "Default platform"
+            )
+        ]
         
+        if current.architecture == "arm64" {
+            options.append(
+                ContainerPlatformOption(
+                    id: "linux/amd64",
+                    title: "Linux AMD64",
+                    detail: "Run with Rosetta"
+                )
+            )
+        }
+        
+        return options
+    }
+    
+    private func createContainer() {
         let trimmedReference = imageReference.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedReference.isEmpty else {
@@ -244,7 +276,7 @@ struct CreateContainerView: View {
         }
         
         Task {
-            //self.showProgressView = true
+            self.showProgressView = true
             
             do {
                 var validVolumeFSs: [Filesystem] = []
@@ -271,12 +303,12 @@ struct CreateContainerView: View {
                     } else {
                         var volumeName = trimmedName
                         var labels: [KeyValue] = []
-
+                        
                         if volumeName.isEmpty {
                             volumeName = VolumeStorage.generateAnonymousVolumeName()
                             labels.append(.init(key: Volume.anonymousLabel))
                         }
-
+                        
                         volume = try await volumeManager.create(name: volumeName, labels: labels, options: [], sizeInBytes: nil)
                     }
                     
@@ -286,6 +318,10 @@ struct CreateContainerView: View {
                 }
                 
                 self.container.volumes = validVolumeFSs
+                self.container.platform = self.platformString
+                self.container.shmSize = self.shmSizeInMiB > 0 ? UInt64(self.shmSizeInMiB) * 1024 * 1024 : nil
+                self.container.capAdd = Self.commaSeparatedValues(from: self.capAddText)
+                self.container.capDrop = Self.commaSeparatedValues(from: self.capDropText)
                 
                 let validPorts = self.ports.filter({$0.host > 0 && $0.container > 0})
                 
@@ -302,7 +338,7 @@ struct CreateContainerView: View {
                 let container = self.container
                 let resource = self.resource
                 let registryScheme = self.registryScheme
-
+                
                 try await containerManager.create(
                     imageReference: trimmedReference,
                     imagesDir: UserDefaults.applicationDataRoot.appendingPathComponent("images"),
@@ -319,58 +355,44 @@ struct CreateContainerView: View {
                 self.errorMessage = "\(error)"
             }
             
-            //self.showProgressView = false
-        }
-    }
-    
-    @ViewBuilder
-    private var containerNameSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Name")
-                    .font(.headline)
-
-                TextField("my-container", text: $container.name)
-                    .textFieldStyle(.roundedBorder)
-
-                Text("Leave empty to generate a unique name automatically.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(12)
-        }
-    }
-    
-    @ViewBuilder
-    private var volumeMountsSection: some View {
-        GroupBox {
-            EditableListSection(
-                items: $volumes,
-                title: "Volume Mounts",
-                description: "Use an existing volume, enter a new volume name, or leave the name empty to create an anonymous volume.",
-                addLabel: "Add Volume Mount",
-                newItem: { VolumeConfiguration() },
-                rowSummary: volumeMountSummary,
-                editorContent: { $volume in
-                    VolumeRow(
-                        volumeName: $volume.name,
-                        path: $volume.path,
-                        showAvailableVolume: {
-                            showAvailableVolumes(for: volume.id)
-                        }
-                    )
-                }
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
+            self.showProgressView = false
         }
     }
     
     @ViewBuilder
     private var additionalSettings: some View {
         VStack(spacing: 16) {
-            // Entrypoint
             GroupBox {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Platform")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    Text("Choose the image variant to run. AMD64 containers use Rosetta on Apple Silicon.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    Picker("Platform", selection: $platformString) {
+                        ForEach(Self.platformOptions) { option in
+                            VStack(alignment: .leading) {
+                                Text(option.title)
+                                Text(option.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .tag(option.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+            }
+            
+            // Entrypoint
+            GroupBox  {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Entrypoint")
                         .font(.subheadline)
@@ -390,59 +412,110 @@ struct CreateContainerView: View {
                 .padding(12)
             }
             
-            // Ports
+            // Runtime
             GroupBox {
-                EditableListSection(
-                    items: $ports,
-                    title: "Port Mappings",
-                    description: "Ports set to 0 will be ignored. Host-ip defaults to 127.0.0.1",
-                    addLabel: "Add Port Mapping",
-                    newItem: { PortsConfiguration() },
-                    rowSummary: portSummary,
-                    editorContent: { $port in
-                        PortMappingEditor(port: $port)
-                    }
-                )
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Runtime")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    TextField("Runtime Handler", text: $container.runtimeHandler)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                    
+                    TextField("Stop Signal", text: Binding(
+                        get: { container.stopSignal ?? "" },
+                        set: { container.stopSignal = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    
+                    TextField("Shared Memory (MiB)", value: $shmSizeInMiB, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                    
+                    Toggle("Read-only root filesystem", isOn: $container.readOnly)
+                    Toggle("Use init process", isOn: $container.useInit)
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
             }
             
-            // Environment Variables
+            // Capabilities
             GroupBox {
-                EditableListSection(
-                    items: $environments,
-                    title: "Environment Variables",
-                    description: "Empty keys will be removed when creating",
-                    addLabel: "Add Environment Variable",
-                    newItem: { KeyValue() },
-                    rowSummary: keyValueSummary,
-                    editorContent: { $keyValue in
-                        KeyValueEditor(keyValue: $keyValue)
-                    }
-                )
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Linux Capabilities")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    Text("Separate multiple capabilities with commas. Use normalized CAP_* names or ALL.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    TextField("Add capabilities", text: $capAddText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                    
+                    TextField("Drop capabilities", text: $capDropText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
             }
+            
+            // Ports
+            
+            EditableList(
+                items: $ports,
+                title: "Port Mappings",
+                addLabel: "Add Port Mapping",
+                newItem: { PortsConfiguration() },
+                rowSummary: portSummary,
+                editorContent: { $port in
+                    PortMappingEditor(port: $port)
+                }
+            )
 
+            // Environment Variables
+            
+            
+            EditableList(
+                items: $environments,
+                title: "Environment Variables",
+                addLabel: "Add Environment Variable",
+                newItem: { KeyValue() },
+                rowSummary: keyValueSummary,
+                editorContent: { $keyValue in
+                    KeyValueEditor(keyValue: $keyValue)
+                }
+            )
         }
     }
+    
+    private static func commaSeparatedValues(from value: String) -> [String] {
+        value
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+    
     private func volumeMountSummary(_ volume: VolumeConfiguration) -> String {
         let name = volume.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let path = volume.path.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = name.isEmpty ? "Anonymous volume" : name
         return path.isEmpty ? displayName : "\(displayName) -> \(path)"
     }
-
+    
     private func portSummary(_ port: PortsConfiguration) -> String {
         "\(port.hostAddress):\(port.host):\(port.container)/\(port.publishProtocol.rawValue.uppercased())"
     }
-
+    
     private func showAvailableVolumes(for id: VolumeConfiguration.ID) {
         guard !self.volumeInitialized else {
             self.volumePickerTarget = VolumePickerTarget(id: id)
             return
         }
-
+        
         Task {
             do {
                 self.showProgressView = true
@@ -460,19 +533,19 @@ struct CreateContainerView: View {
 
 private struct PortMappingEditor: View {
     @Binding var port: PortsConfiguration
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Host Address", text: $port.hostAddress)
                 .textFieldStyle(.roundedBorder)
-
+            
             HStack(spacing: 8) {
                 TextField("Host Port", value: $port.host, format: .number)
                     .textFieldStyle(.roundedBorder)
                 TextField("Container Port", value: $port.container, format: .number)
                     .textFieldStyle(.roundedBorder)
             }
-
+            
             Picker("Protocol", selection: $port.publishProtocol) {
                 Text("TCP").tag(PublishProtocol.tcp)
                 Text("UDP").tag(PublishProtocol.udp)

@@ -3,8 +3,6 @@
 //  Containers
 //
 //  Manager for volume operations
-//  Architecture: Observable class that manages volumes directly via
-//  FilesystemEntityStore and EXT4 formatting, bypassing XPC.
 //
 //  Created by Axel Martinez on 2026/02/04.
 //
@@ -120,6 +118,19 @@ public final class VolumeManager {
         return try await store.list()
     }
     
+    public func listWithUsage() async throws -> [VolumeListItem] {
+        let store = try await getStore()
+        let service = try await runtime.getContainersService()
+        let usedVolumeNames = Set(await service.list().flatMap(\.volumeNames))
+        
+        return try await store.list().map { volume in
+            VolumeListItem(
+                volume: volume,
+                inUse: usedVolumeNames.contains(volume.name)
+            )
+        }
+    }
+    
     public func delete(volumes: [Volume]) async throws {
         let store = try await getStore()
         let service = try await runtime.getContainersService()
@@ -181,3 +192,13 @@ public final class VolumeManager {
         return try FilesystemEntityStore<Volume>(path: volumesRoot, type: "volumes", log: logger)
     }
 }
+public struct VolumeListItem: Sendable {
+    public let volume: Volume
+    public let inUse: Bool
+    
+    public init(volume: Volume, inUse: Bool) {
+        self.volume = volume
+        self.inUse = inUse
+    }
+}
+

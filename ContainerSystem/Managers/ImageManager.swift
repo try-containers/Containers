@@ -46,33 +46,77 @@ public final class ImageManager {
     
     // MARK: - Public API
     
-    public func list() async throws -> [ImageDescription] {
+    public func list(platform: Platform? = nil) async throws -> [ImageListItem] {
         let service = try await runtime.getImagesService()
+        let containersService = try await runtime.getContainersService()
+        let images = try await service.list().filter { !Self.isInfraImage(name: $0.reference) }
+        let usedImageDigests = Set(await containersService.list().map { $0.configuration.image.digest })
         
-        let images = try await service.list()
-        return images.filter { !Self.isInfraImage(name: $0.reference) }
+        guard let platform else {
+            return images.map {
+                ImageListItem(
+                    description: $0,
+                    info: nil,
+                    inUse: usedImageDigests.contains($0.digest)
+                )
+            }
+        }
+        
+        let imageStore = try await getImageStore()
+        var items: [ImageListItem] = []
+        
+        for description in images {
+            do {
+                let image = try await imageStore.get(reference: description.reference)
+                let info = try await self.info(for: image, platform: platform)
+                items.append(ImageListItem(
+                    description: description,
+                    info: info,
+                    inUse: usedImageDigests.contains(description.digest)
+                ))
+            } catch {
+                items.append(ImageListItem(
+                    description: description,
+                    info: Self.fallbackInfo(for: description, platform: platform),
+                    inUse: usedImageDigests.contains(description.digest)
+                ))
+            }
+        }
+        
+        return items
     }
     
-    public func getImageInformation(imageReference: String, platform: Platform) async throws -> ImageInfo {
-        let appRoot = try runtime.getAppRoot()
-        let imagesDir = appRoot.appendingPathComponent("images")
+    public func inspect(image: ImageDescription) async throws -> ImageResource {
+        let storedImage = try await getStoredImage(reference: image.reference)
+        let index = try await storedImage.index()
+        let descriptor = resolvedDescriptor(for: image.descriptor, in: index)
+        var variants: [ImageResource.Variant] = []
         
-        let imageStore = try ImageStore(path: imagesDir)
-        let image = try await imageStore.get(reference: imageReference)
+        for manifestDescriptor in index.manifests {
+            guard let platform = manifestDescriptor.platform else {
+                continue
+            }
+            
+            do {
+                let config = try await storedImage.config(for: platform)
+                let manifest = try await storedImage.manifest(for: platform)
+                let size = manifestDescriptor.size + manifest.config.size + manifest.layers.reduce(0) { $0 + $1.size }
+                variants.append(.init(
+                    platform: platform,
+                    digest: manifestDescriptor.digest,
+                    size: size,
+                    config: config
+                ))
+            } catch {
+                continue
+            }
+        }
         
-        let imageData = try await image.config(for: platform)
-        
-        let createdDate: Date? = {
-            guard let createdString = imageData.created else { return nil }
-            let formatter = ISO8601DateFormatter()
-            return formatter.date(from: createdString)
-        }()
-        
-        return ImageInfo(
-            variant: platform.variant,
-            created: createdDate,
-            os: platform.os,
-            architecture: platform.architecture
+        return ImageResource(
+            name: image.reference,
+            descriptor: descriptor,
+            variants: variants,
+            creationDate: Self.creationDate(from: variants)
         )
     }
     
@@ -425,44 +469,137 @@ public final class ImageManager {
         let imageData = try await image.config(for: platform)
         
         var layers: [ImageLayer] = []
-        
-        // Get history from image data if available
         let history = imageData.history ?? []
+        var layerIndex = 0
         
-        // Extract layers from manifest and match with history
-        // Note: History entries correspond to diff_ids in rootfs, not directly to manifest layers
-        // We'll match by index, understanding that some history entries may be empty layers
-        for (index, layer) in manifest.layers.enumerated() {
-            var createdBy: String? = nil
-            var comment: String? = nil
-            var emptyLayer = false
-            
-            // Try to find corresponding history entry
-            if index < history.count {
-                let historyEntry = history[index]
+        if history.isEmpty {
+            layers = manifest.layers.map { layer in
+                ImageLayer(
+                    digest: layer.digest,
+                    size: layer.size,
+                    createdBy: nil,
+                    comment: "Media type: \(layer.mediaType)",
+                    emptyLayer: false
+                )
+            }
+        } else {
+            for historyEntry in history {
+                let isEmptyLayer = historyEntry.emptyLayer ?? false
+                let layer = isEmptyLayer || layerIndex >= manifest.layers.count ? nil : manifest.layers[layerIndex]
                 
-                createdBy = historyEntry.createdBy
-                comment = historyEntry.comment
-                emptyLayer = historyEntry.emptyLayer ?? false
+                if !isEmptyLayer {
+                    layerIndex += 1
+                }
+                
+                layers.append(
+                    ImageLayer(
+                        digest: layer?.digest,
+                        size: layer?.size ?? 0,
+                        createdBy: historyEntry.createdBy,
+                        comment: historyEntry.comment ?? layer.map { "Media type: \($0.mediaType)" },
+                        emptyLayer: isEmptyLayer
+                    )
+                )
             }
             
-            let layerDetail = ImageLayer(
-                digest: layer.digest,
-                size: layer.size,
-                createdBy: createdBy,
-                comment: comment ?? "Media type: \(layer.mediaType)",
-                emptyLayer: emptyLayer
-            )
-            
-            layers.append(layerDetail)
+            if layerIndex < manifest.layers.count {
+                layers.append(
+                    contentsOf: manifest.layers[layerIndex...].map { layer in
+                        ImageLayer(
+                            digest: layer.digest,
+                            size: layer.size,
+                            createdBy: nil,
+                            comment: "Media type: \(layer.mediaType)",
+                            emptyLayer: false
+                        )
+                    }
+                )
+            }
         }
         
-        logger.info("Found \(layers.count) layers for image: \(imageReference)")
+        logger.info("Found \(layers.count) history entries for image: \(imageReference)")
         
         return layers.reversed()
     }
     
     // MARK: - Private Helper Methods (moved from Utility)
+    
+    private func getStoredImage(reference: String) async throws -> Containerization.Image {
+        let imageStore = try await getImageStore()
+        return try await imageStore.get(reference: reference)
+    }
+    
+    private func getImageStore() async throws -> ImageStore {
+        let appRoot = try runtime.getAppRoot()
+        let imagesDir = appRoot.appendingPathComponent("images")
+        return try ImageStore(path: imagesDir)
+    }
+    
+    private func info(for image: Containerization.Image, platform: Platform) async throws -> ImageInfo {
+        let imageData = try await image.config(for: platform)
+        let manifest = try await image.manifest(for: platform)
+        
+        let createdDate: Date = {
+            guard let createdString = imageData.created,
+                  let date = Self.date(from: createdString) else {
+                return ImageInfo.unknownCreationDate
+            }
+            return date
+        }()
+        
+        let size = manifest.config.size + manifest.layers.reduce(0) { $0 + $1.size }
+        
+        return ImageInfo(
+            variant: platform.variant,
+            created: createdDate,
+            os: platform.os,
+            architecture: platform.architecture,
+            size: size
+        )
+    }
+    
+    private func resolvedDescriptor(for descriptor: Descriptor, in index: Index) -> Descriptor {
+        let isIndirect = descriptor.annotations?[AnnotationKeys.containerizationIndexIndirect]?.lowercased()
+        guard let isIndirect, ["1", "true"].contains(isIndirect), let firstManifest = index.manifests.first else {
+            return descriptor
+        }
+        
+        return firstManifest
+    }
+
+    private static func creationDate(from variants: [ImageResource.Variant]) -> Date {
+        for variant in variants {
+            guard let created = variant.config.created, let date = date(from: created) else {
+                continue
+            }
+
+            return date
+        }
+
+        return ImageInfo.unknownCreationDate
+    }
+
+    private static func fallbackInfo(for description: ImageDescription, platform: Platform) -> ImageInfo {
+        ImageInfo(
+            variant: platform.variant,
+            created: ImageInfo.unknownCreationDate,
+            os: platform.os,
+            architecture: platform.architecture,
+            size: description.descriptor.size
+        )
+    }
+
+    private static func date(from string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        if let date = formatter.date(from: string) {
+            return date
+        }
+
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string)
+    }
     
     private static let infraImages = [
         DefaultsStore.get(key: .defaultBuilderImage),
@@ -595,13 +732,13 @@ public struct BuildImageOutputConfiguration {
 }
 
 public struct ImageLayer {
-    public let digest: String
+    public let digest: String?
     public let size: Int64
     public let createdBy: String?
     public let comment: String?
     public let emptyLayer: Bool
     
-    public init(digest: String, size: Int64, createdBy: String?, comment: String?, emptyLayer: Bool) {
+    public init(digest: String?, size: Int64, createdBy: String?, comment: String?, emptyLayer: Bool) {
         self.digest = digest
         self.size = size
         self.createdBy = createdBy
@@ -610,16 +747,32 @@ public struct ImageLayer {
     }
 }
 
+public struct ImageListItem {
+    public let description: ImageDescription
+    public let info: ImageInfo?
+    public let inUse: Bool
+    
+    public init(description: ImageDescription, info: ImageInfo?, inUse: Bool) {
+        self.description = description
+        self.info = info
+        self.inUse = inUse
+    }
+}
+
 public struct ImageInfo {
+    public static let unknownCreationDate = Date(timeIntervalSince1970: 0)
+    
     public let variant: String?
-    public let created: Date?
+    public let created: Date
     public let os: String
     public let architecture: String
+    public let size: Int64
     
-    public init(variant: String?, created: Date?, os: String, architecture: String) {
+    public init(variant: String?, created: Date, os: String, architecture: String, size: Int64) {
         self.variant = variant
         self.created = created
         self.os = os
         self.architecture = architecture
+        self.size = size
     }
 }
