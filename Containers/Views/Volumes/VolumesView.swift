@@ -171,26 +171,21 @@ struct VolumesView: View {
                 await self.listVolumes()
             }
         }
-        .sheet(isPresented: $showCreateVolumeView, onDismiss: {
+        .modal(isPresented: $showCreateVolumeView, onDismiss: {
             Task {
                 await self.listVolumes()
             }
         }, content: {
             CreateVolumeView()
         })
-        .sheet(isPresented: $showVolumeDetail, onDismiss: {
+        .modal(isPresented: $showVolumeDetail, onDismiss: {
             selectedVolume = nil
         }) {
             if let volume = selectedVolume {
-                VolumeDetailView(
-                    volume: volume,
-                    onClose: {
-                        showVolumeDetail = false
-                    }
-                )
+                VolumeDetailView(volume: volume)
             }
         }
-        .sheet(item: $showInUseContainerForVolume, content: { volume in
+        .modal(item: $showInUseContainerForVolume, content: { volume in
             ImageContainersView(volume: volume)
         })
         .alert("Error", isPresented: $showError, actions: {

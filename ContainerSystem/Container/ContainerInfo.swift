@@ -16,18 +16,12 @@ public struct ContainerInfo: Sendable {
     public var publishSockets: [PublishSocket] = []
     public var temporaryFileSystem: [Filesystem] = []
     public var entryPoint: String?
-    public var platform: String?
-    public var os = "linux"
-    public var arch: String = Platform.current.architecture
+    public var platform: Platform?
     public var kernel: String?
     public var networks: [String] = []
     public var cidfile = ""
     public var labels: [String: String] = [:]
-    public var runtimeHandler: String = "container-runtime-linux"
-    public var readOnly: Bool = false
-    public var useInit: Bool = false
-    public var capAdd: [String] = []
-    public var capDrop: [String] = []
+    public var capabilities: [String] = []
     public var shmSize: UInt64?
     public var stopSignal: String?
     

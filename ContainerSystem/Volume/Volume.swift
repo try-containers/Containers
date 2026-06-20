@@ -2,8 +2,6 @@
 //  Volume.swift
 //  Containers
 //
-//  Local implementation of Volume types (replaces ContainerResource.Volume)
-//
 
 import Foundation
 

@@ -177,17 +177,17 @@ struct ImagesView: View {
                 await self.listImages()
             }
         }
-        .sheet(item: $createContainerForImage, onDismiss: {
+        .modal(item: $createContainerForImage, onDismiss: {
             Task {
                 await self.listImages()
             }
         }, content: { image in
             CreateContainerView(imageReference: image.imageDescription.reference)
         })
-        .sheet(item: $showInUseContainerForImage, content: { image in
+        .modal(item: $showInUseContainerForImage, content: { image in
             ImageContainersView(image: image)
         })
-        .sheet(item: $showImageDetails, content: { image in
+        .modal(item: $showImageDetails, content: { image in
             ImageDetailView(
                 image: image,
                 createContainer: {
@@ -197,10 +197,13 @@ struct ImagesView: View {
                 showDeleteConfirmation: $showDeleteConfirmation
             )
         })
-        .sheet(isPresented: $showSaveImage, onDismiss: {
+        .modal(isPresented: $showSaveImage, onDismiss: {
             self.imagesToSave = ""
         }, content: {
-            SaveImageView(images: self.images.map(\.imageDescription), imageReferences: $imagesToSave)
+            SaveImageView(
+                images: self.images.map(\.imageDescription),
+                imageReferences: $imagesToSave
+            )
         })
         .alert("Error", isPresented: $showError, actions: {
             Button("OK") {

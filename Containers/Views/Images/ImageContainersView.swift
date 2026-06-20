@@ -16,7 +16,7 @@ struct ImageContainersView: View {
     let volume: VolumeViewModel?
 
     @Environment(ContainerManager.self) private var containerManager
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.close) private var close
 
     @SwiftUI.State private var containers: [ContainerViewModel]
     @SwiftUI.State private var isLoading: Bool
@@ -74,7 +74,7 @@ struct ImageContainersView: View {
                 Spacer()
                 
                 Button {
-                    dismiss()
+                    close()
                 } label: {
                     Text("Close")
                         .frame(minWidth: 80)

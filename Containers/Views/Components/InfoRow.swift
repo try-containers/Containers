@@ -24,37 +24,52 @@ struct InfoRow: View {
         HStack(alignment: .top) {
             if let icon, let label {
                 Label(
-                    label,
+                    "\(label):",
                     systemImage: icon
                 )
                 .font(.body)
+                .fontWeight(.semibold)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                
-                Spacer()
+                .frame(width: EditableFormLayout.labelWidth, alignment: .trailing)
+                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
             }  else if let icon {
                 Image(systemName: icon)
                     .font(.body)
                     .foregroundStyle(.primary)
-                    .frame(minWidth: 140, alignment: .leading)
-                
-                Spacer()
+                    .frame(width: EditableFormLayout.labelWidth, alignment: .trailing)
+                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
             } else if let label {
-                Text(label)
+                Text("\(label):")
                     .font(.body)
                     .foregroundStyle(.primary)
-                    .frame(minWidth: 140, alignment: .leading)
-                
+                    .frame(width: EditableFormLayout.labelWidth, alignment: .trailing)
+                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+            } else {
                 Spacer()
+                    .frame(width: EditableFormLayout.labelWidth)
+                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
             }
             
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
+            HStack(alignment: .center, spacing: 8) {
+                Text(value)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(nil)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                if let action {
+                    action
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .frame(minHeight: 22)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 5))
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 }

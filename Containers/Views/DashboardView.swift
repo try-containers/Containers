@@ -176,17 +176,17 @@ struct DashboardView: View {
                 Text(message)
                     .lineLimit(5)
             })
-            .sheet(isPresented: $showCreateContainerView, onDismiss: {
+            .modal(isPresented: $showCreateContainerView, onDismiss: {
                 refreshTrigger += 1
             }, content: {
                 CreateContainerView(imageReference: "")
             })
-            .sheet(isPresented: $showCreateVolumeView, onDismiss: {
+            .modal(isPresented: $showCreateVolumeView, onDismiss: {
                 refreshTrigger += 1
             }, content: {
                 CreateVolumeView()
             })
-            .sheet(isPresented: $showBuildImageView, onDismiss: {
+            .modal(isPresented: $showBuildImageView, onDismiss: {
                 refreshTrigger += 1
             }, content: {
                 BuildImageView()

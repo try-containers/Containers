@@ -14,7 +14,7 @@ import UniformTypeIdentifiers
 
 struct SaveImageView: View {
     @Environment(ImageManager.self) private var imageManager
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.close) private var close
 
     var images: [ImageDescription]
 
@@ -105,7 +105,7 @@ struct SaveImageView: View {
                             
             HStack(spacing: 16) {
                 Button(action: {
-                    self.dismiss()
+                    close()
                 }, label: {
                     Text("Cancel")
                         .padding(.horizontal, 2)
@@ -147,7 +147,7 @@ struct SaveImageView: View {
                             
                             let _ = NSWorkspace.shared.open(outputDirectory)
 
-                            self.dismiss()
+                            close()
                         } catch (let error) {
                             self.errorMessage = "\(error)"
                         }
@@ -168,22 +168,25 @@ struct SaveImageView: View {
         .padding(.all, 24)
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
-        .sheet(isPresented: $showProgressView, content: {
+        .modal(isPresented: $showProgressView, content: {
             ProgressView()
         })
-        .sheet(isPresented: $showPickLocalImage, content: {
+        .modal(isPresented: $showPickLocalImage, content: {
             let referencesArray: [String] = self.imageReferences.split(separator: ",").map({$0.trimmingCharacters(in: .whitespacesAndNewlines)})
             // filter out the selected
             let availableImages: [ImageDescription] = self.images.filter({!referencesArray.contains($0.reference)})
 
-            ImageSelectionView(images: availableImages, onImageSelect: { reference in
-                self.imageReferences = referencesArray.joined(separator: ",")
-                if self.imageReferences.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    self.imageReferences = reference
-                } else {
-                    self.imageReferences.append(", \(reference)")
+            ImageSelectionView(
+                images: availableImages,
+                onImageSelect: { reference in
+                    self.imageReferences = referencesArray.joined(separator: ",")
+                    if self.imageReferences.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.imageReferences = reference
+                    } else {
+                        self.imageReferences.append(", \(reference)")
+                    }
                 }
-            })
+            )
         })
         .onDisappear {
             self.showProgressView = false
@@ -191,5 +194,4 @@ struct SaveImageView: View {
         .interactiveDismissDisabled()
       
     }
-
 }

@@ -29,50 +29,38 @@ struct InfoSection: View {
     }
     
     var body: some View {
-        GroupBox(content: {
+        VStack(spacing: 0) {
             if rows.isEmpty {
-                Group {
-                    if let emptyImage {
-                        Image(systemName: emptyImage)
-                            .font(.title3)
-                            .foregroundStyle(.tertiary)
-                    }
-                    
-                    if let emptyMessage {
-                        Text(emptyMessage)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } else {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    if index != 0 {
-                        Divider()
-                            .padding(.horizontal, 12)
-                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                    }
-                    
-                    row
-                }
-            }
-        }, label: {
-            Group {
-                if let title {
-                    Text(title)
-                        .font(.headline)
-                        .fontWeight(.semibold)
+                if let emptyImage {
+                    Image(systemName: emptyImage)
+                        .font(.title3)
+                        .foregroundStyle(.tertiary)
                 }
                 
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
+                if let emptyMessage {
+                    Text(emptyMessage)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+            } else {
+                ForEach(rowItems) { item in
+                    item.row
+                }
             }
-            .padding(.bottom, 5)
-        })
-        
+        }
+        .padding(.bottom, 6)
     }
+
+    private var rowItems: [InfoSectionRowItem] {
+        rows.indices.map { index in
+            InfoSectionRowItem(id: index, row: rows[index])
+        }
+    }
+}
+
+private struct InfoSectionRowItem: Identifiable {
+    let id: Int
+    let row: InfoRow
 }
 
 #Preview {

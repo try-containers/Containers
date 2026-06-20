@@ -11,6 +11,7 @@ import ContainerSystem
 struct ContainersView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(SystemManager.self) private var system
+    @Environment(VolumeManager.self) private var volumeManager
     
     @Binding var searchText: String
     @Binding var runningContainersOnly: Bool
@@ -19,11 +20,11 @@ struct ContainersView: View {
     
     @State private var containers: [ContainerViewModel] = []
     @State private var selectedContainer: ContainerViewModel? = nil
+    @State private var detailPresentation: ContainerDetailPresentation? = nil
     @State private var lastUpdated: Date? = nil
     @State private var error: Error?
     @State private var showError = false
     @State private var showDeleteConfirmation = false
-    @State private var showContainerDetail = false
     @State private var showCreateContainerView = false
     
     private var trimmedText: String {
@@ -51,12 +52,13 @@ struct ContainersView: View {
                 Table(
                     of: ContainerViewModel.self,
                 columns: {
-                    TableColumn("ID") { container in
+                    TableColumn("Name") { container in
                         Button(action: {
-                            selectedContainer = container
-                            showContainerDetail = true
+                            Task {
+                                await openDetail(for: container)
+                            }
                         }, label: {
-                            Text(container.id)
+                            Text(container.name)
                                 .lineLimit(1)
                                 .underline()
                         })
@@ -95,7 +97,6 @@ struct ContainersView: View {
                     .width(min: 80, ideal: 100, max: 140)
                     
                     TableColumn("Actions") { container in
-                        
                         HStack(spacing: 12) {
                             switch container.status {
                             case .running:
@@ -107,7 +108,6 @@ struct ContainersView: View {
                                                     ids: [container.id],
                                                     timeoutSeconds: Int32(UserDefaults.stopContainerTimeoutSeconds)
                                                 )
-                                                
                                             } catch (let err) {
                                                 self.error = err
                                                 self.showError = true
@@ -157,10 +157,8 @@ struct ContainersView: View {
                                     .foregroundStyle(.red)
                             })
                             .buttonStyle(.plain)
-                            
                         }
                         .padding(.horizontal, 8)
-                        
                     }
                     .width(min: 92, ideal: 92, max: 92)
                 },
@@ -220,25 +218,20 @@ struct ContainersView: View {
                 await refreshContainers()
             }
         }
-        .sheet(isPresented: $showCreateContainerView, onDismiss: {
+        .modal(isPresented: $showCreateContainerView, onDismiss: {
             Task {
                 await refreshContainers()
             }
         }, content: {
             CreateContainerView(imageReference: "")
         })
-        .sheet(isPresented: $showContainerDetail, onDismiss: {
-            selectedContainer = nil
-        }) {
-            if let container = selectedContainer {
-                ContainerDetailView(
-                    container: container,
-                    onClose: {
-                        showContainerDetail = false
-                    }
-                )
-                .environment(containerManager)
-            }
+        .modal(item: $detailPresentation) { presentation in
+            ContainerDetailView(
+                container: presentation.container,
+                initialSnapshot: presentation.snapshot
+            )
+            .environment(containerManager)
+            .environment(volumeManager)
         }
         .alert("Error", isPresented: $showError, actions: {
             Button("OK") {
@@ -281,7 +274,19 @@ struct ContainersView: View {
             }
         }
     }
-    
+
+    private func openDetail(for container: ContainerViewModel) async {
+        do {
+            let snapshot = try await containerManager.get(id: container.id)
+            detailPresentation = ContainerDetailPresentation(
+                container: container,
+                snapshot: snapshot
+            )
+        } catch(let err) {
+            self.error = err
+            self.showError = true
+        }
+    }
 
     private func refreshContainers() async {
         do {
@@ -294,6 +299,13 @@ struct ContainersView: View {
             self.showError = true
         }
     }
+}
+
+private struct ContainerDetailPresentation: Identifiable {
+    var id: String { container.id }
+
+    let container: ContainerViewModel
+    let snapshot: ContainerSnapshot
 }
 
 #Preview {

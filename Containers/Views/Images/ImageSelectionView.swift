@@ -17,7 +17,7 @@ struct ImageSelectionView: View {
     
     @SwiftUI.State private var searchText: String = ""
     
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.close) private var close
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -41,7 +41,7 @@ struct ImageSelectionView: View {
                 ForEach(filteredImages, id: \.digest) { image in
                     Button(action: {
                         self.onImageSelect(image.reference)
-                        self.dismiss()
+                        close()
                     }, label: {
                         Text(image.reference)
                             .padding(.vertical, 8)
@@ -58,7 +58,7 @@ struct ImageSelectionView: View {
             .background(RoundedRectangle(cornerRadius: 4).fill(.clear).stroke(.secondary, style: .init(lineWidth: 1)))
             
             Button(action: {
-                self.dismiss()
+                close()
             }, label: {
                 Text("Cancel")
                     .padding(.horizontal, 2)

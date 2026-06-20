@@ -14,7 +14,7 @@ struct AddVolumeMountView: View {
     let onMount: (Volume, String) async throws -> Void
     
     @Environment(VolumeManager.self) private var volumeManager
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.close) private var close
     
     @SwiftUI.State private var volumeName: String = ""
     @SwiftUI.State private var mountPath: String = ""
@@ -106,7 +106,7 @@ struct AddVolumeMountView: View {
                 Spacer()
                 
                 Button("Cancel") {
-                    dismiss()
+                    close()
                 }
                 .buttonStyle(.bordered)
                 .disabled(isMounting)
@@ -121,10 +121,13 @@ struct AddVolumeMountView: View {
             .background(Color(nsColor: .controlBackgroundColor))
         }
         .frame(width: 520, height: 420)
-        .sheet(isPresented: $showVolumePicker) {
-            VolumeSelectionView(volumes: availableVolumes) { selectedName in
-                volumeName = selectedName
-            }
+        .modal(isPresented: $showVolumePicker) {
+            VolumeSelectionView(
+                volumes: availableVolumes,
+                onVolumeSelect: { selectedName in
+                    volumeName = selectedName
+                }
+            )
         }
     }
     
@@ -175,7 +178,7 @@ struct AddVolumeMountView: View {
                 }
                 
                 try await onMount(volume, destination)
-                dismiss()
+                close()
             } catch {
                 errorMessage = "\(error)"
             }

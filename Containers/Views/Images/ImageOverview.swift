@@ -9,17 +9,15 @@ import SwiftUI
 
 struct ImageOverview: View {
     let image: ImageViewModel
-
+    
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                InfoSection(rows: detailRows)
-
-            }
-            .padding(20)
+        VStack(alignment: .leading, spacing: 20) {
+            InfoSection(rows: detailRows)
+            
         }
+        .padding(20)
     }
-
+    
     private var detailRows: [InfoRow] {
         [
             InfoRow(label: "Tag", value: image.tag),

@@ -59,13 +59,10 @@ public struct ContainerConfiguration: Sendable, Codable {
     public var initProcess: ProcessConfiguration
     public var platform: Platform = .current
     public var resources: Resources = Resources()
-    public var runtimeHandler: String = "container-runtime-linux"
     public var virtualization: Bool = false
     public var ssh: Bool = false
-    public var readOnly: Bool = false
     public var useInit: Bool = false
-    public var capAdd: [String] = []
-    public var capDrop: [String] = []
+    public var capabilities: [String] = []
     public var shmSize: UInt64?
     public var stopSignal: String?
     public var creationDate: Date = Date()
@@ -84,13 +81,10 @@ public struct ContainerConfiguration: Sendable, Codable {
         case initProcess
         case platform
         case resources
-        case runtimeHandler
         case virtualization
         case ssh
-        case readOnly
         case useInit
-        case capAdd
-        case capDrop
+        case capabilities
         case shmSize
         case stopSignal
         case creationDate
@@ -111,13 +105,10 @@ public struct ContainerConfiguration: Sendable, Codable {
         self.initProcess = try container.decode(ProcessConfiguration.self, forKey: .initProcess)
         self.platform = try container.decodeIfPresent(Platform.self, forKey: .platform) ?? .current
         self.resources = try container.decodeIfPresent(Resources.self, forKey: .resources) ?? Resources()
-        self.runtimeHandler = try container.decodeIfPresent(String.self, forKey: .runtimeHandler) ?? "container-runtime-linux"
         self.virtualization = try container.decodeIfPresent(Bool.self, forKey: .virtualization) ?? false
         self.ssh = try container.decodeIfPresent(Bool.self, forKey: .ssh) ?? false
-        self.readOnly = try container.decodeIfPresent(Bool.self, forKey: .readOnly) ?? false
         self.useInit = try container.decodeIfPresent(Bool.self, forKey: .useInit) ?? false
-        self.capAdd = try container.decodeIfPresent([String].self, forKey: .capAdd) ?? []
-        self.capDrop = try container.decodeIfPresent([String].self, forKey: .capDrop) ?? []
+        self.capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities) ?? []
         self.shmSize = try container.decodeIfPresent(UInt64.self, forKey: .shmSize)
         self.stopSignal = try container.decodeIfPresent(String.self, forKey: .stopSignal)
         self.creationDate = try container.decodeIfPresent(Date.self, forKey: .creationDate) ?? Date(timeIntervalSince1970: 0)

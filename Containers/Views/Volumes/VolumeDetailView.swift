@@ -10,8 +10,8 @@ import ContainerSystem
 
 struct VolumeDetailView: View {
     let volume: VolumeViewModel
-    let onClose: () -> Void
     
+    @Environment(\.close) private var close
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
     
     enum DetailCategory: String, CaseIterable, Hashable {
@@ -22,7 +22,7 @@ struct VolumeDetailView: View {
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
-            onClose: onClose,
+            onClose: close,
             header: {
                 Text(volume.name)
                     .font(.title2)
@@ -33,6 +33,9 @@ struct VolumeDetailView: View {
             },
             tabTitle: { category in
                 category.rawValue.localizedCapitalized
+            },
+            fixedHeightTab: { category in
+                category != .overview
             },
             tabContent: { category in
                 switch category {

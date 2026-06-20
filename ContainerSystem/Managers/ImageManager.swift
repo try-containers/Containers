@@ -122,7 +122,7 @@ public final class ImageManager {
     
     public func pull(
         reference: String,
-        platform: Platform = .current,
+        platform: Platform? = .current,
         scheme: RequestScheme = .auto
     ) async throws {
         let service = try await runtime.getImagesService()

@@ -13,6 +13,8 @@ import ContainerizationOS
 import UniformTypeIdentifiers
 
 struct BuildImageView: View {
+    private static let anyPlatformOption = "Any"
+    
     
     enum CreationMethod: String, CaseIterable {
         case pull = "Pull from Registry"
@@ -43,18 +45,18 @@ struct BuildImageView: View {
     }
     
     @Environment(ImageManager.self) private var imageManager
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.close) private var close
     
     @SwiftUI.State private var currentStep: Step = .method
     @SwiftUI.State private var selectedMethod: CreationMethod?
     @SwiftUI.State private var errorMessage: String?
     @SwiftUI.State private var isCreating: Bool = false
     @SwiftUI.State private var creationTask: Task<Void, Never>?
-    
+
     // Pull fields
     @SwiftUI.State private var imageName: String = ""
     @SwiftUI.State private var tag: String = "latest"
-    @SwiftUI.State private var platformString: String = Platform.current.description
+    @SwiftUI.State private var platformString: String = Self.anyPlatformOption
     
     // Build fields
     @SwiftUI.State private var dockerFile: URL?
@@ -77,86 +79,86 @@ struct BuildImageView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Build Image")
                         .font(.headline)
-                
-                if let errorMessage = self.errorMessage {
-                    Text(errorMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
+                    
+                    if let errorMessage = self.errorMessage {
+                        Text(errorMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.top, 24)
-            .padding(.bottom, 16)
-            
-            Divider()
-            
-            // Step content
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if isCreating {
-                        creatingView()
-                    } else {
-                        Group {
-                            switch currentStep {
-                            case .method:
-                                methodStep()
-                            case .configuration:
-                                configurationStep()
-                            case .review:
-                                reviewStep()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
+                
+                Divider()
+                
+                // Step content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        if isCreating {
+                            creatingView()
+                        } else {
+                            Group {
+                                switch currentStep {
+                                case .method:
+                                    methodStep()
+                                case .configuration:
+                                    configurationStep()
+                                case .review:
+                                    reviewStep()
+                                }
                             }
                         }
                     }
+                    .multilineTextAlignment(.leading)
+                    .padding(.all, 24)
                 }
-                .multilineTextAlignment(.leading)
-                .padding(.all, 24)
-            }
-            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-            
-            Divider()
-            
-            // Navigation buttons
-            HStack(spacing: 16) {
-                Button(action: {
-                    self.dismiss()
-                }, label: {
-                    Text("Cancel")
-                        .padding(.horizontal, 2)
-                })
-                .buttonStyle(.bordered)
-                .disabled(isCreating)
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
                 
-                Spacer()
+                Divider()
                 
-                if !isCreating && currentStep.rawValue > 0 {
-                    Button(action: previousStep, label: {
-                        Text("Back")
+                // Navigation buttons
+                HStack(spacing: 16) {
+                    Button(action: {
+                        close()
+                    }, label: {
+                        Text("Cancel")
                             .padding(.horizontal, 2)
                     })
                     .buttonStyle(.bordered)
-                }
-                
-                if !isCreating {
-                    if currentStep != .review {
-                        Button(action: nextStep, label: {
-                            Text("Next")
+                    .disabled(isCreating)
+                    
+                    Spacer()
+                    
+                    if !isCreating && currentStep.rawValue > 0 {
+                        Button(action: previousStep, label: {
+                            Text("Back")
                                 .padding(.horizontal, 2)
                         })
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        .disabled(!canProceedToNextStep)
-                    } else {
-                        Button(action: createImage, label: {
-                            Text("Create")
-                                .padding(.horizontal, 2)
-                        })
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
+                        .buttonStyle(.bordered)
+                    }
+                    
+                    if !isCreating {
+                        if currentStep != .review {
+                            Button(action: nextStep, label: {
+                                Text("Next")
+                                    .padding(.horizontal, 2)
+                            })
+                            .buttonStyle(.borderedProminent)
+                            .tint(.blue)
+                            .disabled(!canProceedToNextStep)
+                        } else {
+                            Button(action: createImage, label: {
+                                Text("Create")
+                                    .padding(.horizontal, 2)
+                            })
+                            .buttonStyle(.borderedProminent)
+                            .tint(.blue)
+                        }
                     }
                 }
-            }
-            .padding(.all, 24)
+                .padding(.all, 24)
             }
         }
         .frame(width: 600, height: 520)
@@ -167,6 +169,17 @@ struct BuildImageView: View {
     }
     
     // MARK: - Step Views
+    
+    private static var platformOptions: [String] {
+        let current = Platform.current
+        var options = [Self.anyPlatformOption, current.description]
+        
+        if current.architecture == "arm64" {
+            options.append("linux/amd64")
+        }
+        
+        return options
+    }
     
     @ViewBuilder
     func methodStep() -> some View {
@@ -243,29 +256,25 @@ struct BuildImageView: View {
         VStack(alignment: .leading, spacing: 24) {
             EditableField(
                 title: "Image Name",
-                subtitle: "Enter the image name from the registry",
+                description: "Enter the image name from the registry",
                 placeholder: "Ex: nginx, ubuntu, redis",
                 value: $imageName
             )
+
+            EditableField(
+                title: "Tag",
+                description: "Specify the image tag or version",
+                placeholder: "Ex: latest, 1.0, stable",
+                value: $tag
+            )
             
-            HStack {
-                EditableField(
-                    title: "Tag",
-                    subtitle: "Specify the image tag or version",
-                    placeholder: "Ex: latest, 1.0, stable",
-                    value: $tag
-                )
-                
-                Spacer()
-                    .frame(width: 24)
-                
-                EditableField(
-                    title: "Platform",
-                    subtitle: "Target platform for the image",
-                    placeholder: "Ex: linux/amd64",
-                    value: $platformString
-                )
-            }
+            EditableField(
+                title: "Platform",
+                description: "Choose Any to pull without filtering to a specific platform.",
+                placeholder: "Platform",
+                options: Self.platformOptions,
+                selection: $platformString
+            )
         }
     }
     
@@ -308,14 +317,14 @@ struct BuildImageView: View {
             
             EditableField(
                 title: "Image Tag",
-                subtitle: "⭑ If empty, a generated UUID will be used",
+                description: "⭑ If empty, a generated UUID will be used",
                 placeholder: "Ex: myapp:latest",
                 value: $buildTag
             )
             
             EditableField(
                 title: "Target Stage (Optional)",
-                subtitle: "For multi-stage builds",
+                description: "For multi-stage builds",
                 placeholder: "Ex: production",
                 value: $targetStage
             )
@@ -388,23 +397,23 @@ struct BuildImageView: View {
     func creatingView() -> some View {
         VStack(spacing: 0) {
             Spacer()
-
+            
             VStack(spacing: 32) {
                 ProgressView()
                     .controlSize(.large)
                     .scaleEffect(1.5)
-
+                
                 VStack(spacing: 12) {
                     Text("Creating Image")
                         .font(.title2)
                         .fontWeight(.semibold)
-
+                    
                     Text(progressMessage)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
-
+                
                 Button(action: cancelCreation) {
                     Text("Cancel")
                         .padding(.horizontal, 16)
@@ -412,7 +421,7 @@ struct BuildImageView: View {
                 }
                 .buttonStyle(.bordered)
             }
-
+            
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -455,6 +464,7 @@ struct BuildImageView: View {
     
     func nextStep() {
         guard let nextStep = Step(rawValue: currentStep.rawValue + 1) else { return }
+        
         withAnimation {
             currentStep = nextStep
             errorMessage = nil
@@ -473,11 +483,11 @@ struct BuildImageView: View {
     
     func createImage() {
         guard let method = selectedMethod else { return }
-
+        
         creationTask = Task { @MainActor in
             isCreating = true
             errorMessage = nil
-
+            
             do {
                 switch method {
                 case .pull:
@@ -487,10 +497,10 @@ struct BuildImageView: View {
                 case .load:
                     try await loadImage()
                 }
-
+                
                 // Dismiss on success
-                dismiss()
-
+                close()
+                
             } catch {
                 // On error, go back to review step and show error
                 isCreating = false
@@ -498,7 +508,7 @@ struct BuildImageView: View {
             }
         }
     }
-
+    
     func cancelCreation() {
         creationTask?.cancel()
         creationTask = nil
@@ -507,7 +517,13 @@ struct BuildImageView: View {
     }
     
     func pullImage() async throws {
-        let platform = try Platform(from: platformString)
+        let platform: Platform?
+        if platformString == Self.anyPlatformOption {
+            platform = nil
+        } else {
+            platform = try Platform(from: platformString)
+        }
+        
         let reference = tag.isEmpty ? imageName : "\(imageName):\(tag)"
         
         try await imageManager.pull(reference: reference, platform: platform)

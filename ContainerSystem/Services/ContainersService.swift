@@ -698,17 +698,18 @@ internal actor ContainersService {
                 searchDomains: dns.searchDomains, options: dns.options)
         }
 
-        Self.configureInitialProcess(czConfig: &czConfig, config: config)
+        try Self.configureInitialProcess(czConfig: &czConfig, config: config)
     }
 
     private static func configureInitialProcess(
         czConfig: inout LinuxContainer.Configuration,
         config: ContainerConfiguration
-    ) {
+    ) throws {
         let process = config.initProcess
 
         czConfig.process.arguments = [process.executable] + process.arguments
         czConfig.process.environmentVariables = process.environment
+        czConfig.process.capabilities = try capabilities(from: config.capabilities)
 
         if config.ssh, Foundation.ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"] != nil {
             let sshEnvVar = "SSH_AUTH_SOCK"
@@ -742,6 +743,36 @@ internal actor ContainersService {
                 username: ""
             )
         }
+    }
+    
+    private static func capabilities(from names: [String]) throws -> Containerization.LinuxCapabilities {
+        let capabilities = try capabilitySet(from: names)
+        
+        guard !capabilities.isEmpty else {
+            return .allCapabilities
+        }
+        
+        return Containerization.LinuxCapabilities(capabilities: Array(capabilities))
+    }
+    
+    private static func capabilitySet(from names: [String]) throws -> Set<CapabilityName> {
+        var capabilities: Set<CapabilityName> = []
+        
+        for name in names {
+            let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            guard !trimmedName.isEmpty else {
+                continue
+            }
+            
+            if trimmedName.uppercased() == "ALL" {
+                capabilities.formUnion(CapabilityName.allCases)
+            } else {
+                capabilities.insert(try CapabilityName(rawValue: trimmedName))
+            }
+        }
+        
+        return capabilities
     }
 
     private func getInitBlock(for platform: Platform) async throws -> Filesystem {

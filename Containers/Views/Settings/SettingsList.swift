@@ -118,7 +118,7 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
             }
         }
         .groupBoxStyle(SettingsListGroupBoxStyle())
-        .sheet(isPresented: Binding(
+        .modal(isPresented: Binding(
             get: { editingItemID != nil },
             set: { isPresented in
                 if !isPresented { editingItemID = nil }
@@ -225,7 +225,7 @@ private struct EditableRow: View {
 struct EditableListItemEditor<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.close) private var close
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -235,7 +235,7 @@ struct EditableListItemEditor<Content: View>: View {
             content
             HStack {
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("Done") { close() }
                     .keyboardShortcut(.defaultAction)
             }
         }

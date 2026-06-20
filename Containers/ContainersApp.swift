@@ -47,6 +47,7 @@ struct ContainersApp: App {
     @State private var networkManager = NetworkManager()
     
     static let dashboardWindowId = "dashboard"
+    static let settingsWindowId = "settings"
     
     var body: some Scene {
         Window("Containers", id: Self.dashboardWindowId, content: {
@@ -73,10 +74,27 @@ struct ContainersApp: App {
         })
         .menuBarExtraStyle(.menu)
         
-        Settings {
+        Window("Settings", id: Self.settingsWindowId) {
             SettingsView()
                 .environment(networkManager)
                 .environment(systemManager)
         }
+        .defaultSize(width: 600, height: 400)
+        .defaultPosition(.center)
+        .commands { PreferencesCommands() }
+
+    }
+    
+    struct PreferencesCommands: Commands {
+      @Environment( \.openWindow ) private var openWindow
+      var body: some Commands {
+        CommandGroup ( replacing: .appSettings ) {
+          Button {
+              openWindow(id: ContainersApp.settingsWindowId)
+          } label: {
+            Label("Settings...", systemImage: "gearshape")
+          }
+        }
+      }
     }
 }

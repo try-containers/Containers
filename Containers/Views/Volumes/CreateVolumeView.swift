@@ -11,7 +11,7 @@ import ContainerizationOCI
 
 struct CreateVolumeView: View {
     @Environment(VolumeManager.self) private var volumeManager
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.close) private var close
     
     @SwiftUI.State private var name: String = ""
     @SwiftUI.State private var options: [KeyValue] = []
@@ -21,7 +21,7 @@ struct CreateVolumeView: View {
     @SwiftUI.State private var errorMessage: String?
     @SwiftUI.State private var showAdditionalSettings: Bool = false
     @SwiftUI.State private var showProgressView: Bool = false
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -43,7 +43,7 @@ struct CreateVolumeView: View {
             Divider()
             
             // Content
-            ScrollView {
+           
                 VStack(alignment: .leading, spacing: 20) {
                     // Error message
                     
@@ -86,9 +86,11 @@ struct CreateVolumeView: View {
                     EditableList(
                         items: $labels,
                         title: "Metadata",
+                        columnTitles: ["Key", "Value"],
                         addLabel: "Add Label",
                         newItem: { KeyValue() },
                         rowSummary: keyValueSummary,
+                        rowValues: { [$0.key, $0.value] },
                         editorContent: { $keyValue in
                             KeyValueEditor(keyValue: $keyValue)
                         }
@@ -99,16 +101,18 @@ struct CreateVolumeView: View {
                     EditableList(
                         items: $options,
                         title: "Driver Specific Options",
+                        columnTitles: ["Key", "Value"],
                         addLabel: "Add Option",
                         newItem: { KeyValue() },
                         rowSummary: keyValueSummary,
+                        rowValues: { [$0.key, $0.value] },
                         editorContent: { $keyValue in
                             KeyValueEditor(keyValue: $keyValue)
                         }
                     )
                 }
                 .padding(20)
-            }
+            
             
             Divider()
             
@@ -126,7 +130,7 @@ struct CreateVolumeView: View {
                 Spacer()
                 
                 Button("Cancel") {
-                    self.dismiss()
+                    close()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
@@ -141,7 +145,7 @@ struct CreateVolumeView: View {
             .padding(16)
             .background(Color(nsColor: .controlBackgroundColor))
         }
-        .frame(width: 450, height: 500)
+        .frame(width: 550, height: 550)
         .animation(.default, value: self.labels.count)
         .animation(.default, value: self.options.count)
         .animation(.default, value: showAdditionalSettings)
@@ -202,7 +206,7 @@ struct CreateVolumeView: View {
                     sizeInBytes: sizeInBytes
                 )
                 
-                self.dismiss()
+                close()
             } catch (let error) {
                 self.errorMessage = "\(error)"
             }
@@ -211,4 +215,3 @@ struct CreateVolumeView: View {
         }
     }
 }
-

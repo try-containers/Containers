@@ -2,8 +2,6 @@
 //  ContainerManager.swift
 //  Containers
 //
-//  Manager for container operations
-//
 //  Created by Axel Martinez on 2026/02/05.
 //
 
@@ -429,10 +427,8 @@ public final class ContainerManager {
         resource: ContainerConfiguration.Resources,
         registryScheme: String
     ) async throws -> (ContainerConfiguration, Kernel) {
-        var requestedPlatform = Parser.platform(os: container.os, arch: container.arch)
-        
-        if let platform = container.platform {
-            requestedPlatform = try Parser.platform(from: platform)
+        guard let platform = container.platform else {
+            throw ContainerizationError(.invalidArgument, message: "Container platform is not specified")
         }
         
         let scheme = try RequestScheme(registryScheme)
@@ -446,7 +442,7 @@ public final class ContainerManager {
         // Resolve image - check local first, then pull if needed
         let imageDescription = try await resolveImage(
             reference: processedReference,
-            platform: requestedPlatform,
+            platform: platform,
             insecure: insecure,
             imagesService: imagesService
         )
@@ -466,7 +462,7 @@ public final class ContainerManager {
         
         try await imagesService.unpack(
             description: initImageDescription,
-            platform: requestedPlatform,
+            platform: platform,
             progressUpdate: { events in
                 Task { @MainActor in
                     self.runtime.progressMessage = events.map { String(describing: $0) }.joined(separator: "\n")
@@ -478,7 +474,7 @@ public final class ContainerManager {
         // since ImagesService doesn't expose config fetching
         let imageStore = try ImageStore(path: imagesDir)
         let image = try await imageStore.get(reference: imageDescription.reference)
-        let imageConfig = try await image.config(for: requestedPlatform).config
+        let imageConfig = try await image.config(for: platform).config
         let pc = try Self.parseProcessConfiguration(
             arguments: arguments,
             process: process,
@@ -487,14 +483,10 @@ public final class ContainerManager {
         )
 
         var config = ContainerConfiguration(id: id, image: imageDescription, process: pc)
-        config.platform = requestedPlatform
+        config.platform = platform
         config.resources = resource
         config.creationDate = Date()
-        config.runtimeHandler = container.runtimeHandler
-        config.readOnly = container.readOnly
-        config.useInit = container.useInit
-        config.capAdd = container.capAdd
-        config.capDrop = container.capDrop
+        config.capabilities = container.capabilities
         config.shmSize = container.shmSize
         config.stopSignal = container.stopSignal ?? imageConfig?.stopSignal
 
@@ -527,7 +519,7 @@ public final class ContainerManager {
             config.dns = nil
         }
 
-        if Platform.current.architecture == "arm64" && requestedPlatform.architecture == "amd64" {
+        if Platform.current.architecture == "arm64" && platform.architecture == "amd64" {
             config.rosetta = true
         }
 

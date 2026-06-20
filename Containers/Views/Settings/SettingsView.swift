@@ -6,60 +6,66 @@
 //
 
 import AppKit
-import SwiftUI
 import ContainerSystem
-
-enum SettingsTab: String, CaseIterable, Identifiable {
-    case general
-    case network
-    
-    var id: Self { self }
-    
-    var title: String {
-        switch self {
-        case .general: "General"
-        case .network: "Network"
-        }
-    }
-    
-    var icon: String {
-        switch self {
-        case .general: "gearshape.fill"
-        case .network: "network"
-        }
-    }
-}
+import SwiftUI
 
 struct SettingsView: View {
     @Environment(NetworkManager.self) private var networkManager
     @Environment(SystemManager.self) private var system
-    
+
     @State private var errorMessage: String?
     @State private var showError: Bool = false
     @State private var storageLocation = UserDefaults.applicationDataRoot
     @State private var dnsDomains: [DNSDomainSetting] = []
-    @State private var selectedTab: SettingsTab = .general
-    
+    @State private var selectedSection: SettingsPane? = .general
+    @State private var sectionHistory: [SettingsPane] = [.general]
+    @State private var sectionHistoryIndex = 0
+
+    private var activeSection: SettingsPane {
+        selectedSection ?? .general
+    }
+
+    private var canNavigateBack: Bool {
+        sectionHistoryIndex > 0
+    }
+
+    private var canNavigateForward: Bool {
+        sectionHistoryIndex < sectionHistory.count - 1
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                ForEach(SettingsTab.allCases) { tab in
-                    SettingsTabButton(
-                        tab: tab,
-                        isSelected: selectedTab == tab
-                    ) {
-                        selectedTab = tab
-                    }
+        NavigationSplitView {
+            List(SettingsPane.allCases, selection: $selectedSection) { section in
+                NavigationLink(value: section) {
+                    SidebarRow(section: section)
                 }
             }
-            .padding(.top, 20)
-            .padding(.bottom, 18)
-            
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 230, ideal: 230, max: 230)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
             content
+                .navigationTitle(activeSection.title)
+                .toolbarTitleDisplayMode(.inlineLarge)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button(action: navigateBack) {
+                    Image(systemName: "chevron.left")
+                }
+                .help("Back")
+                .disabled(!canNavigateBack)
+
+                Button(action: navigateForward) {
+                    Image(systemName: "chevron.right")
+                }
+                .help("Forward")
+                .disabled(!canNavigateForward)
+            }
         }
         .frame(width: 760, height: 540)
         .background(Color(nsColor: .windowBackgroundColor))
-        .navigationTitle(selectedTab.title)
         .task {
             refreshSettings()
         }
@@ -70,6 +76,13 @@ struct SettingsView: View {
         }, message: {
             Text(errorMessage ?? "Unknown Error")
         })
+        .onChange(of: selectedSection) { oldValue, newValue in
+            guard let newValue, newValue != oldValue else {
+                return
+            }
+
+            recordSectionNavigation(to: newValue)
+        }
         .onChange(of: errorMessage) {
             if errorMessage != nil {
                 showError = true
@@ -81,89 +94,91 @@ struct SettingsView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var content: some View {
-        switch selectedTab {
+        switch activeSection {
         case .general:
             generalSettingsContent
         case .network:
             networkSettingsContent
         }
     }
-    
+
     private var generalSettingsContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 storageLocationSection
             }
-            .frame(maxWidth: 560, alignment: .topLeading)
-            .padding(.horizontal, 28)
-            .padding(.top, 8)
-            .padding(.bottom, 28)
+            .frame(maxWidth: 520, alignment: .topLeading)
+            .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
     }
-    
+
     private var networkSettingsContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 dnsDomainsSection
             }
-            .frame(maxWidth: 560, alignment: .topLeading)
-            .padding(.horizontal, 28)
-            .padding(.top, 8)
-            .padding(.bottom, 28)
+            .frame(maxWidth: 520, alignment: .topLeading)
+            .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
     }
-    
+
     private var storageLocationPath: Binding<String> {
         Binding(
             get: { storageLocation.path },
             set: { _ in }
         )
     }
-    
+
     private var storageLocationSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsRow(label: "Storage:") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        TextField("Storage location", text: storageLocationPath)
-                            .textFieldStyle(.roundedBorder)
-                            .disabled(true)
-                        
-                        Button(action: chooseStorageLocation) {
-                            Image(systemName: "folder")
-                        }
-                        .help("Choose")
-                        .disabled(system.isRunning)
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    TextField("Storage location", text: storageLocationPath)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(true)
+
+                    Button(action: chooseStorageLocation) {
+                        Image(systemName: "folder")
                     }
-                    
-                    Text("Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .help("Choose")
+                    .disabled(system.isRunning)
+                }
+
+                Text("Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+
+                HStack {
+                    Spacer()
+
+                    Button("Use Default", action: resetStorageLocation)
+                        .disabled(system.isRunning || UserDefaults.usesDefaultApplicationDataRoot)
                 }
             }
-            
-            Divider()
-            
-            HStack {
-                Spacer()
-                
-                Button("Use Default", action: resetStorageLocation)
-                    .disabled(system.isRunning || UserDefaults.usesDefaultApplicationDataRoot)
+            .padding(12)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Storage")
+                    .font(.headline)
+                    .fontWeight(.semibold)
             }
+            .padding(.bottom, 5)
         }
     }
-    
+
     private var dnsDomainsSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsRow(label: "DNS Domains:") {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     if dnsDomains.isEmpty {
                         Text("No domains configured")
@@ -177,25 +192,64 @@ struct SettingsView: View {
                                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                         }
                     }
-                    
-                    Text("DNS domains let containers access host services, such as host.containers.internal:8000.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
+
+                Text("DNS domains let containers access host services, such as host.containers.internal:8000.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+
+                SettingsWarning("DNS domain management requires administrator privileges. Manage domains by creating resolver files in /etc/resolver/.")
             }
-            
-            Divider()
-            
-            SettingsWarning("DNS domain management requires administrator privileges. Manage domains by creating resolver files in /etc/resolver/.")
+            .padding(12)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("DNS Domains")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+            .padding(.bottom, 5)
         }
     }
-    
+
+    private func navigateBack() {
+        guard canNavigateBack else {
+            return
+        }
+
+        sectionHistoryIndex -= 1
+        selectedSection = sectionHistory[sectionHistoryIndex]
+    }
+
+    private func navigateForward() {
+        guard canNavigateForward else {
+            return
+        }
+
+        sectionHistoryIndex += 1
+        selectedSection = sectionHistory[sectionHistoryIndex]
+    }
+
+    private func recordSectionNavigation(to section: SettingsPane) {
+        guard sectionHistory.indices.contains(sectionHistoryIndex), sectionHistory[sectionHistoryIndex] != section else {
+            return
+        }
+
+        if canNavigateForward {
+            sectionHistory = Array(sectionHistory.prefix(sectionHistoryIndex + 1))
+        }
+
+        sectionHistory.append(section)
+        sectionHistoryIndex = sectionHistory.count - 1
+    }
+
     private func refreshSettings() {
         storageLocation = UserDefaults.applicationDataRoot
         dnsDomains = networkManager.listDomains().map(DNSDomainSetting.init(name:))
     }
-    
+
     private func chooseStorageLocation() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -205,25 +259,25 @@ struct SettingsView: View {
         panel.directoryURL = storageLocation
         panel.prompt = "Choose"
         panel.message = "Choose where Containers stores containers, images, volumes, kernels, and build data."
-        
+
         guard panel.runModal() == .OK, let url = panel.url else {
             return
         }
-        
+
         do {
             let bookmarkData = try url.bookmarkData(
                 options: [.withSecurityScope],
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
-            
+
             let didAccess = url.startAccessingSecurityScopedResource()
             defer {
                 if didAccess {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
-            
+
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             UserDefaults.setApplicationDataRoot(url, bookmarkData: bookmarkData)
             storageLocation = UserDefaults.applicationDataRoot
@@ -231,10 +285,49 @@ struct SettingsView: View {
             errorMessage = error.localizedDescription
         }
     }
-    
+
     private func resetStorageLocation() {
         UserDefaults.resetApplicationDataRoot()
         storageLocation = UserDefaults.applicationDataRoot
+    }
+}
+
+private struct SidebarRow: View {
+    let section: SettingsPane
+
+    var body: some View {
+        Label {
+            Text(section.title)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary)
+        } icon: {
+            Image(systemName: section.icon)
+                .font(.system(size: 13, weight: .medium))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+    }
+}
+
+private enum SettingsPane: String, CaseIterable, Identifiable {
+    case general
+    case network
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .network: "Network"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: "gearshape.fill"
+        case .network: "network"
+        }
     }
 }
 
@@ -245,16 +338,16 @@ private struct DNSDomainSetting: Identifiable {
 
 private struct SettingsWarning: View {
     let message: String
-    
+
     init(_ message: String) {
         self.message = message
     }
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
-            
+
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)

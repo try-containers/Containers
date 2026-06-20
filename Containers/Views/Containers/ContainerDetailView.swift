@@ -11,10 +11,9 @@ import ContainerizationOCI
 import SwiftUI
 
 struct ContainerDetailView: View {
-    let onClose: () -> Void
-    
     @Environment(ContainerManager.self) private var containerManager
     @Environment(VolumeManager.self) private var volumeManager
+    @Environment(\.close) private var close
     
     @SwiftUI.State private var container: ContainerViewModel
     @SwiftUI.State private var snapshot: ContainerSnapshot?
@@ -35,17 +34,19 @@ struct ContainerDetailView: View {
     
     init(
         container: ContainerViewModel,
-        onClose: @escaping () -> Void
+        initialSnapshot: ContainerSnapshot? = nil
     ) {
-        self.onClose = onClose
-        self._container = State(initialValue: container)
-        self._status = State(initialValue: container.status)
+        let initialContainer = initialSnapshot.map(ContainerViewModel.init) ?? container
+
+        self._container = State(initialValue: initialContainer)
+        self._snapshot = State(initialValue: initialSnapshot)
+        self._status = State(initialValue: initialContainer.status)
     }
     
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
-            onClose: onClose,
+            onClose: close,
             header: {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(container.id)
@@ -58,6 +59,9 @@ struct ContainerDetailView: View {
             },
             tabTitle: { tab in
                 tab.rawValue.localizedCapitalized
+            },
+            fixedHeightTab: { tab in
+                tab != .overview
             },
             tabContent: { tab in
                 switch tab {
@@ -75,6 +79,7 @@ struct ContainerDetailView: View {
             }
         )
         .task(id: container.id) {
+            guard snapshot == nil else { return }
             await refreshSnapshot()
         }
         .alert(
@@ -91,7 +96,7 @@ struct ContainerDetailView: View {
                 }
             }
         )
-        .sheet(isPresented: $showAddVolumeMount) {
+        .modal(isPresented: $showAddVolumeMount) {
             AddVolumeMountView(
                 containerID: container.id,
                 existingMountDestinations: snapshot?.configuration.mounts.map(\.destination) ?? [],
@@ -117,7 +122,7 @@ struct ContainerDetailView: View {
                         try await containerManager.delete(ids: [container.id], force: true)
                         
                         error = nil
-                        onClose()
+                        close()
                     } catch {
                         self.error = error
                         showError = true
@@ -307,8 +312,7 @@ struct ContainerDetailView: View {
                 networks: [],
                 startedDate: Date()
             )
-        ),
-        onClose: {}
+        )
     )
-    .frame(width: 800, height: 600)
+    .frame(width: 550)
 }
