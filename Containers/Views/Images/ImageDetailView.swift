@@ -5,32 +5,32 @@
 //  Created by Axel Martinez on 2026/02/14.
 //
 
-import SwiftUI
-import Containerization
 import ContainerSystem
+import Containerization
 import ContainerizationOCI
+import SwiftUI
 
 struct ImageDetailView: View {
     let image: ImageViewModel
     let createContainer: () -> Void
-    
+
     @Environment(\.close) private var close
-    
+
     @Binding var showSaveImage: Bool
     @Binding var showDeleteConfirmation: Bool
-    
+
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
-    
+
     enum DetailCategory: String, CaseIterable, Hashable {
         case overview
         case history
         case inspect
     }
-    
+
     init(
         image: ImageViewModel,
         selectedTab: DetailCategory = .overview,
-        createContainer: @escaping ()-> Void,
+        createContainer: @escaping () -> Void,
         showSaveImage: Binding<Bool>,
         showDeleteConfirmation: Binding<Bool>
     ) {
@@ -40,7 +40,7 @@ struct ImageDetailView: View {
         self._showDeleteConfirmation = showDeleteConfirmation
         self._showSaveImage = showSaveImage
     }
-    
+
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
@@ -62,10 +62,10 @@ struct ImageDetailView: View {
                 switch category {
                 case .overview:
                     ImageOverview(image: image)
-                    
+
                 case .inspect:
                     ImageInspect(image: image)
-                    
+
                 case .history:
                     ImageHistory(
                         imageReference: image.imageDescription.reference,
@@ -75,7 +75,7 @@ struct ImageDetailView: View {
             }
         )
     }
-    
+
     @ViewBuilder
     private var actionButtons: some View {
         ActionButton(
@@ -85,7 +85,7 @@ struct ImageDetailView: View {
         ) {
             createContainer()
         }
-        
+
         ActionButton(
             label: "Save",
             icon: "folder.fill",
@@ -93,7 +93,7 @@ struct ImageDetailView: View {
         ) {
             showSaveImage = true
         }
-        
+
         ActionButton(
             label: "Delete",
             icon: "trash",

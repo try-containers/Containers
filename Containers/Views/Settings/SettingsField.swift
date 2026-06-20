@@ -7,8 +7,12 @@
 
 import SwiftUI
 
-struct SettingsField<Label: View, Option: Hashable & CustomStringConvertible, Format: ParseableFormatStyle>: View
-    where Format.FormatOutput == String {
+struct SettingsField<
+    Label: View,
+    Option: Hashable & CustomStringConvertible,
+    Format: ParseableFormatStyle
+>: View
+where Format.FormatOutput == String {
 
     let title: String?
     let titleIcon: String?
@@ -118,7 +122,7 @@ struct SettingsField<Label: View, Option: Hashable & CustomStringConvertible, Fo
                 }
             }
             .frame(width: fieldWidth)
-            
+
             if let description {
                 Text(description)
                     .font(.caption)
@@ -141,13 +145,18 @@ extension SettingsField where Label == EmptyView {
         fieldWidth: CGFloat? = nil,
     ) where Format == StringFormatStyle, Option == String {
         self.init(
-            title: title, titleIcon: titleIcon,
-            subtitle: subtitle, description: description,
-            placeholder: placeholder, value: value,
+            title: title,
+            titleIcon: titleIcon,
+            subtitle: subtitle,
+            description: description,
+            placeholder: placeholder,
+            value: value,
             format: StringFormatStyle(),
             fieldWidth: fieldWidth,
-            options: [], selection: nil,
-            actionLabel: nil, action: nil
+            options: [],
+            selection: nil,
+            actionLabel: nil,
+            action: nil
         )
     }
 
@@ -164,13 +173,18 @@ extension SettingsField where Label == EmptyView {
         selection: Binding<Option>
     ) where Format == StringFormatStyle {
         self.init(
-            title: title, titleIcon: titleIcon,
-            subtitle: subtitle, description: description,
-            placeholder: placeholder, value: value,
+            title: title,
+            titleIcon: titleIcon,
+            subtitle: subtitle,
+            description: description,
+            placeholder: placeholder,
+            value: value,
             format: StringFormatStyle(),
             fieldWidth: fieldWidth,
-            options: options, selection: selection,
-            actionLabel: nil, action: nil
+            options: options,
+            selection: selection,
+            actionLabel: nil,
+            action: nil
         )
     }
 
@@ -188,13 +202,18 @@ extension SettingsField where Label == EmptyView {
         selection: Binding<Option>
     ) where Format.FormatInput == V {
         self.init(
-            title: title, titleIcon: titleIcon,
-            subtitle: subtitle, description: description,
-            placeholder: placeholder, value: value,
+            title: title,
+            titleIcon: titleIcon,
+            subtitle: subtitle,
+            description: description,
+            placeholder: placeholder,
+            value: value,
             format: format,
             fieldWidth: fieldWidth,
-            options: options, selection: selection,
-            actionLabel: nil, action: nil
+            options: options,
+            selection: selection,
+            actionLabel: nil,
+            action: nil
         )
     }
 }
@@ -213,13 +232,17 @@ extension SettingsField where Option == String {
         action: (() -> Void)? = nil
     ) where Format == StringFormatStyle {
         self.init(
-            title: title, titleIcon: titleIcon,
-            subtitle: subtitle, description: description,
-            placeholder: placeholder, value: value,
+            title: title,
+            titleIcon: titleIcon,
+            subtitle: subtitle,
+            description: description,
+            placeholder: placeholder,
+            value: value,
             format: StringFormatStyle(),
-            options: [], selection: nil,
-            actionLabel: actionLabel, action: action
+            options: [],
+            selection: nil,
+            actionLabel: actionLabel,
+            action: action
         )
     }
 }
-

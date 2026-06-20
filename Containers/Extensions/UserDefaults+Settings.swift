@@ -25,7 +25,8 @@ struct UserDefault<Value> {
 
 extension UserDefaults {
     private static let applicationDataRootKey = "applicationDataRoot"
-    private static let applicationDataRootBookmarkKey = "applicationDataRootBookmark"
+    private static let applicationDataRootBookmarkKey =
+        "applicationDataRootBookmark"
 
     /// Returns the default app root inside the app sandbox.
     static var defaultAppRoot: URL {
@@ -50,11 +51,12 @@ extension UserDefaults {
                     )
 
                     if isStale,
-                       let refreshedBookmark = try? url.bookmarkData(
-                        options: [.withSecurityScope],
-                        includingResourceValuesForKeys: nil,
-                        relativeTo: nil
-                       ) {
+                        let refreshedBookmark = try? url.bookmarkData(
+                            options: [.withSecurityScope],
+                            includingResourceValuesForKeys: nil,
+                            relativeTo: nil
+                        )
+                    {
                         applicationDataRootBookmarkData = refreshedBookmark
                     }
 
@@ -64,7 +66,8 @@ extension UserDefaults {
                 }
             }
 
-            return UserDefaults.standard.url(forKey: applicationDataRootKey) ?? defaultAppRoot
+            return UserDefaults.standard.url(forKey: applicationDataRootKey)
+                ?? defaultAppRoot
         }
         set {
             UserDefaults.standard.set(newValue, forKey: applicationDataRootKey)
@@ -72,7 +75,9 @@ extension UserDefaults {
     }
 
     static var usesDefaultApplicationDataRoot: Bool {
-        applicationDataRootBookmarkData == nil && applicationDataRoot.standardizedFileURL == defaultAppRoot.standardizedFileURL
+        applicationDataRootBookmarkData == nil
+            && applicationDataRoot.standardizedFileURL
+                == defaultAppRoot.standardizedFileURL
     }
 
     static func setApplicationDataRoot(_ url: URL, bookmarkData: Data?) {
@@ -91,9 +96,14 @@ extension UserDefaults {
         }
         set {
             if let newValue {
-                UserDefaults.standard.set(newValue, forKey: applicationDataRootBookmarkKey)
+                UserDefaults.standard.set(
+                    newValue,
+                    forKey: applicationDataRootBookmarkKey
+                )
             } else {
-                UserDefaults.standard.removeObject(forKey: applicationDataRootBookmarkKey)
+                UserDefaults.standard.removeObject(
+                    forKey: applicationDataRootBookmarkKey
+                )
             }
         }
     }

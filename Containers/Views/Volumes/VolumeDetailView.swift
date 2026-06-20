@@ -5,20 +5,20 @@
 //  Created by Axel Martinez on 2026/06/07.
 //
 
-import SwiftUI
 import ContainerSystem
+import SwiftUI
 
 struct VolumeDetailView: View {
     let volume: VolumeViewModel
-    
+
     @Environment(\.close) private var close
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
-    
+
     enum DetailCategory: String, CaseIterable, Hashable {
         case overview
         case inspect
     }
-    
+
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,

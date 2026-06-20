@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SettingsList<Item: Identifiable, EditorContent: View>: View {
     @Binding var items: [Item]
-    
+
     var title: String
     var description: String
     var addLabel: String
@@ -17,10 +17,10 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
     var newItem: () -> Item
     var rowSummary: (Item) -> String
     @ViewBuilder var editorContent: (Binding<Item>) -> EditorContent
-    
+
     @State private var selectedItemID: Item.ID?
     @State private var editingItemID: Item.ID?
-    
+
     init(
         items: Binding<[Item]>,
         title: String,
@@ -49,7 +49,7 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                     Text(title)
                         .font(.headline)
                         .fontWeight(.bold)
-                    
+
                     Text(description)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -57,16 +57,18 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                
+
                 Divider()
-                
+
                 // Content area
                 if items.isEmpty {
                     Spacer()
                         .frame(minHeight: 80)
                 } else {
                     ForEach(items) { item in
-                        if let index = items.firstIndex(where: { $0.id == item.id }) {
+                        if let index = items.firstIndex(where: {
+                            $0.id == item.id
+                        }) {
                             EditableRow(
                                 text: rowSummary(items[index]),
                                 isSelected: selectedItemID == item.id,
@@ -78,7 +80,7 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                                     editingItemID = item.id
                                 }
                             )
-                            
+
                             if index < items.count - 1 {
                                 Divider()
                                     .padding(.leading, 8)
@@ -86,10 +88,10 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                         }
                     }
                 }
-                
+
                 if allowsEditing {
                     Divider()
-                    
+
                     // Bottom toolbar
                     HStack(spacing: 0) {
                         Button(action: addItem) {
@@ -98,10 +100,10 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                         }
                         .buttonStyle(.plain)
                         .help(addLabel)
-                        
+
                         Divider()
                             .frame(height: 22)
-                        
+
                         Button(action: removeSelectedItem) {
                             Image(systemName: "minus")
                                 .frame(width: 26, height: 22)
@@ -109,7 +111,7 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                         .buttonStyle(.plain)
                         .disabled(items.isEmpty || selectedItemID == nil)
                         .help("Remove selected row")
-                        
+
                         Spacer()
                     }
                     .frame(height: 26)
@@ -118,12 +120,14 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
             }
         }
         .groupBoxStyle(SettingsListGroupBoxStyle())
-        .modal(isPresented: Binding(
-            get: { editingItemID != nil },
-            set: { isPresented in
-                if !isPresented { editingItemID = nil }
-            }
-        )) {
+        .modal(
+            isPresented: Binding(
+                get: { editingItemID != nil },
+                set: { isPresented in
+                    if !isPresented { editingItemID = nil }
+                }
+            )
+        ) {
             if let binding = editingItemBinding {
                 EditableListItemEditor(title: title) {
                     editorContent(binding)
@@ -131,21 +135,26 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
             }
         }
         .onChange(of: items.count) {
-            if let selectedItemID, !items.contains(where: { $0.id == selectedItemID }) {
+            if let selectedItemID,
+                !items.contains(where: { $0.id == selectedItemID })
+            {
                 self.selectedItemID = items.first?.id
             } else if selectedItemID == nil, !items.isEmpty {
                 selectedItemID = items.first?.id
             }
-            
-            if let editingItemID, !items.contains(where: { $0.id == editingItemID }) {
+
+            if let editingItemID,
+                !items.contains(where: { $0.id == editingItemID })
+            {
                 self.editingItemID = nil
             }
         }
     }
-    
+
     private var editingItemBinding: Binding<Item>? {
         guard let editingItemID,
-              let index = items.firstIndex(where: { $0.id == editingItemID }) else {
+            let index = items.firstIndex(where: { $0.id == editingItemID })
+        else {
             return nil
         }
         return Binding(
@@ -153,17 +162,18 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
             set: { items[index] = $0 }
         )
     }
-    
+
     private func addItem() {
         let item = newItem()
         items.append(item)
         selectedItemID = item.id
         editingItemID = item.id
     }
-    
+
     private func removeSelectedItem() {
         guard let selectedItemID else { return }
-        guard let index = items.firstIndex(where: { $0.id == selectedItemID }) else {
+        guard let index = items.firstIndex(where: { $0.id == selectedItemID })
+        else {
             self.selectedItemID = items.first?.id
             return
         }
@@ -193,7 +203,7 @@ private struct EditableRow: View {
     var isSelected: Bool
     var onSelect: () -> Void
     var onEdit: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Text(text.isEmpty ? "New Item" : text)
@@ -210,7 +220,7 @@ private struct EditableRow: View {
         .onTapGesture { onSelect() }
         .onTapGesture(count: 2) { onEdit() }
     }
-    
+
     @ViewBuilder
     private var selectionBackground: some View {
         if isSelected {
@@ -226,7 +236,7 @@ struct EditableListItemEditor<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
     @Environment(\.close) private var close
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text(title)

@@ -5,24 +5,23 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
-import SwiftUI
 import ContainerSystem
 import ContainerizationOCI
-
+import SwiftUI
 
 struct VolumeSelectionView: View {
     var volumes: [Volume]
     var onVolumeSelect: (String) -> Void
-    
+
     @SwiftUI.State private var searchText: String = ""
     @SwiftUI.State private var selectedVolume: Volume?
-    
+
     @Environment(\.close) private var close
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
+
     private var filteredVolumes: [Volume] {
         if trimmedText.isEmpty {
             return volumes
@@ -40,18 +39,20 @@ struct VolumeSelectionView: View {
                     Text("Select Volume")
                         .font(.title2)
                         .fontWeight(.semibold)
-                    
-                    Text("\(filteredVolumes.count) \(filteredVolumes.count == 1 ? "volume" : "volumes") available")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+
+                    Text(
+                        "\(filteredVolumes.count) \(filteredVolumes.count == 1 ? "volume" : "volumes") available"
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
             .padding(20)
             .background(Color(nsColor: .controlBackgroundColor))
-            
+
             Divider()
-            
+
             // Search
             HStack {
                 Image(systemName: "magnifyingglass")
@@ -71,7 +72,7 @@ struct VolumeSelectionView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 20)
             .padding(.top, 16)
-            
+
             // Content
             if filteredVolumes.isEmpty {
                 ContentUnavailableView {
@@ -101,19 +102,19 @@ struct VolumeSelectionView: View {
                 }
                 .padding(.horizontal, 20)
             }
-            
+
             Divider()
-            
+
             // Bottom Bar
             HStack {
                 Spacer()
-                
+
                 Button("Cancel") {
                     close()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                
+
                 Button("Select") {
                     if let volume = selectedVolume {
                         self.onVolumeSelect(volume.name)
@@ -135,7 +136,7 @@ struct VolumeSelectionRow: View {
     let volume: Volume
     let isSelected: Bool
     let onSelect: () -> Void
-    
+
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 12) {
@@ -146,23 +147,28 @@ struct VolumeSelectionRow: View {
                     .frame(width: 32, height: 32)
                     .background(
                         Circle()
-                            .fill(isSelected ? Color.blue : Color.blue.opacity(0.1))
+                            .fill(
+                                isSelected
+                                    ? Color.blue : Color.blue.opacity(0.1)
+                            )
                     )
-                
+
                 // Volume info
                 VStack(alignment: .leading, spacing: 4) {
                     Text(volume.name)
                         .font(.body)
                         .fontWeight(.medium)
                         .foregroundStyle(isSelected ? .white : .primary)
-                    
+
                     Text(volume.driver)
                         .font(.caption)
-                        .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+                        .foregroundStyle(
+                            isSelected ? .white.opacity(0.8) : .secondary
+                        )
                 }
-                
+
                 Spacer()
-                
+
                 // Selection indicator
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
@@ -173,7 +179,11 @@ struct VolumeSelectionRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
+                    .fill(
+                        isSelected
+                            ? Color.accentColor
+                            : Color(nsColor: .controlBackgroundColor)
+                    )
             )
             .contentShape(Rectangle())
         }

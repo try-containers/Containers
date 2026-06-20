@@ -9,8 +9,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension FileSelection {
-    init(fileURL: Binding<URL>, errorMessage: Binding<String?>, allowedContentTypes: [UTType]) {
-        let fileBinding = Binding<URL?> (
+    init(
+        fileURL: Binding<URL>,
+        errorMessage: Binding<String?>,
+        allowedContentTypes: [UTType]
+    ) {
+        let fileBinding = Binding<URL?>(
             get: {
                 URL(filePath: fileURL.wrappedValue.absoluteString)
             },
@@ -30,11 +34,11 @@ struct FileSelection: View {
     // file scheme, ie: file://
     @Binding var fileURL: URL?
     @Binding var errorMessage: String?
-    
+
     var allowedContentTypes: [UTType]
-    
+
     @State private var showImporter: Bool = false
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Text(fileURL?.absoluteString ?? "")
@@ -42,13 +46,20 @@ struct FileSelection: View {
                 .lineLimit(1)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .leading
+                )
                 .background(
                     RoundedRectangle(cornerRadius: 4)
                         .fill(.secondary.opacity(0.5))
-                        .stroke(.secondary.opacity(0.8), style: .init(lineWidth: 1))
+                        .stroke(
+                            .secondary.opacity(0.8),
+                            style: .init(lineWidth: 1)
+                        )
                 )
-            
+
             Button {
                 if let fileURL {
                     self.openFile(fileURL)
@@ -62,16 +73,18 @@ struct FileSelection: View {
             .pointerStyle(.link)
             .disabled(fileURL == nil)
 
-
             Spacer()
 
-            Button(action: {
-                self.showImporter = true
-            }, label: {
-                Image(systemName: "ellipsis")
-                    .padding(.horizontal, 2)
-                    .frame(maxHeight: .infinity)
-            })
+            Button(
+                action: {
+                    self.showImporter = true
+                },
+                label: {
+                    Image(systemName: "ellipsis")
+                        .padding(.horizontal, 2)
+                        .frame(maxHeight: .infinity)
+                }
+            )
             .buttonStyle(.bordered)
             .pointerStyle(.link)
 
@@ -88,9 +101,12 @@ struct FileSelection: View {
                     self.errorMessage = "File Url is not available."
                     return
                 }
-                self.fileURL = url.isFileURL ? url : URL(
-                    filePath: url.absoluteString
-                )
+                self.fileURL =
+                    url.isFileURL
+                    ? url
+                    : URL(
+                        filePath: url.absoluteString
+                    )
             case .failure(let error):
                 self.errorMessage = "failed to import file: \(error)."
                 return
@@ -98,19 +114,18 @@ struct FileSelection: View {
         }
         .fileDialogBrowserOptions([.includeHiddenFiles])
         .fileDialogDefaultDirectory(
-            fileURL?.parent ?? (
-                try? FileManager.default
+            fileURL?.parent
+                ?? (try? FileManager.default
                     .url(
                         for: .desktopDirectory,
                         in: .userDomainMask,
                         appropriateFor: nil,
                         create: false
-                    )
-            )
+                    ))
         )
         .fileDialogConfirmationLabel(Text("Select"))
     }
-    
+
     private func openFile(_ url: URL) {
         let result = NSWorkspace.shared.selectFile(
             url.absoluteString,

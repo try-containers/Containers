@@ -13,7 +13,7 @@ struct InfoSection: View {
     let emptyImage: String?
     let emptyMessage: String?
     let rows: [InfoRow]
-    
+
     init(
         title: String? = nil,
         subtitle: String? = nil,
@@ -27,7 +27,7 @@ struct InfoSection: View {
         self.emptyMessage = emptyMessage
         self.rows = rows
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             if rows.isEmpty {
@@ -36,7 +36,7 @@ struct InfoSection: View {
                         .font(.title3)
                         .foregroundStyle(.tertiary)
                 }
-                
+
                 if let emptyMessage {
                     Text(emptyMessage)
                         .font(.subheadline)
@@ -64,8 +64,12 @@ private struct InfoSectionRowItem: Identifiable {
 }
 
 #Preview {
-    InfoSection(title: "Test Section", subtitle: "Test subtitle", rows: [
-        InfoRow(label: "Test title", value: "Test vaue"),
-        InfoRow(label: "Test title 2", value: "Test value 2")
-    ])
+    InfoSection(
+        title: "Test Section",
+        subtitle: "Test subtitle",
+        rows: [
+            InfoRow(label: "Test title", value: "Test vaue"),
+            InfoRow(label: "Test title 2", value: "Test value 2"),
+        ]
+    )
 }

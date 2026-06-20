@@ -5,13 +5,13 @@
 //  Created by Axel Martinez on 31/05/2026.
 //
 
-import SwiftUI
 import ContainerSystem
+import SwiftUI
 
 struct StatusBadge: View {
     let status: RuntimeStatus
-    
-    var body: some View{
+
+    var body: some View {
         HStack(spacing: 4) {
             Text(status.rawValue.localizedCapitalized)
                 .font(.caption)
@@ -23,12 +23,12 @@ struct StatusBadge: View {
         .background(
             Capsule()
                 .fill(
-                    (status == .running ? Color.green: Color.red)
+                    (status == .running ? Color.green : Color.red)
                         .opacity(0.1)
                 )
         )
     }
-    
+
     private var statusColor: Color {
         switch status {
         case .running:

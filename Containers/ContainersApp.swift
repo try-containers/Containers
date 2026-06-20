@@ -13,7 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Start with dock icon showing since dashboard opens on launch
         NSApp.setActivationPolicy(.regular)
-        
+
         // Observe window close notifications
         NotificationCenter.default.addObserver(
             self,
@@ -22,10 +22,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
     }
-    
+
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        
+
         // Check if this is the dashboard window by title
         if window.title == "Containers" {
             // Hide dock icon immediately when dashboard closes
@@ -39,41 +39,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct ContainersApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    
+
     @State private var containerManager = ContainerManager()
     @State private var imageManager = ImageManager()
     @State private var volumeManager = VolumeManager()
     @State private var systemManager = SystemManager()
     @State private var networkManager = NetworkManager()
-    
+
     static let dashboardWindowId = "dashboard"
     static let settingsWindowId = "settings"
-    
+
     var body: some Scene {
-        Window("Containers", id: Self.dashboardWindowId, content: {
-            DashboardView()
-                .environment(containerManager)
-                .environment(imageManager)
-                .environment(volumeManager)
-                .environment(systemManager)
-                .environment(networkManager)
-                .onAppear {
-                    // Show dock icon when dashboard appears
-                    NSApp.setActivationPolicy(.regular)
-                }
-        })
+        Window(
+            "Containers",
+            id: Self.dashboardWindowId,
+            content: {
+                DashboardView()
+                    .environment(containerManager)
+                    .environment(imageManager)
+                    .environment(volumeManager)
+                    .environment(systemManager)
+                    .environment(networkManager)
+                    .onAppear {
+                        // Show dock icon when dashboard appears
+                        NSApp.setActivationPolicy(.regular)
+                    }
+            }
+        )
         .defaultSize(width: 800, height: 520)
         .defaultPosition(.center)
         .windowResizability(.contentSize)
 
-        MenuBarExtra(content: {
-            MenuBarItem()
-                .environment(systemManager)
-        }, label: {
-            Image(systemManager.isRunning ? "server.play" : "server.pause")
-        })
+        MenuBarExtra(
+            content: {
+                MenuBarItem()
+                    .environment(systemManager)
+            },
+            label: {
+                Image(systemManager.isRunning ? "server.play" : "server.pause")
+            }
+        )
         .menuBarExtraStyle(.menu)
-        
+
         Window("Settings", id: Self.settingsWindowId) {
             SettingsView()
                 .environment(networkManager)
@@ -84,17 +91,17 @@ struct ContainersApp: App {
         .commands { PreferencesCommands() }
 
     }
-    
+
     struct PreferencesCommands: Commands {
-      @Environment( \.openWindow ) private var openWindow
-      var body: some Commands {
-        CommandGroup ( replacing: .appSettings ) {
-          Button {
-              openWindow(id: ContainersApp.settingsWindowId)
-          } label: {
-            Label("Settings...", systemImage: "gearshape")
-          }
+        @Environment(\.openWindow) private var openWindow
+        var body: some Commands {
+            CommandGroup(replacing: .appSettings) {
+                Button {
+                    openWindow(id: ContainersApp.settingsWindowId)
+                } label: {
+                    Label("Settings...", systemImage: "gearshape")
+                }
+            }
         }
-      }
     }
 }

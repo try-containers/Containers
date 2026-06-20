@@ -7,8 +7,12 @@
 
 import SwiftUI
 
-struct SettingsSection<Label: View, Option: Hashable & CustomStringConvertible, Format: ParseableFormatStyle>: View
-    where Format.FormatOutput == String {
+struct SettingsSection<
+    Label: View,
+    Option: Hashable & CustomStringConvertible,
+    Format: ParseableFormatStyle
+>: View
+where Format.FormatOutput == String {
 
     typealias Field = SettingsField<Label, Option, Format>
 

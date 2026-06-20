@@ -5,10 +5,10 @@
 //  Created by Axel Martinez on 2026/02/05.
 //
 
-import Foundation
-import Containerization
 import ContainerSystem
+import Containerization
 import ContainerizationOCI
+import Foundation
 
 /// Represents the type of container volume
 enum VolumeType: String, CaseIterable, Identifiable {
@@ -33,11 +33,11 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
     var manifestDigest: String
     var inUse: Bool
     var imageDescription: ImageDescription
-    
+
     var id: String {
         return indexDigest + manifestDigest + createdDate.description
     }
-    
+
     init(_ item: ImageListItem) {
         self.init(
             item.description,
@@ -49,7 +49,7 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
             sizeInBytes: item.info?.size
         )
     }
-    
+
     /// Initialize from ImageDescription (simplified, without full image details)
     init(
         _ description: ImageDescription,
@@ -61,16 +61,18 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
         sizeInBytes: Int64? = nil
     ) {
         self.imageDescription = description
-        
+
         // Parse reference to get name and tag
-        if let reference = try? ContainerizationOCI.Reference.parse(description.reference) {
+        if let reference = try? ContainerizationOCI.Reference.parse(
+            description.reference
+        ) {
             self.name = reference.name
             self.tag = reference.tag ?? "<none>"
         } else {
             self.name = description.reference
             self.tag = "<none>"
         }
-        
+
         self.indexDigest = description.digest
         self.manifestDigest = description.digest
         self.os = os ?? Platform.current.os
@@ -80,17 +82,17 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
         self.createdDate = created ?? ImageInfo.unknownCreationDate
         self.inUse = inUse
     }
-    
+
     // Hashable conformance
     func hash(into hasher: inout Hasher) {
         hasher.combine(indexDigest)
         hasher.combine(manifestDigest)
     }
-    
+
     // Equatable conformance
     static func == (lhs: ImageViewModel, rhs: ImageViewModel) -> Bool {
-        return lhs.indexDigest == rhs.indexDigest &&
-               lhs.manifestDigest == rhs.manifestDigest
+        return lhs.indexDigest == rhs.indexDigest
+            && lhs.manifestDigest == rhs.manifestDigest
     }
 }
 
@@ -100,11 +102,11 @@ extension ImageViewModel {
     var formattedDigest: String {
         String(digestWithoutAlgorithm.prefix(12))
     }
-    
+
     var fullDigestWithoutAlgorithm: String {
         digestWithoutAlgorithm
     }
-    
+
     private var digestWithoutAlgorithm: String {
         var d = indexDigest
         if d.hasPrefix("sha256:") {
@@ -112,15 +114,15 @@ extension ImageViewModel {
         }
         return d
     }
-    
+
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: sizeInBytes, countStyle: .file)
     }
-    
+
     var formattedOS: String {
         os.localizedCapitalized
     }
-    
+
     var formattedCreated: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

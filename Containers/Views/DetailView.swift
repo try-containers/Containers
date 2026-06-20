@@ -15,7 +15,9 @@ struct DetailView<
 >: View where Tab.AllCases: RandomAccessCollection {
     private static var width: CGFloat { 550 }
     private static var maximumContentHeight: CGFloat { 480 }
-    private static var tabTransitionAnimation: Animation { .easeInOut(duration: 0.22) }
+    private static var tabTransitionAnimation: Animation {
+        .easeInOut(duration: 0.22)
+    }
 
     let onClose: () -> Void
     let showTabs: Bool
@@ -101,13 +103,14 @@ struct DetailView<
                 }
         }
         .onPreferenceChange(DetailViewHeightPreferenceKey.self) { height in
-            let newHeight = if fixedHeightTab(displayedTab) {
-                Self.maximumContentHeight
-            } else if usesFixedMaximumHeight {
-                min(height, Self.maximumContentHeight)
-            } else {
-                height
-            }
+            let newHeight =
+                if fixedHeightTab(displayedTab) {
+                    Self.maximumContentHeight
+                } else if usesFixedMaximumHeight {
+                    min(height, Self.maximumContentHeight)
+                } else {
+                    height
+                }
 
             let completion = pendingResizeCompletion
             pendingResizeCompletion = nil
@@ -192,7 +195,10 @@ struct DetailView<
                 .frame(maxWidth: .infinity, alignment: .top)
                 .opacity(isTabContentVisible ? 1 : 0)
         }
-        .frame(height: contentHeight == 0 ? nil : contentHeight, alignment: .top)
+        .frame(
+            height: contentHeight == 0 ? nil : contentHeight,
+            alignment: .top
+        )
         .clipped()
         .background(Color(nsColor: .windowBackgroundColor))
     }

@@ -6,8 +6,8 @@
 //
 
 import AppKit
-import SwiftUI
 import ContainerSystem
+import SwiftUI
 
 struct MenuBarItem: View {
     @Environment(SystemManager.self) var system
@@ -19,9 +19,9 @@ struct MenuBarItem: View {
 
     var body: some View {
         StatusButton(isRunning: system.isRunning)
-        
+
         Divider()
-        
+
         MenuButton(
             title: "Dashboard",
             icon: "square.grid.2x2",
@@ -30,7 +30,7 @@ struct MenuBarItem: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
             openWindow(id: ContainersApp.dashboardWindowId)
         }
-        
+
         MenuButton(
             title: "Settings",
             icon: "gearshape",
@@ -39,9 +39,9 @@ struct MenuBarItem: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
             openSettings()
         }
-        
+
         Divider()
-        
+
         MenuButton(
             title: system.isRunning ? "Stop" : "Start",
             icon: system.isRunning ? "stop.fill" : "play.fill",
@@ -50,9 +50,9 @@ struct MenuBarItem: View {
         ) {
             Task { @MainActor in
                 isTogglingSystem = true
-                
+
                 defer { isTogglingSystem = false }
-                
+
                 do {
                     if system.isRunning {
                         try await system.stop()
@@ -66,7 +66,7 @@ struct MenuBarItem: View {
                 }
             }
         }
-        
+
         MenuButton(
             title: "Reload",
             icon: "arrow.clockwise",
@@ -75,9 +75,9 @@ struct MenuBarItem: View {
         ) {
             Task { @MainActor in
                 isReloading = true
-                
+
                 defer { isReloading = false }
-                
+
                 do {
                     try await system.stop()
                     try await system.start(
@@ -88,9 +88,9 @@ struct MenuBarItem: View {
                 }
             }
         }
-            
+
         Divider()
-            
+
         MenuButton(
             title: "Quit",
             icon: "power",
@@ -113,19 +113,19 @@ struct MenuBarItem: View {
 
 private struct StatusButton: View {
     let isRunning: Bool
-    
+
     var body: some View {
         Text(statusText)
     }
-    
+
     private var statusText: AttributedString {
         var statusLabel = AttributedString(isRunning ? "Running" : "Stopped")
         statusLabel.foregroundColor = .primary
-        
+
         var result = AttributedString("● ")
         result.foregroundColor = isRunning ? .green : .red
         result.append(statusLabel)
-        
+
         return result
     }
 }
@@ -139,9 +139,9 @@ private struct MenuButton: View {
     var isLoading: Bool = false
     var isDisabled: Bool = false
     let action: () -> Void
-    
+
     @State private var isHovered: Bool = false
-    
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
@@ -149,13 +149,15 @@ private struct MenuButton: View {
                     .font(.system(size: 12))
                     .frame(width: 14)
                     .foregroundStyle(isDisabled ? .tertiary : .secondary)
-                
+
                 Text(title)
                     .font(.system(size: 13))
-                    .foregroundStyle(isHovered && !isDisabled ? .white : .primary)
-                
+                    .foregroundStyle(
+                        isHovered && !isDisabled ? .white : .primary
+                    )
+
                 Spacer()
-                
+
                 if isLoading {
                     ProgressView()
                         .controlSize(.mini)
@@ -171,7 +173,10 @@ private struct MenuButton: View {
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(isHovered && !isDisabled ? Color.accentColor.opacity(0.15) : .clear)
+                    .fill(
+                        isHovered && !isDisabled
+                            ? Color.accentColor.opacity(0.15) : .clear
+                    )
             )
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

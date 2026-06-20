@@ -5,22 +5,21 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
-import Foundation
-import SwiftUI
 import ContainerSystem
 import ContainerizationOCI
 import ContainerizationOS
+import Foundation
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct BuildImageView: View {
     private static let anyPlatformOption = "Any"
-    
-    
+
     enum CreationMethod: String, CaseIterable {
         case pull = "Pull from Registry"
         case build = "Build from Dockerfile"
         case load = "Load from Tar"
-        
+
         var icon: String {
             switch self {
             case .pull: return "arrow.down.circle.fill"
@@ -28,7 +27,7 @@ struct BuildImageView: View {
             case .load: return "folder.fill"
             }
         }
-        
+
         var description: String {
             switch self {
             case .pull: return "Download an image from a remote registry"
@@ -37,16 +36,16 @@ struct BuildImageView: View {
             }
         }
     }
-    
+
     enum Step: Int, CaseIterable {
         case method = 0
         case configuration = 1
         case review = 2
     }
-    
+
     @Environment(ImageManager.self) private var imageManager
     @Environment(\.close) private var close
-    
+
     @SwiftUI.State private var currentStep: Step = .method
     @SwiftUI.State private var selectedMethod: CreationMethod?
     @SwiftUI.State private var errorMessage: String?
@@ -57,18 +56,19 @@ struct BuildImageView: View {
     @SwiftUI.State private var imageName: String = ""
     @SwiftUI.State private var tag: String = "latest"
     @SwiftUI.State private var platformString: String = Self.anyPlatformOption
-    
+
     // Build fields
     @SwiftUI.State private var dockerFile: URL?
     @SwiftUI.State private var contextDirectory: URL?
     @SwiftUI.State private var buildTag: String = ""
-    @SwiftUI.State private var buildPlatformString: String = Platform.current.description
+    @SwiftUI.State private var buildPlatformString: String = Platform.current
+        .description
     @SwiftUI.State private var buildArguments: [KeyValue] = []
     @SwiftUI.State private var targetStage: String = ""
-    
+
     // Load fields
     @SwiftUI.State private var tarFile: URL?
-    
+
     var body: some View {
         VStack(spacing: 0) {
             if isCreating {
@@ -79,7 +79,7 @@ struct BuildImageView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Build Image")
                         .font(.headline)
-                    
+
                     if let errorMessage = self.errorMessage {
                         Text(errorMessage)
                             .font(.subheadline)
@@ -90,9 +90,9 @@ struct BuildImageView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
                 .padding(.bottom, 16)
-                
+
                 Divider()
-                
+
                 // Step content
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -115,44 +115,56 @@ struct BuildImageView: View {
                     .padding(.all, 24)
                 }
                 .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-                
+
                 Divider()
-                
+
                 // Navigation buttons
                 HStack(spacing: 16) {
-                    Button(action: {
-                        close()
-                    }, label: {
-                        Text("Cancel")
-                            .padding(.horizontal, 2)
-                    })
+                    Button(
+                        action: {
+                            close()
+                        },
+                        label: {
+                            Text("Cancel")
+                                .padding(.horizontal, 2)
+                        }
+                    )
                     .buttonStyle(.bordered)
                     .disabled(isCreating)
-                    
+
                     Spacer()
-                    
+
                     if !isCreating && currentStep.rawValue > 0 {
-                        Button(action: previousStep, label: {
-                            Text("Back")
-                                .padding(.horizontal, 2)
-                        })
+                        Button(
+                            action: previousStep,
+                            label: {
+                                Text("Back")
+                                    .padding(.horizontal, 2)
+                            }
+                        )
                         .buttonStyle(.bordered)
                     }
-                    
+
                     if !isCreating {
                         if currentStep != .review {
-                            Button(action: nextStep, label: {
-                                Text("Next")
-                                    .padding(.horizontal, 2)
-                            })
+                            Button(
+                                action: nextStep,
+                                label: {
+                                    Text("Next")
+                                        .padding(.horizontal, 2)
+                                }
+                            )
                             .buttonStyle(.borderedProminent)
                             .tint(.blue)
                             .disabled(!canProceedToNextStep)
                         } else {
-                            Button(action: createImage, label: {
-                                Text("Create")
-                                    .padding(.horizontal, 2)
-                            })
+                            Button(
+                                action: createImage,
+                                label: {
+                                    Text("Create")
+                                        .padding(.horizontal, 2)
+                                }
+                            )
                             .buttonStyle(.borderedProminent)
                             .tint(.blue)
                         }
@@ -167,27 +179,27 @@ struct BuildImageView: View {
         .animation(.default, value: isCreating)
         .interactiveDismissDisabled(isCreating)
     }
-    
+
     // MARK: - Step Views
-    
+
     private static var platformOptions: [String] {
         let current = Platform.current
         var options = [Self.anyPlatformOption, current.description]
-        
+
         if current.architecture == "arm64" {
             options.append("linux/amd64")
         }
-        
+
         return options
     }
-    
+
     @ViewBuilder
     func methodStep() -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Choose how you want to create an image")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            
+
             VStack(spacing: 12) {
                 ForEach(CreationMethod.allCases, id: \.self) { method in
                     Button(action: {
@@ -196,21 +208,24 @@ struct BuildImageView: View {
                         HStack(spacing: 16) {
                             Image(systemName: method.icon)
                                 .font(.system(size: 32))
-                                .foregroundStyle(selectedMethod == method ? .blue : .secondary)
+                                .foregroundStyle(
+                                    selectedMethod == method
+                                        ? .blue : .secondary
+                                )
                                 .frame(width: 48)
-                            
+
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(method.rawValue)
                                     .font(.headline)
                                     .foregroundStyle(.primary)
-                                
+
                                 Text(method.description)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
-                            
+
                             Spacer()
-                            
+
                             if selectedMethod == method {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(.blue)
@@ -222,11 +237,20 @@ struct BuildImageView: View {
                         .contentShape(Rectangle())
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(selectedMethod == method ? Color.accentColor.opacity(0.1) : Color.clear)
+                                .fill(
+                                    selectedMethod == method
+                                        ? Color.accentColor.opacity(0.1)
+                                        : Color.clear
+                                )
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(selectedMethod == method ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 2)
+                                .stroke(
+                                    selectedMethod == method
+                                        ? Color.accentColor
+                                        : Color.secondary.opacity(0.3),
+                                    lineWidth: 2
+                                )
                         )
                     }
                     .buttonStyle(.plain)
@@ -234,7 +258,7 @@ struct BuildImageView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     func configurationStep() -> some View {
         Group {
@@ -250,7 +274,7 @@ struct BuildImageView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     func pullConfiguration() -> some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -267,17 +291,18 @@ struct BuildImageView: View {
                 placeholder: "Ex: latest, 1.0, stable",
                 value: $tag
             )
-            
+
             EditableField(
                 title: "Platform",
-                description: "Choose Any to pull without filtering to a specific platform.",
+                description:
+                    "Choose Any to pull without filtering to a specific platform.",
                 placeholder: "Platform",
                 options: Self.platformOptions,
                 selection: $platformString
             )
         }
     }
-    
+
     @ViewBuilder
     func buildConfiguration() -> some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -287,41 +312,59 @@ struct BuildImageView: View {
                 Text("Select the Dockerfile to use")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                FileSelection(fileURL: $dockerFile, errorMessage: $errorMessage, allowedContentTypes: [.item])
-                    .onChange(of: dockerFile, {
+                FileSelection(
+                    fileURL: $dockerFile,
+                    errorMessage: $errorMessage,
+                    allowedContentTypes: [.item]
+                )
+                .onChange(
+                    of: dockerFile,
+                    {
                         guard let url = dockerFile else { return }
                         // Auto-set build directory to Dockerfile's parent if not already set
                         if contextDirectory == nil {
                             contextDirectory = url.parent
                         }
-                    })
+                    }
+                )
             }
-            
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Build Directory")
                     .font(.headline)
-                Text("Root directory for the build context (defaults to Dockerfile's directory)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                FileSelection(fileURL: $contextDirectory, errorMessage: $errorMessage, allowedContentTypes: [.directory])
-                    .onChange(of: contextDirectory, {
-                        guard let url = contextDirectory, dockerFile == nil else { return }
+                Text(
+                    "Root directory for the build context (defaults to Dockerfile's directory)"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                FileSelection(
+                    fileURL: $contextDirectory,
+                    errorMessage: $errorMessage,
+                    allowedContentTypes: [.directory]
+                )
+                .onChange(
+                    of: contextDirectory,
+                    {
+                        guard let url = contextDirectory, dockerFile == nil
+                        else { return }
                         // Auto-suggest Dockerfile in the build directory
                         let dockerfileURL = url.appending(path: "Dockerfile")
-                        if FileManager.default.fileExists(atPath: dockerfileURL.path) {
+                        if FileManager.default.fileExists(
+                            atPath: dockerfileURL.path
+                        ) {
                             self.dockerFile = dockerfileURL
                         }
-                    })
+                    }
+                )
             }
-            
-            
+
             EditableField(
                 title: "Image Tag",
                 description: "⭑ If empty, a generated UUID will be used",
                 placeholder: "Ex: myapp:latest",
                 value: $buildTag
             )
-            
+
             EditableField(
                 title: "Target Stage (Optional)",
                 description: "For multi-stage builds",
@@ -330,7 +373,7 @@ struct BuildImageView: View {
             )
         }
     }
-    
+
     @ViewBuilder
     func loadConfiguration() -> some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -340,37 +383,58 @@ struct BuildImageView: View {
                 Text("Select a tar archive containing the image")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                
-                FileSelection(fileURL: $tarFile, errorMessage: $errorMessage, allowedContentTypes: [UTType(filenameExtension: "tar")].compactMap { $0 })
+
+                FileSelection(
+                    fileURL: $tarFile,
+                    errorMessage: $errorMessage,
+                    allowedContentTypes: [UTType(filenameExtension: "tar")]
+                        .compactMap { $0 }
+                )
             }
         }
     }
-    
+
     @ViewBuilder
     func reviewStep() -> some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("Review your configuration")
                 .font(.headline)
-            
+
             VStack(alignment: .leading, spacing: 16) {
-                reviewItem(title: "Method", value: selectedMethod?.rawValue ?? "None")
-                
+                reviewItem(
+                    title: "Method",
+                    value: selectedMethod?.rawValue ?? "None"
+                )
+
                 switch selectedMethod {
                 case .pull:
                     reviewItem(title: "Image", value: "\(imageName):\(tag)")
                     reviewItem(title: "Platform", value: platformString)
-                    
+
                 case .build:
-                    reviewItem(title: "Dockerfile", value: dockerFile?.path ?? "Not set")
-                    reviewItem(title: "Build Directory", value: contextDirectory?.path ?? "Not set")
-                    reviewItem(title: "Image Tag", value: buildTag.isEmpty ? "Auto-generated UUID" : buildTag)
+                    reviewItem(
+                        title: "Dockerfile",
+                        value: dockerFile?.path ?? "Not set"
+                    )
+                    reviewItem(
+                        title: "Build Directory",
+                        value: contextDirectory?.path ?? "Not set"
+                    )
+                    reviewItem(
+                        title: "Image Tag",
+                        value: buildTag.isEmpty
+                            ? "Auto-generated UUID" : buildTag
+                    )
                     if !targetStage.isEmpty {
                         reviewItem(title: "Target Stage", value: targetStage)
                     }
-                    
+
                 case .load:
-                    reviewItem(title: "Tar File", value: tarFile?.lastPathComponent ?? "Not set")
-                    
+                    reviewItem(
+                        title: "Tar File",
+                        value: tarFile?.lastPathComponent ?? "Not set"
+                    )
+
                 case .none:
                     EmptyView()
                 }
@@ -380,7 +444,7 @@ struct BuildImageView: View {
             .cornerRadius(8)
         }
     }
-    
+
     @ViewBuilder
     func reviewItem(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -392,28 +456,28 @@ struct BuildImageView: View {
                 .foregroundStyle(.secondary)
         }
     }
-    
+
     @ViewBuilder
     func creatingView() -> some View {
         VStack(spacing: 0) {
             Spacer()
-            
+
             VStack(spacing: 32) {
                 ProgressView()
                     .controlSize(.large)
                     .scaleEffect(1.5)
-                
+
                 VStack(spacing: 12) {
                     Text("Creating Image")
                         .font(.title2)
                         .fontWeight(.semibold)
-                    
+
                     Text(progressMessage)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
-                
+
                 Button(action: cancelCreation) {
                     Text("Cancel")
                         .padding(.horizontal, 16)
@@ -421,27 +485,28 @@ struct BuildImageView: View {
                 }
                 .buttonStyle(.bordered)
             }
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     private var progressMessage: String {
         guard let method = selectedMethod else { return "Processing..." }
-        
+
         switch method {
         case .pull:
             return "Pulling image from registry..."
         case .build:
-            return "Building image from Dockerfile...\nThis may take several minutes."
+            return
+                "Building image from Dockerfile...\nThis may take several minutes."
         case .load:
             return "Loading image from tar archive..."
         }
     }
-    
+
     // MARK: - Navigation
-    
+
     var canProceedToNextStep: Bool {
         switch currentStep {
         case .method:
@@ -461,33 +526,37 @@ struct BuildImageView: View {
             return true
         }
     }
-    
+
     func nextStep() {
-        guard let nextStep = Step(rawValue: currentStep.rawValue + 1) else { return }
-        
+        guard let nextStep = Step(rawValue: currentStep.rawValue + 1) else {
+            return
+        }
+
         withAnimation {
             currentStep = nextStep
             errorMessage = nil
         }
     }
-    
+
     func previousStep() {
-        guard let previousStep = Step(rawValue: currentStep.rawValue - 1) else { return }
+        guard let previousStep = Step(rawValue: currentStep.rawValue - 1) else {
+            return
+        }
         withAnimation {
             currentStep = previousStep
             errorMessage = nil
         }
     }
-    
+
     // MARK: - Image Creation
-    
+
     func createImage() {
         guard let method = selectedMethod else { return }
-        
+
         creationTask = Task { @MainActor in
             isCreating = true
             errorMessage = nil
-            
+
             do {
                 switch method {
                 case .pull:
@@ -497,10 +566,10 @@ struct BuildImageView: View {
                 case .load:
                     try await loadImage()
                 }
-                
+
                 // Dismiss on success
                 close()
-                
+
             } catch {
                 // On error, go back to review step and show error
                 isCreating = false
@@ -508,14 +577,14 @@ struct BuildImageView: View {
             }
         }
     }
-    
+
     func cancelCreation() {
         creationTask?.cancel()
         creationTask = nil
         isCreating = false
         errorMessage = "Operation cancelled"
     }
-    
+
     func pullImage() async throws {
         let platform: Platform?
         if platformString == Self.anyPlatformOption {
@@ -523,27 +592,40 @@ struct BuildImageView: View {
         } else {
             platform = try Platform(from: platformString)
         }
-        
+
         let reference = tag.isEmpty ? imageName : "\(imageName):\(tag)"
-        
+
         try await imageManager.pull(reference: reference, platform: platform)
     }
-    
+
     func buildImage() async throws {
         guard let contextDirectory, let dockerFile else {
-            throw NSError(domain: "BuildError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing context directory or Dockerfile"])
+            throw NSError(
+                domain: "BuildError",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Missing context directory or Dockerfile"
+                ]
+            )
         }
-        
-        let platformStringArray: [String] = self.buildPlatformString.split(separator: ",").map({$0.trimmingCharacters(in: .whitespacesAndNewlines)})
-        
-        var platforms: Set<Platform> = Set(try platformStringArray.map({try Platform(from: $0)}))
-        
+
+        let platformStringArray: [String] = self.buildPlatformString.split(
+            separator: ","
+        ).map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+
+        var platforms: Set<Platform> = Set(
+            try platformStringArray.map({ try Platform(from: $0) })
+        )
+
         if platforms.isEmpty {
             platforms.insert(Platform.current)
         }
-        
-        let validBuildArguments = self.buildArguments.filter({!$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty})
-        
+
+        let validBuildArguments = self.buildArguments.filter({
+            !$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        })
+
         try await imageManager.build(
             dockerFile: dockerFile,
             contextDirectory: contextDirectory,
@@ -551,7 +633,9 @@ struct BuildImageView: View {
             cpus: 2,
             memory: 1024.mib(),
             vSockPort: 8088,
-            outputs: [BuildImageOutputConfiguration(type: .oci, additionalFields: [])],
+            outputs: [
+                BuildImageOutputConfiguration(type: .oci, additionalFields: [])
+            ],
             platforms: platforms,
             buildArguments: validBuildArguments,
             labels: [],
@@ -561,12 +645,16 @@ struct BuildImageView: View {
             cacheOut: []
         )
     }
-    
+
     func loadImage() async throws {
         guard let tarFile else {
-            throw NSError(domain: "LoadError", code: 1, userInfo: [NSLocalizedDescriptionKey: "No tar file selected"])
+            throw NSError(
+                domain: "LoadError",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No tar file selected"]
+            )
         }
-        
+
         try await imageManager.load(tar: tarFile)
     }
 }

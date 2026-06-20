@@ -18,7 +18,7 @@ struct ActionButton: View {
         label: String,
         icon: String,
         help: String,
-        role: ButtonRole?  = nil,
+        role: ButtonRole? = nil,
         action: @escaping () -> Void
     ) {
         self.label = label
@@ -26,8 +26,8 @@ struct ActionButton: View {
         self.help = help
         self.action = action
     }
-    
-    var body : some View {
+
+    var body: some View {
         Button(role: role) {
             action()
         } label: {
@@ -42,9 +42,7 @@ struct ActionButton: View {
 
 extension ActionButton: Equatable {
     static func == (lhs: ActionButton, rhs: ActionButton) -> Bool {
-        return lhs.help == rhs.help &&
-               lhs.label == rhs.label &&
-               lhs.icon == rhs.icon &&
-               lhs.role == rhs.role
+        return lhs.help == rhs.help && lhs.label == rhs.label
+            && lhs.icon == rhs.icon && lhs.role == rhs.role
     }
 }

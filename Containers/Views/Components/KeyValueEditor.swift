@@ -5,8 +5,8 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
-import SwiftUI
 import ContainerSystem
+import SwiftUI
 
 func keyValueSummary(_ keyValue: KeyValue) -> String {
     let key = keyValue.key.trimmingCharacters(in: .whitespacesAndNewlines)

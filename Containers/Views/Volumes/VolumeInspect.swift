@@ -5,12 +5,12 @@
 //  Created by Axel Martinez on 2026/06/07.
 //
 
-import SwiftUI
 import ContainerSystem
+import SwiftUI
 
 struct VolumeInspect: View {
     let volume: VolumeViewModel
-    
+
     var body: some View {
         InspectView(value: PrintableVolume(volume.volume))
     }
@@ -18,20 +18,20 @@ struct VolumeInspect: View {
 
 private struct PrintableVolume: Encodable {
     let configuration: PrintableVolumeConfiguration
-    
+
     var id: String {
         configuration.name
     }
-    
+
     init(_ volume: Volume) {
         self.configuration = PrintableVolumeConfiguration(volume)
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case configuration
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -48,7 +48,7 @@ private struct PrintableVolumeConfiguration: Encodable {
     let labels: [String: String]
     let options: [String: String]
     let sizeInBytes: UInt64?
-    
+
     init(_ volume: Volume) {
         self.name = volume.name
         self.driver = volume.driver
@@ -59,7 +59,7 @@ private struct PrintableVolumeConfiguration: Encodable {
         self.options = volume.options
         self.sizeInBytes = volume.sizeInBytes
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case name
         case driver

@@ -13,7 +13,7 @@ import SwiftUI
 
 struct ContainerInspect: View {
     let snapshot: ContainerSnapshot
-    
+
     var body: some View {
         InspectView(value: PrintableContainer(snapshot))
     }
@@ -26,7 +26,7 @@ private struct PrintableContainer: Encodable {
     var id: String {
         configuration.id
     }
-    
+
     init(_ container: ContainerSnapshot) {
         self.configuration = container.configuration
         self.status = PrintableContainerStatus(
@@ -59,28 +59,28 @@ private struct PrintableContainerStatus: Encodable {
 #Preview {
     ContainerInspect(
         snapshot: ContainerSnapshot(
-                configuration: ContainerConfiguration(
-                    id: "preview-container",
-                    image: ImageDescription(
-                        reference: "nginx:latest",
-                        descriptor: ContainerizationOCI.Descriptor(
-                            mediaType: "application/vnd.oci.image.manifest.v1+json",
-                            digest: "sha256:1234567890abcdef",
-                            size: 1024
-                        )
-                    ),
-                    process: ProcessConfiguration(
-                        executable: "/bin/sh",
-                        arguments: [],
-                        environment: ["PATH=/usr/bin"],
-                        workingDirectory: "/",
-                        terminal: false
+            configuration: ContainerConfiguration(
+                id: "preview-container",
+                image: ImageDescription(
+                    reference: "nginx:latest",
+                    descriptor: ContainerizationOCI.Descriptor(
+                        mediaType: "application/vnd.oci.image.manifest.v1+json",
+                        digest: "sha256:1234567890abcdef",
+                        size: 1024
                     )
                 ),
-                status: .running,
-                networks: [],
-                startedDate: Date()
-            )
+                process: ProcessConfiguration(
+                    executable: "/bin/sh",
+                    arguments: [],
+                    environment: ["PATH=/usr/bin"],
+                    workingDirectory: "/",
+                    terminal: false
+                )
+            ),
+            status: .running,
+            networks: [],
+            startedDate: Date()
         )
+    )
     .frame(width: 550, height: 420)
 }

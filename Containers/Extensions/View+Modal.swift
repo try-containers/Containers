@@ -27,17 +27,13 @@ extension View {
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        let presentation = ModalPresentation<Void>(
-            current: { isPresented.wrappedValue ? () : nil },
-            currentID: { isPresented.wrappedValue ? AnyHashable(true) : nil },
-            close: { isPresented.wrappedValue = false }
-        )
-
-        return background(
-            ModalHost(
-                presentation: presentation,
+        background(
+            Modal(
+                id: { isPresented.wrappedValue ? AnyHashable(true) : nil },
+                current: { isPresented.wrappedValue ? () : nil },
+                close: { isPresented.wrappedValue = false },
                 onDismiss: onDismiss,
-                modalContent: { _ in content() }
+                content: content
             )
         )
     }
@@ -47,59 +43,63 @@ extension View {
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping (Item) -> Content
     ) -> some View {
-        let presentation = ModalPresentation<Item>(
-            current: { item.wrappedValue },
-            currentID: { item.wrappedValue.map { AnyHashable($0.id) } },
-            close: { item.wrappedValue = nil }
-        )
-
-        return background(
-            ModalHost(
-                presentation: presentation,
+        background(
+            Modal(
+                id: { item.wrappedValue.map { AnyHashable($0.id) } },
+                current: { item.wrappedValue },
+                close: { item.wrappedValue = nil },
                 onDismiss: onDismiss,
-                modalContent: content
+                content: content
             )
         )
     }
 }
 
-// MARK: - Modal presentation
-
-private struct ModalPresentation<Item> {
-    let current: () -> Item?
-    let currentID: () -> AnyHashable?
-    let close: () -> Void
-}
-
 // MARK: - Host
 
-private struct ModalHost<Item, Content: View>: NSViewRepresentable {
+private struct ModalContent<Content: View>: View {
     private let cornerRadius: CGFloat = 12
 
-    let presentation: ModalPresentation<Item>
+    let id: AnyHashable
+    let close: () -> Void
+    let content: Content
+
+    var body: some View {
+        content
+            .environment(\.close, close)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .id(id)
+    }
+}
+
+private struct Modal<Item, Content: View>: NSViewRepresentable {
+    typealias PresentedContent = ModalContent<Content>
+
+    let id: () -> AnyHashable?
+    let current: () -> Item?
+    let close: () -> Void
     let onDismiss: (() -> Void)?
-    let modalContent: (Item) -> Content
+    let content: (Item) -> Content
 
     func makeNSView(context: Context) -> NSView {
         NSView(frame: .zero)
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.presentation = presentation
+        context.coordinator.close = close
         context.coordinator.onDismiss = onDismiss
 
         guard let parentWindow = nsView.window else { return }
 
-        if let item = presentation.current(), let id = presentation.currentID() {
+        if let item = current(), let id = id() {
             context.coordinator.present(
-                content: AnyView(
-                    modalContent(item)
-                        .environment(\.close) {
-                            presentation.close()
-                        }
-                        .background(Color(nsColor: .windowBackgroundColor))
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                        .id(id)
+                content: ModalContent(
+                    id: id,
+                    close: close,
+                    content: content(item)
                 ),
                 from: parentWindow
             )
@@ -113,25 +113,26 @@ private struct ModalHost<Item, Content: View>: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(presentation: presentation, onDismiss: onDismiss)
+        Coordinator(close: close, onDismiss: onDismiss)
     }
 
     @MainActor
     final class Coordinator {
-        var presentation: ModalPresentation<Item>
+        var close: () -> Void
         var onDismiss: (() -> Void)?
 
-        private let presenter = ModalPresenter()
+        private let presenter = ModalPresenter<PresentedContent>()
 
-        init(presentation: ModalPresentation<Item>, onDismiss: (() -> Void)?) {
-            self.presentation = presentation
+        init(close: @escaping () -> Void, onDismiss: (() -> Void)?) {
+            self.close = close
             self.onDismiss = onDismiss
         }
 
-        func present(content: AnyView, from parentWindow: NSWindow) {
-            presenter.present(content: content, from: parentWindow) { [weak self] in
+        func present(content: PresentedContent, from parentWindow: NSWindow) {
+            presenter.present(content: content, from: parentWindow) {
+                [weak self] in
                 guard let self else { return }
-                presentation.close()
+                close()
                 onDismiss?()
             }
         }
@@ -145,18 +146,17 @@ private struct ModalHost<Item, Content: View>: NSViewRepresentable {
 // MARK: - Presenter
 
 @MainActor
-private final class ModalPresenter {
-    private static let parentWindowCornerRadius: CGFloat = 26
-    private static let presentationAnimationDuration: TimeInterval = 0.22
-    private static let presentationStartScale: CGFloat = 1
-    private static let presentationStartYOffset: CGFloat = 50
+private final class ModalPresenter<PresentedContent: View> {
+    private static var parentWindowCornerRadius: CGFloat { 26 }
+    private static var presentationAnimationDuration: TimeInterval { 0.22 }
+    private static var presentationStartYOffset: CGFloat { 50 }
 
     /// Minimum top inset used to mimic native sheet placement.
-    private static let minTopMargin: CGFloat = 52
+    private static var minTopMargin: CGFloat { 50 }
 
     private var panel: NSPanel?
     private var dimmingWindow: NSWindow?
-    private var hostingView: NSHostingView<AnyView>?
+    private var hostingView: NSHostingView<PresentedContent>?
     private var parentWindowObservers: [NSObjectProtocol] = []
     private var panelObservers: [NSObjectProtocol] = []
     private var onDismiss: (() -> Void)?
@@ -168,7 +168,7 @@ private final class ModalPresenter {
     private weak var parentWindow: NSWindow?
 
     func present(
-        content: AnyView,
+        content: PresentedContent,
         from parentWindow: NSWindow,
         onDismiss: @escaping () -> Void = {}
     ) {
@@ -178,7 +178,7 @@ private final class ModalPresenter {
             // Visible updates can resize in place.
             hostingView.rootView = content
             self.parentWindow = parentWindow
-            updateWindowFrames()
+            updateWindowFrames(fitContent: true)
             return
         }
 
@@ -199,18 +199,22 @@ private final class ModalPresenter {
         Task { @MainActor in
             // Resolve SwiftUI layout off-screen before the panel is visible.
             let size = await Self.settledFittingSize(of: hosting)
-            guard self.panel === panel, self.dimmingWindow === dimmingWindow, !self.isDismissing else { return }
+            guard self.panel === panel, self.dimmingWindow === dimmingWindow,
+                !self.isDismissing
+            else { return }
 
             hosting.frame = NSRect(origin: .zero, size: size)
             panel.setContentSize(size)
 
             await Self.settlePresentedLayout(hostingView: hosting, panel: panel)
-            guard self.panel === panel, self.dimmingWindow === dimmingWindow, !self.isDismissing else { return }
+            guard self.panel === panel, self.dimmingWindow === dimmingWindow,
+                !self.isDismissing
+            else { return }
 
             // Apply the settled size before ordering the panel on screen.
             resizePanelToFitContent(panel: panel, hostingView: hosting)
 
-            updateWindowFrames()
+            updateWindowFrames(fitContent: false)
             prepareForPresentation(panel: panel, dimmingWindow: dimmingWindow)
 
             // Show only after measurement is stable.
@@ -229,12 +233,16 @@ private final class ModalPresenter {
 
         Task { @MainActor in
             await animateOut(panel: panel, dimmingWindow: dimmingWindow)
-            finishDismiss(panel: panel, dimmingWindow: dimmingWindow, notify: notify)
+            finishDismiss(
+                panel: panel,
+                dimmingWindow: dimmingWindow,
+                notify: notify
+            )
         }
     }
 
     private static func settledFittingSize(
-        of hosting: NSHostingView<AnyView>,
+        of hosting: NSHostingView<PresentedContent>,
         maxAttempts: Int = 10
     ) async -> NSSize {
         var previous = hosting.fittingSize
@@ -251,7 +259,7 @@ private final class ModalPresenter {
 
     /// Lets SwiftUI layout converge before the panel is shown.
     private static func settlePresentedLayout(
-        hostingView: NSHostingView<AnyView>,
+        hostingView: NSHostingView<PresentedContent>,
         panel: NSPanel,
         passes: Int = 4
     ) async {
@@ -262,7 +270,10 @@ private final class ModalPresenter {
         }
     }
 
-    private func resizePanelToFitContent(panel: NSPanel, hostingView: NSHostingView<AnyView>) {
+    private func resizePanelToFitContent(
+        panel: NSPanel,
+        hostingView: NSHostingView<PresentedContent>
+    ) {
         let size = hostingView.fittingSize
         guard size.width > 0, size.height > 0 else { return }
 
@@ -270,19 +281,10 @@ private final class ModalPresenter {
         panel.setContentSize(size)
     }
 
-    private func prepareForPresentation(panel: NSPanel, dimmingWindow: NSWindow) {
-        guard let contentView = panel.contentView else { return }
-
+    private func prepareForPresentation(panel: NSPanel, dimmingWindow: NSWindow)
+    {
         panel.alphaValue = 0
         dimmingWindow.alphaValue = 0
-
-        contentView.wantsLayer = true
-        contentView.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        let bounds = contentView.bounds
-        contentView.layer?.position = CGPoint(x: bounds.midX, y: bounds.midY)
-        contentView.layer?.transform = CATransform3DMakeScale(
-            Self.presentationStartScale, Self.presentationStartScale, 1
-        )
 
         var startFrame = panel.frame
         startFrame.origin.y += Self.presentationStartYOffset
@@ -290,8 +292,6 @@ private final class ModalPresenter {
     }
 
     private func animateIn(panel: NSPanel, dimmingWindow: NSWindow) async {
-        guard let contentView = panel.contentView else { return }
-
         var restingFrame = panel.frame
         restingFrame.origin.y -= Self.presentationStartYOffset
 
@@ -302,41 +302,12 @@ private final class ModalPresenter {
             panel.animator().alphaValue = 1
             dimmingWindow.animator().alphaValue = 1
             panel.animator().setFrame(restingFrame, display: true)
-            contentView.layer?.transform = CATransform3DIdentity
         }
-
-        // Restore AppKit's normal layer anchor for later live resizes.
-        resetContentLayerAnchor(contentView)
-    }
-
-    /// Restores the default layer anchor without moving the content.
-    private func resetContentLayerAnchor(_ contentView: NSView) {
-        guard let layer = contentView.layer else { return }
-        let frame = contentView.frame
-        layer.anchorPoint = .zero
-        layer.position = CGPoint(x: frame.minX, y: frame.minY)
-    }
-
-    /// Re-centers the layer anchor for the exit transform without moving it.
-    private func recenterContentLayerAnchor(_ contentView: NSView) {
-        guard let layer = contentView.layer else { return }
-        let frame = layer.frame
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        layer.position = CGPoint(x: frame.midX, y: frame.midY)
-        CATransaction.commit()
     }
 
     private func animateOut(panel: NSPanel, dimmingWindow: NSWindow) async {
-        guard let contentView = panel.contentView else { return }
-
         var endFrame = panel.frame
         endFrame.origin.y += Self.presentationStartYOffset
-
-        // Scale out from the visual center.
-        recenterContentLayerAnchor(contentView)
 
         await NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.presentationAnimationDuration
@@ -345,13 +316,14 @@ private final class ModalPresenter {
             panel.animator().alphaValue = 0
             dimmingWindow.animator().alphaValue = 0
             panel.animator().setFrame(endFrame, display: true)
-            contentView.layer?.transform = CATransform3DMakeScale(
-                Self.presentationStartScale, Self.presentationStartScale, 1
-            )
         }
     }
 
-    private func finishDismiss(panel: NSPanel, dimmingWindow: NSWindow, notify: Bool) {
+    private func finishDismiss(
+        panel: NSPanel,
+        dimmingWindow: NSWindow,
+        notify: Bool
+    ) {
         parentWindowObservers.forEach(NotificationCenter.default.removeObserver)
         parentWindowObservers = []
 
@@ -412,14 +384,16 @@ private final class ModalPresenter {
         window.ignoresMouseEvents = false
         window.animationBehavior = .none
         window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
-        window.contentView = ModalDimmingView(cornerRadius: Self.parentWindowCornerRadius)
+        window.contentView = DimmingView(
+            cornerRadius: Self.parentWindowCornerRadius
+        )
         return window
     }
 
     private func observeParentWindow(_ parentWindow: NSWindow) {
         let notifications: [Notification.Name] = [
             NSWindow.didMoveNotification,
-            NSWindow.didResizeNotification
+            NSWindow.didResizeNotification,
         ]
 
         parentWindowObservers = notifications.map { notification in
@@ -429,7 +403,7 @@ private final class ModalPresenter {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.updateWindowFrames()
+                    self?.updateWindowFrames(fitContent: true)
                 }
             }
         }
@@ -445,34 +419,40 @@ private final class ModalPresenter {
             ) { [weak self] _ in
                 Task { @MainActor in
                     guard let self, !self.isRepositioningPanel else { return }
-                    self.updateWindowFrames()
+                    self.updateWindowFrames(fitContent: false)
                 }
             }
         ]
     }
 
-    private func updateWindowFrames() {
+    private func updateWindowFrames(fitContent: Bool) {
         guard let parentWindow else { return }
 
         dimmingWindow?.setFrame(parentWindow.frame, display: true)
 
-        if let panel, let hostingView {
+        if let panel {
             isRepositioningPanel = true
             defer { isRepositioningPanel = false }
 
-            // Re-fit before positioning so the top-margin clamp uses current size.
-            resizePanelToFitContent(panel: panel, hostingView: hostingView)
+            if fitContent, let hostingView {
+                resizePanelToFitContent(panel: panel, hostingView: hostingView)
+            }
 
             let parentFrame = parentWindow.frame
             var panelFrame = panel.frame
             panelFrame.origin.x = parentFrame.midX - panelFrame.width / 2
-            panelFrame.origin.y = Self.panelOriginY(parentFrame: parentFrame, panelHeight: panelFrame.height)
+            panelFrame.origin.y = Self.panelOriginY(
+                parentFrame: parentFrame,
+                panelHeight: panelFrame.height
+            )
             panel.setFrame(panelFrame, display: true)
         }
     }
 
     /// Centers short panels and clamps tall panels below the parent's top edge.
-    private static func panelOriginY(parentFrame: NSRect, panelHeight: CGFloat) -> CGFloat {
+    private static func panelOriginY(parentFrame: NSRect, panelHeight: CGFloat)
+        -> CGFloat
+    {
         let centeredTopMargin = (parentFrame.height - panelHeight) / 2
         let topMargin = max(minTopMargin, centeredTopMargin)
         return parentFrame.maxY - topMargin - panelHeight
@@ -481,7 +461,7 @@ private final class ModalPresenter {
 
 // MARK: - Dimming overlay
 
-private final class ModalDimmingView: NSView {
+private final class DimmingView: NSView {
     private let cornerRadius: CGFloat
 
     init(cornerRadius: CGFloat) {
@@ -499,7 +479,11 @@ private final class ModalDimmingView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius)
+        let path = NSBezierPath(
+            roundedRect: bounds,
+            xRadius: cornerRadius,
+            yRadius: cornerRadius
+        )
         NSColor.black.withAlphaComponent(0.22).setFill()
         path.fill()
     }

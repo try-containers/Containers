@@ -12,14 +12,19 @@ struct InfoRow: View {
     let label: String?
     let value: String
     let action: ActionButton?
-    
-    init(icon: String? = nil, label: String? = nil, value: String, action: ActionButton? = nil) {
+
+    init(
+        icon: String? = nil,
+        label: String? = nil,
+        value: String,
+        action: ActionButton? = nil
+    ) {
         self.icon = icon
         self.label = label
         self.value = value
         self.action = action
     }
-    
+
     var body: some View {
         HStack(alignment: .top) {
             if let icon, let label {
@@ -32,26 +37,35 @@ struct InfoRow: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: EditableFormLayout.labelWidth, alignment: .trailing)
+                .frame(
+                    width: EditableFormLayout.labelWidth,
+                    alignment: .trailing
+                )
                 .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-            }  else if let icon {
+            } else if let icon {
                 Image(systemName: icon)
                     .font(.body)
                     .foregroundStyle(.primary)
-                    .frame(width: EditableFormLayout.labelWidth, alignment: .trailing)
+                    .frame(
+                        width: EditableFormLayout.labelWidth,
+                        alignment: .trailing
+                    )
                     .padding(.top, EditableFormLayout.fieldLabelTopPadding)
             } else if let label {
                 Text("\(label):")
                     .font(.body)
                     .foregroundStyle(.primary)
-                    .frame(width: EditableFormLayout.labelWidth, alignment: .trailing)
+                    .frame(
+                        width: EditableFormLayout.labelWidth,
+                        alignment: .trailing
+                    )
                     .padding(.top, EditableFormLayout.fieldLabelTopPadding)
             } else {
                 Spacer()
                     .frame(width: EditableFormLayout.labelWidth)
                     .padding(.top, EditableFormLayout.fieldLabelTopPadding)
             }
-            
+
             HStack(alignment: .center, spacing: 8) {
                 Text(value)
                     .font(.system(.body, design: .monospaced))
@@ -59,7 +73,7 @@ struct InfoRow: View {
                     .lineLimit(nil)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                
+
                 if let action {
                     action
                 }

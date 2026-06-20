@@ -9,21 +9,21 @@ import SwiftUI
 
 struct ImageOverview: View {
     let image: ImageViewModel
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             InfoSection(rows: detailRows)
-            
+
         }
         .padding(20)
     }
-    
+
     private var detailRows: [InfoRow] {
         [
             InfoRow(label: "Tag", value: image.tag),
             InfoRow(label: "Digest", value: image.fullDigestWithoutAlgorithm),
             InfoRow(label: "Size", value: image.formattedSize),
-            InfoRow(label: "Created", value: image.formattedCreated)
+            InfoRow(label: "Created", value: image.formattedCreated),
         ]
     }
 }

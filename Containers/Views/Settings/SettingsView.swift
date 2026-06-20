@@ -35,7 +35,8 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SettingsPane.allCases, selection: $selectedSection) { section in
+            List(SettingsPane.allCases, selection: $selectedSection) {
+                section in
                 NavigationLink(value: section) {
                     SidebarRow(section: section)
                 }
@@ -69,13 +70,18 @@ struct SettingsView: View {
         .task {
             refreshSettings()
         }
-        .alert("Error", isPresented: $showError, actions: {
-            Button("OK") {
-                showError = false
+        .alert(
+            "Error",
+            isPresented: $showError,
+            actions: {
+                Button("OK") {
+                    showError = false
+                }
+            },
+            message: {
+                Text(errorMessage ?? "Unknown Error")
             }
-        }, message: {
-            Text(errorMessage ?? "Unknown Error")
-        })
+        )
         .onChange(of: selectedSection) { oldValue, newValue in
             guard let newValue, newValue != oldValue else {
                 return
@@ -151,10 +157,12 @@ struct SettingsView: View {
                     .disabled(system.isRunning)
                 }
 
-                Text("Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
                 Divider()
 
@@ -162,7 +170,10 @@ struct SettingsView: View {
                     Spacer()
 
                     Button("Use Default", action: resetStorageLocation)
-                        .disabled(system.isRunning || UserDefaults.usesDefaultApplicationDataRoot)
+                        .disabled(
+                            system.isRunning
+                                || UserDefaults.usesDefaultApplicationDataRoot
+                        )
                 }
             }
             .padding(12)
@@ -189,19 +200,26 @@ struct SettingsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
-                                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                                .background(
+                                    Color(nsColor: .controlBackgroundColor),
+                                    in: RoundedRectangle(cornerRadius: 6)
+                                )
                         }
                     }
                 }
 
-                Text("DNS domains let containers access host services, such as host.containers.internal:8000.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "DNS domains let containers access host services, such as host.containers.internal:8000."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
                 Divider()
 
-                SettingsWarning("DNS domain management requires administrator privileges. Manage domains by creating resolver files in /etc/resolver/.")
+                SettingsWarning(
+                    "DNS domain management requires administrator privileges. Manage domains by creating resolver files in /etc/resolver/."
+                )
             }
             .padding(12)
         } label: {
@@ -233,12 +251,16 @@ struct SettingsView: View {
     }
 
     private func recordSectionNavigation(to section: SettingsPane) {
-        guard sectionHistory.indices.contains(sectionHistoryIndex), sectionHistory[sectionHistoryIndex] != section else {
+        guard sectionHistory.indices.contains(sectionHistoryIndex),
+            sectionHistory[sectionHistoryIndex] != section
+        else {
             return
         }
 
         if canNavigateForward {
-            sectionHistory = Array(sectionHistory.prefix(sectionHistoryIndex + 1))
+            sectionHistory = Array(
+                sectionHistory.prefix(sectionHistoryIndex + 1)
+            )
         }
 
         sectionHistory.append(section)
@@ -247,7 +269,9 @@ struct SettingsView: View {
 
     private func refreshSettings() {
         storageLocation = UserDefaults.applicationDataRoot
-        dnsDomains = networkManager.listDomains().map(DNSDomainSetting.init(name:))
+        dnsDomains = networkManager.listDomains().map(
+            DNSDomainSetting.init(name:)
+        )
     }
 
     private func chooseStorageLocation() {
@@ -258,7 +282,8 @@ struct SettingsView: View {
         panel.canCreateDirectories = true
         panel.directoryURL = storageLocation
         panel.prompt = "Choose"
-        panel.message = "Choose where Containers stores containers, images, volumes, kernels, and build data."
+        panel.message =
+            "Choose where Containers stores containers, images, volumes, kernels, and build data."
 
         guard panel.runModal() == .OK, let url = panel.url else {
             return
@@ -278,7 +303,10 @@ struct SettingsView: View {
                 }
             }
 
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: url,
+                withIntermediateDirectories: true
+            )
             UserDefaults.setApplicationDataRoot(url, bookmarkData: bookmarkData)
             storageLocation = UserDefaults.applicationDataRoot
         } catch {

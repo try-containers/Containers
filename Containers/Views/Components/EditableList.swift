@@ -17,7 +17,7 @@ struct EditableList<Item: Identifiable, EditorContent: View>: View {
     var newItem: () -> Item
     var rowSummary: (Item) -> String
     var rowValues: ((Item) -> [String])?
-    
+
     @ViewBuilder var editorContent: (Binding<Item>) -> EditorContent
 
     @State private var selectedItemID: Set<Item.ID> = []
@@ -26,12 +26,15 @@ struct EditableList<Item: Identifiable, EditorContent: View>: View {
     var body: some View {
         HStack(alignment: .top) {
             Text("\(title):")
-                .frame(width: EditableFormLayout.labelWidth, alignment: .trailing)
-            
+                .frame(
+                    width: EditableFormLayout.labelWidth,
+                    alignment: .trailing
+                )
+
             VStack(alignment: .leading, spacing: 6) {
                 VStack(spacing: 0) {
                     headerRow
-                    
+
                     List(items, selection: $selectedItemID) { item in
                         row(for: item)
                             .contentShape(Rectangle())
@@ -40,20 +43,25 @@ struct EditableList<Item: Identifiable, EditorContent: View>: View {
                             }
                     }
                     .listStyle(.plain)
-                    
+
                     toolbar
                 }
                 .border(Color(nsColor: .secondarySystemFill))
                 .frame(minHeight: 120)
             }
-            .frame(width: fieldWidth ?? EditableFormLayout.controlWidth, alignment: .leading)
+            .frame(
+                width: fieldWidth ?? EditableFormLayout.controlWidth,
+                alignment: .leading
+            )
         }
-        .modal(isPresented: Binding(
-            get: { editingItemID != nil },
-            set: { if !$0 { editingItemID = nil } }
-        )) {
+        .modal(
+            isPresented: Binding(
+                get: { editingItemID != nil },
+                set: { if !$0 { editingItemID = nil } }
+            )
+        ) {
             if let binding = editingItemBinding {
-               EditableListItemEditor(title: title) {
+                EditableListItemEditor(title: title) {
                     editorContent(binding)
                 }
             }
@@ -62,15 +70,19 @@ struct EditableList<Item: Identifiable, EditorContent: View>: View {
             selectedItemID = selectedItemID.filter { id in
                 items.contains(where: { $0.id == id })
             }
-            if let editingItemID, !items.contains(where: { $0.id == editingItemID }) {
+            if let editingItemID,
+                !items.contains(where: { $0.id == editingItemID })
+            {
                 self.editingItemID = nil
             }
         }
     }
-    
+
     private var headerRow: some View {
         HStack(spacing: 8) {
-            ForEach(Array(columnTitles.enumerated()), id: \.offset) { _, columnTitle in
+            ForEach(Array(columnTitles.enumerated()), id: \.offset) {
+                _,
+                columnTitle in
                 Text(columnTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -81,13 +93,13 @@ struct EditableList<Item: Identifiable, EditorContent: View>: View {
         .frame(height: 24)
         .background(Color(nsColor: .controlBackgroundColor))
     }
-    
+
     private func row(for item: Item) -> some View {
         HStack(spacing: 8) {
             ForEach(Array(columnTitles.indices), id: \.self) { index in
                 let value = rowValue(for: item, at: index)
                 let isEmpty = value.isEmpty
-                
+
                 Text(isEmpty && index == 0 ? "New Item" : value)
                     .foregroundStyle(isEmpty ? .tertiary : .primary)
                     .lineLimit(1)
@@ -96,14 +108,14 @@ struct EditableList<Item: Identifiable, EditorContent: View>: View {
             }
         }
     }
-    
+
     private func rowValue(for item: Item, at index: Int) -> String {
         let values = rowValues?(item) ?? [rowSummary(item)]
-        
+
         guard index < values.count else {
             return ""
         }
-        
+
         return values[index]
     }
 
@@ -135,7 +147,8 @@ struct EditableList<Item: Identifiable, EditorContent: View>: View {
 
     private var editingItemBinding: Binding<Item>? {
         guard let editingItemID,
-              let index = items.firstIndex(where: { $0.id == editingItemID }) else {
+            let index = items.firstIndex(where: { $0.id == editingItemID })
+        else {
             return nil
         }
         return Binding(

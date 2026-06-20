@@ -5,11 +5,11 @@
 //  Created by Axel Martinez on 2026/02/05.
 //
 
-import Foundation
+import ContainerSystem
 import Containerization
 import ContainerizationExtras
 import ContainerizationOCI
-import ContainerSystem
+import Foundation
 
 struct ContainerViewModel: Identifiable, Hashable, Equatable {
     var id: String
@@ -21,7 +21,7 @@ struct ContainerViewModel: Identifiable, Hashable, Equatable {
     var os: String
     var arch: String
     var startedDate: Date?
-    
+
     init(_ snapshot: ContainerSnapshot) {
         self.id = snapshot.configuration.id
         self.imageName = snapshot.configuration.image.reference
@@ -31,18 +31,21 @@ struct ContainerViewModel: Identifiable, Hashable, Equatable {
         }.joined(separator: "\n")
         self.ipAddress = snapshot.networks.first.map { network in
             let addressString = network.ipv4Address.description
-            return String(addressString.split(separator: "/").first ?? Substring(addressString))
+            return String(
+                addressString.split(separator: "/").first
+                    ?? Substring(addressString)
+            )
         }
         self.os = snapshot.configuration.platform.os
         self.arch = snapshot.configuration.platform.architecture
         self.startedDate = snapshot.startedDate
     }
-    
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(status)
     }
-    
+
     static func == (lhs: ContainerViewModel, rhs: ContainerViewModel) -> Bool {
         lhs.id == rhs.id && lhs.status == rhs.status
     }
@@ -54,23 +57,23 @@ extension ContainerViewModel {
     var formattedPorts: String {
         ports.isEmpty ? "-" : ports
     }
-    
+
     var hasIPAddress: Bool {
         ipAddress != nil
     }
-    
+
     var formattedIPAddress: String {
         ipAddress ?? "-"
     }
-    
+
     var formattedOS: String {
         os.localizedCapitalized
     }
-    
+
     var formattedState: String {
         status.rawValue.localizedCapitalized
     }
-    
+
     var formattedStarted: String {
         guard let startedDate else {
             return ""
@@ -80,12 +83,12 @@ extension ContainerViewModel {
         formatter.timeStyle = .medium
         return formatter.string(from: startedDate)
     }
-    
+
     var formattedUptime: String {
         guard status == .running, let startedDate else {
             return "-"
         }
-        
+
         let interval = max(0, Date().timeIntervalSince(startedDate))
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.day, .hour, .minute]

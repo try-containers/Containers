@@ -10,12 +10,12 @@ import SwiftUI
 
 struct ImageInspect: View {
     let image: ImageViewModel
-    
+
     @Environment(ImageManager.self) private var imageManager
-    
+
     @State private var printable: ContainerSystem.ImageResource?
     @State private var errorMessage: String?
-    
+
     var body: some View {
         Group {
             if let printable {
@@ -36,12 +36,14 @@ struct ImageInspect: View {
             await loadInspectDetail()
         }
     }
-    
+
     private func loadInspectDetail() async {
         errorMessage = nil
-        
+
         do {
-            printable = try await imageManager.inspect(image: image.imageDescription)
+            printable = try await imageManager.inspect(
+                image: image.imageDescription
+            )
         } catch {
             errorMessage = error.localizedDescription
         }

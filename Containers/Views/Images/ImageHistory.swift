@@ -5,22 +5,22 @@
 //  Created by Axel Martinez on 2026/02/12.
 //
 
-import SwiftUI
-import Containerization
 import ContainerSystem
+import Containerization
 import ContainerizationOCI
+import SwiftUI
 
 struct ImageHistory: View {
     let imageReference: String
     let platform: Platform
-    
+
     @Environment(ImageManager.self) private var imageManager
-    
+
     @SwiftUI.State private var layers: [LayerInfo] = []
     @SwiftUI.State private var isLoading = true
     @SwiftUI.State private var error: Error?
     @SwiftUI.State private var showError = false
-    
+
     struct LayerInfo: Identifiable {
         let id = UUID()
         let digest: String?
@@ -28,7 +28,7 @@ struct ImageHistory: View {
         let command: String?
         let comment: String?
         let emptyLayer: Bool
-        
+
         var formattedDigest: String {
             guard var d = digest else {
                 return "<missing>"
@@ -41,12 +41,12 @@ struct ImageHistory: View {
             }
             return d
         }
-        
+
         var formattedSize: String {
             ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
         }
     }
-    
+
     var body: some View {
         Group {
             if isLoading {
@@ -82,7 +82,7 @@ struct ImageHistory: View {
             }
         )
     }
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "square.stack.3d.up.slash")
@@ -98,21 +98,23 @@ struct ImageHistory: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)
     }
-    
+
     private var layersListView: some View {
         ScrollView {
-            
+
             // Layers list
             VStack(spacing: 8) {
-                ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
+                ForEach(Array(layers.enumerated()), id: \.element.id) {
+                    index,
+                    layer in
                     layerRow(layer: layer, index: index)
                 }
             }
-            
+
             .padding(20)
         }
     }
-    
+
     private func layerRow(layer: LayerInfo, index: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
@@ -126,7 +128,7 @@ struct ImageHistory: View {
                         Circle()
                             .fill(Color.accentColor)
                     )
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         if let command = layer.command, !command.isEmpty {
@@ -146,14 +148,14 @@ struct ImageHistory: View {
                                 .font(.system(.body, design: .monospaced))
                                 .foregroundStyle(.primary)
                         }
-                        
+
                         Spacer()
-                        
+
                         Text(layer.formattedSize)
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
-                    
+
                     if let comment = layer.comment, !comment.isEmpty {
                         Text(comment)
                             .font(.caption)
@@ -168,13 +170,13 @@ struct ImageHistory: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(6)
     }
-    
+
     private func sectionHeader(title: String, subtitle: String?) -> some View {
         HStack(alignment: .lastTextBaseline, spacing: 8) {
             Text(title)
                 .font(.headline)
                 .fontWeight(.semibold)
-            
+
             if let subtitle {
                 Text(subtitle)
                     .font(.caption)
@@ -182,18 +184,18 @@ struct ImageHistory: View {
             }
         }
     }
-    
+
     @MainActor
     private func loadLayers() async {
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
             let layerInfo = try await imageManager.getImageLayers(
                 imageReference: imageReference,
                 platform: platform
             )
-            
+
             // Convert ImageLayerDetail to LayerInfo
             self.layers = layerInfo.map { detail in
                 LayerInfo(
@@ -204,7 +206,7 @@ struct ImageHistory: View {
                     emptyLayer: detail.emptyLayer
                 )
             }
-            
+
         } catch {
             self.error = error
             self.showError = true

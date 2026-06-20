@@ -5,16 +5,16 @@
 //  Created by Axel Martinez on 2026/02/05.
 //
 
-import SwiftUI
 import AppKit
 import ContainerSystem
 import ContainerizationOCI
+import SwiftUI
 
 enum NavigationTab: String, Identifiable, Equatable {
     case containers
     case images
     case volumes
-    
+
     var displayTitle: String {
         switch self {
         case .containers:
@@ -25,7 +25,7 @@ enum NavigationTab: String, Identifiable, Equatable {
             "Volumes"
         }
     }
-    
+
     var icon: String {
         switch self {
         case .containers:
@@ -36,11 +36,11 @@ enum NavigationTab: String, Identifiable, Equatable {
             "internaldrive.fill"
         }
     }
-    
+
     var id: String {
         self.rawValue
     }
-    
+
     // for customizing order
     static let allCases: [NavigationTab] = [.containers, .images, .volumes]
 }
@@ -49,29 +49,29 @@ struct DashboardView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(SystemManager.self) private var system
     @Environment(\.openSettings) private var openSettings
-    
+
     // Local navigation state
     @SwiftUI.State private var selectedTab: NavigationTab = .containers
     @SwiftUI.State private var refreshContainerNeeded: Bool = false
-    
+
     // Local error state
     @SwiftUI.State private var error: Error?
     @SwiftUI.State private var showError: Bool = false
-    
+
     // Sheet presentation state for creating new items
     @SwiftUI.State private var showCreateContainerView: Bool = false
     @SwiftUI.State private var showCreateVolumeView: Bool = false
     @SwiftUI.State private var showBuildImageView: Bool = false
-    
+
     // Refresh trigger (still needed for build image sheet dismiss)
     @SwiftUI.State private var refreshTrigger: Int = 0
-    
+
     // Search state
     @SwiftUI.State private var searchText: String = ""
-    
+
     // Running containers only toggle
     @SwiftUI.State private var runningContainersOnly: Bool = false
-    
+
     // Resource usage state
     @SwiftUI.State private var resources = ResourcesViewModel()
 
@@ -102,7 +102,11 @@ struct DashboardView: View {
                             .padding(.vertical)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .topLeading
+                    )
                     .toolbarBackground(.hidden, for: .automatic)
                     .tabItem {
                         Label(tab.displayTitle, systemImage: tab.icon)
@@ -122,27 +126,33 @@ struct DashboardView: View {
             .toolbar {
                 if selectedTab == .containers {
                     ToolbarItem(placement: .automatic) {
-                        Toggle(isOn: $runningContainersOnly, label: {
-                            Image(systemName: "line.3.horizontal.decrease")
-                        })
+                        Toggle(
+                            isOn: $runningContainersOnly,
+                            label: {
+                                Image(systemName: "line.3.horizontal.decrease")
+                            }
+                        )
                         .toggleStyle(.button)
                         .disabled(!system.isRunning)
                         .help("Running containers only")
                     }
                 }
-                
+
                 ToolbarItem(placement: .automatic) {
-                    Button(action: {
-                        handlePlusButton()
-                    }, label: {
-                        Image(systemName: "plus")
-                    })
+                    Button(
+                        action: {
+                            handlePlusButton()
+                        },
+                        label: {
+                            Image(systemName: "plus")
+                        }
+                    )
                     .disabled(!system.isRunning)
                     .help("New")
                 }
-                
+
                 ToolbarSpacer(.fixed)
-                
+
                 ToolbarItem(placement: .automatic) {
                     SearchField(text: $searchText)
                         .disabled(!system.isRunning)
@@ -152,7 +162,7 @@ struct DashboardView: View {
                 guard !self.system.isRunning else {
                     return
                 }
-                
+
                 try? await self.system.start(
                     appRoot: UserDefaults.applicationDataRoot
                 )
@@ -161,42 +171,64 @@ struct DashboardView: View {
                 // Update resource usage every 2 seconds
                 while !Task.isCancelled {
                     await updateResourceUsage()
-                    
+
                     try? await Task.sleep(for: .seconds(2))
                 }
             }
-            .alert("Oops!", isPresented: $showError, actions: {
-                Button(action: {
-                    self.showError = false
-                }, label: {
-                    Text("OK")
-                })
-            }, message: {
-                let message = String("\(self.error, default: "Unknown Error")")
-                Text(message)
-                    .lineLimit(5)
-            })
-            .modal(isPresented: $showCreateContainerView, onDismiss: {
-                refreshTrigger += 1
-            }, content: {
-                CreateContainerView(imageReference: "")
-            })
-            .modal(isPresented: $showCreateVolumeView, onDismiss: {
-                refreshTrigger += 1
-            }, content: {
-                CreateVolumeView()
-            })
-            .modal(isPresented: $showBuildImageView, onDismiss: {
-                refreshTrigger += 1
-            }, content: {
-                BuildImageView()
-            })
+            .alert(
+                "Oops!",
+                isPresented: $showError,
+                actions: {
+                    Button(
+                        action: {
+                            self.showError = false
+                        },
+                        label: {
+                            Text("OK")
+                        }
+                    )
+                },
+                message: {
+                    let message = String(
+                        "\(self.error, default: "Unknown Error")"
+                    )
+                    Text(message)
+                        .lineLimit(5)
+                }
+            )
+            .modal(
+                isPresented: $showCreateContainerView,
+                onDismiss: {
+                    refreshTrigger += 1
+                },
+                content: {
+                    CreateContainerView(imageReference: "")
+                }
+            )
+            .modal(
+                isPresented: $showCreateVolumeView,
+                onDismiss: {
+                    refreshTrigger += 1
+                },
+                content: {
+                    CreateVolumeView()
+                }
+            )
+            .modal(
+                isPresented: $showBuildImageView,
+                onDismiss: {
+                    refreshTrigger += 1
+                },
+                content: {
+                    BuildImageView()
+                }
+            )
 
             statusBar
         }
         .frame(minWidth: 800, minHeight: 520)
     }
-    
+
     private var statusBar: some View {
         HStack(spacing: 16) {
             HStack(spacing: 8) {
@@ -204,65 +236,80 @@ struct DashboardView: View {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
-                
+
                 // Status message
                 Text(statusMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            
+
             // Control buttons (play/stop/restart)
             HStack(spacing: 8) {
-                Button(action: {
-                    Task { @MainActor in
-                        if system.systemStatus == .running {
-                            do {
-                                try await system.stop()
-                            } catch(let error) {
-                                self.error = error
-                                self.showError = true
-                            }
-                        } else {
-                            do {
-                                try await startSystem()
-                            } catch(let error) {
-                                self.error = error
-                                self.showError = true
+                Button(
+                    action: {
+                        Task { @MainActor in
+                            if system.systemStatus == .running {
+                                do {
+                                    try await system.stop()
+                                } catch (let error) {
+                                    self.error = error
+                                    self.showError = true
+                                }
+                            } else {
+                                do {
+                                    try await startSystem()
+                                } catch (let error) {
+                                    self.error = error
+                                    self.showError = true
+                                }
                             }
                         }
-                    }
-                }, label: {
-                    Image(systemName: system.systemStatus == .running ? "stop.fill" : "play.fill")
+                    },
+                    label: {
+                        Image(
+                            systemName: system.systemStatus == .running
+                                ? "stop.fill" : "play.fill"
+                        )
                         .font(.caption)
-                })
+                    }
+                )
                 .buttonStyle(.plain)
-                .disabled(system.systemStatus == .starting || system.systemStatus == .stopping)
-                
+                .disabled(
+                    system.systemStatus == .starting
+                        || system.systemStatus == .stopping
+                )
+
                 // Restart button (only visible when running)
                 if system.systemStatus == .running {
-                    Button(action: {
-                        Task { @MainActor in
-                            do {
-                                try await system.stop()
-                                try await startSystem()
-                            } catch(let error) {
-                                self.error = error
-                                self.showError = true
+                    Button(
+                        action: {
+                            Task { @MainActor in
+                                do {
+                                    try await system.stop()
+                                    try await startSystem()
+                                } catch (let error) {
+                                    self.error = error
+                                    self.showError = true
+                                }
                             }
+                        },
+                        label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
                         }
-                    }, label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption)
-                    })
+                    )
                     .buttonStyle(.plain)
-                    .disabled(system.systemStatus == .starting || system.systemStatus == .stopping)
+                    .disabled(
+                        system.systemStatus == .starting
+                            || system.systemStatus == .stopping
+                    )
                 }
             }
-            
+
             // Separator
             Divider()
                 .frame(height: 16)
-            
+
             // Resource usage
             HStack(spacing: 12) {
                 // RAM usage
@@ -272,7 +319,7 @@ struct DashboardView: View {
                     Text(String(format: "%.2f GB", resources.memoryUsage))
                         .font(.caption)
                 }
-                
+
                 // CPU usage
                 HStack(spacing: 4) {
                     Image(systemName: "cpu")
@@ -280,7 +327,7 @@ struct DashboardView: View {
                     Text(String(format: "%.0f%%", resources.cpuUsage))
                         .font(.caption)
                 }
-                
+
                 // Disk usage
                 HStack(spacing: 4) {
                     Image(systemName: "internaldrive")
@@ -293,7 +340,7 @@ struct DashboardView: View {
                 }
             }
             .foregroundStyle(.secondary)
-            
+
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -303,13 +350,13 @@ struct DashboardView: View {
             Divider()
         }
     }
-    
+
     private func startSystem() async throws {
         try await system.start(
             appRoot: UserDefaults.applicationDataRoot
         )
     }
-    
+
     private var statusColor: Color {
         switch system.systemStatus {
         case .running:
@@ -320,7 +367,7 @@ struct DashboardView: View {
             return Color(nsColor: .systemRed)
         }
     }
-    
+
     private var statusMessage: String {
         switch system.systemStatus {
         case .running:
@@ -335,7 +382,7 @@ struct DashboardView: View {
             return "Container system failed to start"
         }
     }
-    
+
     private func handlePlusButton() {
         guard system.isRunning else { return }
 
@@ -348,7 +395,7 @@ struct DashboardView: View {
             showBuildImageView = true
         }
     }
-    
+
     private func updateResourceUsage() async {
         guard system.isRunning else {
             resources = ResourcesViewModel(
@@ -357,23 +404,22 @@ struct DashboardView: View {
                 diskUsage: 0,
                 diskLimit: 0
             )
-            
+
             return
         }
-        
+
         // Get container list through ContainerManager
         guard let snapshots = try? await containerManager.list() else {
             return
         }
-        
+
         let runningContainers = snapshots.filter { $0.status == .running }
-        
+
         resources = ResourcesViewModel(
-            memoryUsage:  Double(runningContainers.count) * 0.128, // For now, estimate ~128MB per running container
-            cpuUsage:  Double(runningContainers.count) * 5.0, // 5% per container estimate
-            diskUsage:  Double(runningContainers.count) * 2.5, // 2.5GB per container estimate
+            memoryUsage: Double(runningContainers.count) * 0.128,  // For now, estimate ~128MB per running container
+            cpuUsage: Double(runningContainers.count) * 5.0,  // 5% per container estimate
+            diskUsage: Double(runningContainers.count) * 2.5,  // 2.5GB per container estimate
             diskLimit: 50,
         )
     }
 }
-

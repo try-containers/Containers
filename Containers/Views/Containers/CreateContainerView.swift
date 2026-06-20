@@ -5,10 +5,10 @@
 //  Created by Axel Martinez on 2026/02/05.
 //
 
-import SwiftUI
 import ContainerSystem
-import ContainerizationOCI
 import ContainerizationExtras
+import ContainerizationOCI
+import SwiftUI
 
 private struct PortsConfiguration: Identifiable {
     let id: UUID = UUID()
@@ -16,11 +16,13 @@ private struct PortsConfiguration: Identifiable {
     var host: Int = 0
     var container: Int = 0
     var publishProtocol: PublishProtocol = .tcp
-    
+
     var publishedPort: PublishPort {
-        let address = try? IPAddress(hostAddress.trimmingCharacters(in: .whitespacesAndNewlines))
+        let address = try? IPAddress(
+            hostAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
         let fallbackAddress = try! IPAddress("127.0.0.1")
-        
+
         return .init(
             hostAddress: address ?? fallbackAddress,
             hostPort: UInt16(self.host),
@@ -48,22 +50,25 @@ private struct CapabilityConfiguration: Identifiable {
 
 struct CreateContainerView: View {
     private static let fieldWidth: CGFloat = 420
-    
+
     @Environment(ContainerManager.self) private var containerManager
     @Environment(ImageManager.self) private var imageManager
     @Environment(VolumeManager.self) private var volumeManager
     @Environment(\.close) private var close
 
     @SwiftUI.State var imageReference: String
-    
+
     @SwiftUI.State private var process: ContainerProcess = .init()
     @SwiftUI.State private var container: ContainerInfo = .init()
     @SwiftUI.State private var volumes: [VolumeConfiguration] = []
     @SwiftUI.State private var ports: [PortsConfiguration] = []
     @SwiftUI.State private var environments: [KeyValue] = []
-    @SwiftUI.State private var resource: ContainerConfiguration.Resources = .init()
-    @SwiftUI.State private var registryScheme: String = RequestScheme.auto.rawValue
-    @SwiftUI.State private var platformString: String = Platform.current.description
+    @SwiftUI.State private var resource: ContainerConfiguration.Resources =
+        .init()
+    @SwiftUI.State private var registryScheme: String = RequestScheme.auto
+        .rawValue
+    @SwiftUI.State private var platformString: String = Platform.current
+        .description
     @SwiftUI.State private var shmSizeInMiB: Int = 0
     @SwiftUI.State private var capabilities: [CapabilityConfiguration] = []
     @SwiftUI.State private var errorMessage: String?
@@ -80,7 +85,7 @@ struct CreateContainerView: View {
     init(imageReference: String) {
         self._imageReference = State(initialValue: imageReference)
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -89,7 +94,7 @@ struct CreateContainerView: View {
                     Text("Create New Container")
                         .font(.title2)
                         .fontWeight(.semibold)
-                    
+
                     Text("Configure your new container settings")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -100,22 +105,26 @@ struct CreateContainerView: View {
                     Button {
                         showErrorPopover.toggle()
                     } label: {
-                        Label("Error", systemImage: "exclamationmark.triangle.fill")
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(.red)
+                        Label(
+                            "Error",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.red)
                     }
                     .buttonStyle(.borderless)
                     .help("Show error")
-                    .popover(isPresented: $showErrorPopover, arrowEdge: .bottom) {
+                    .popover(isPresented: $showErrorPopover, arrowEdge: .bottom)
+                    {
                         errorPopover(message: errorMessage)
                     }
                 }
             }
             .padding(20)
             .background(Color(nsColor: .controlBackgroundColor))
-            
+
             Divider()
-            
+
             // Content
             ScrollView {
                 VStack(spacing: 20) {
@@ -133,7 +142,9 @@ struct CreateContainerView: View {
                                     Task {
                                         do {
                                             self.showProgressView = true
-                                            self.localImages = try await imageManager.list().map(\.description)
+                                            self.localImages =
+                                                try await imageManager.list()
+                                                .map(\.description)
                                             self.showProgressView = false
                                             self.showPickLocalImage = true
                                         } catch (let error) {
@@ -145,7 +156,8 @@ struct CreateContainerView: View {
 
                             EditableField(
                                 title: "Name",
-                                description: "Leave empty to generate a unique name automatically.",
+                                description:
+                                    "Leave empty to generate a unique name automatically.",
                                 placeholder: "my-container",
                                 value: $container.name,
                                 fieldWidth: Self.fieldWidth
@@ -155,27 +167,27 @@ struct CreateContainerView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     processOptions
                     managementOptions
                 }
                 .padding(20)
             }
-            
+
             Divider()
-            
+
             // Bottom Bar
             HStack {
                 if showProgressView {
                     ProgressView()
                         .controlSize(.small)
                         .padding(.trailing, 8)
-                    
+
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Creating container...")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        
+
                         if !containerManager.progressMessage.isEmpty {
                             Text(containerManager.progressMessage)
                                 .font(.caption)
@@ -184,46 +196,63 @@ struct CreateContainerView: View {
                         }
                     }
                 }
-                
+
                 Spacer()
-                
+
                 Button("Cancel") {
                     close()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                
+
                 Button("Create Container") {
                     createContainer()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(imageReference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    imageReference.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
+                )
             }
             .padding(16)
             .background(Color(nsColor: .controlBackgroundColor))
         }
         .frame(width: 660, height: 560)
-        .modal(isPresented: $showProgressView, content: {
-            ProgressView()
-        })
-        .modal(isPresented: $showPickLocalImage, content: {
-            ImageSelectionView(
-                images: self.localImages,
-                onImageSelect: {
-                    self.imageReference = $0
-                }
-            )
-        })
-        .modal(item: $volumePickerTarget, content: { target in
-            VolumeSelectionView(
-                volumes: self.availableVolumes,
-                onVolumeSelect: { selectedName in
-                    guard let index = self.volumes.firstIndex(where: { $0.id == target.id }) else { return }
-                    self.volumes[index].name = selectedName
-                }
-            )
-        })
+        .modal(
+            isPresented: $showProgressView,
+            content: {
+                ProgressView()
+            }
+        )
+        .modal(
+            isPresented: $showPickLocalImage,
+            content: {
+                ImageSelectionView(
+                    images: self.localImages,
+                    onImageSelect: {
+                        self.imageReference = $0
+                    }
+                )
+            }
+        )
+        .modal(
+            item: $volumePickerTarget,
+            content: { target in
+                VolumeSelectionView(
+                    volumes: self.availableVolumes,
+                    onVolumeSelect: { selectedName in
+                        guard
+                            let index = self.volumes.firstIndex(where: {
+                                $0.id == target.id
+                            })
+                        else { return }
+                        self.volumes[index].name = selectedName
+                    }
+                )
+            }
+        )
         .animation(.default, value: self.ports.count)
         .animation(.default, value: self.environments.count)
         .animation(.default, value: self.isProcessOptionsExpanded)
@@ -236,7 +265,7 @@ struct CreateContainerView: View {
         }
         .interactiveDismissDisabled()
     }
-    
+
     private func errorPopover(message: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -269,18 +298,21 @@ struct CreateContainerView: View {
     private static var platformOptions: [String] {
         let current = Platform.current
         var options = [current.description]
-        
+
         if current.architecture == "arm64" {
             options.append("linux/amd64")
         }
-        
+
         return options
     }
-    
+
     private var processOptions: some View {
         VStack(alignment: .leading, spacing: 20) {
-            collapsibleOptionsHeader(title: "Process Options", isExpanded: $isProcessOptionsExpanded)
-            
+            collapsibleOptionsHeader(
+                title: "Process Options",
+                isExpanded: $isProcessOptionsExpanded
+            )
+
             if isProcessOptionsExpanded {
                 EditableField(
                     title: "Entrypoint",
@@ -292,17 +324,22 @@ struct CreateContainerView: View {
                     ),
                     fieldWidth: Self.fieldWidth
                 )
-                
+
                 EditableField(
                     title: "Stop Signal",
                     placeholder: "SIGTERM",
                     value: Binding(
                         get: { container.stopSignal ?? "" },
-                        set: { container.stopSignal = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+                        set: {
+                            container.stopSignal =
+                                $0.trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                ).isEmpty ? nil : $0
+                        }
                     ),
                     fieldWidth: Self.fieldWidth
                 )
-                
+
                 EditableList(
                     items: $environments,
                     title: "Environment Variables",
@@ -319,21 +356,25 @@ struct CreateContainerView: View {
             }
         }
     }
-    
+
     private var managementOptions: some View {
         VStack(alignment: .leading, spacing: 20) {
-            collapsibleOptionsHeader(title: "Management Options", isExpanded: $isManagementOptionsExpanded)
-            
+            collapsibleOptionsHeader(
+                title: "Management Options",
+                isExpanded: $isManagementOptionsExpanded
+            )
+
             if isManagementOptionsExpanded {
                 EditableField(
                     title: "Platform",
-                    description: "Choose the image variant to run. AMD64 containers use Rosetta on Apple Silicon.",
+                    description:
+                        "Choose the image variant to run. AMD64 containers use Rosetta on Apple Silicon.",
                     placeholder: "Platform",
                     fieldWidth: Self.fieldWidth,
                     options: Self.platformOptions,
                     selection: $platformString
                 )
-                
+
                 // Volumes
                 EditableList(
                     items: $volumes,
@@ -354,7 +395,7 @@ struct CreateContainerView: View {
                         )
                     }
                 )
-                
+
                 // Ports
                 EditableList(
                     items: $ports,
@@ -369,7 +410,7 @@ struct CreateContainerView: View {
                         PortMappingEditor(port: $port)
                     }
                 )
-                
+
                 EditableList(
                     items: $capabilities,
                     title: "Capabilities",
@@ -386,19 +427,25 @@ struct CreateContainerView: View {
             }
         }
     }
-    
-    private func collapsibleOptionsHeader(title: String, isExpanded: Binding<Bool>) -> some View {
+
+    private func collapsibleOptionsHeader(
+        title: String,
+        isExpanded: Binding<Bool>
+    ) -> some View {
         Button {
             isExpanded.wrappedValue.toggle()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 14)
-                
+                Image(
+                    systemName: isExpanded.wrappedValue
+                        ? "chevron.down" : "chevron.right"
+                )
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 14)
+
                 Text(title)
                     .font(.headline)
-                
+
                 Spacer()
             }
             .contentShape(Rectangle())
@@ -406,50 +453,54 @@ struct CreateContainerView: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    
-    private static func capabilityNames(from capabilities: [CapabilityConfiguration]) -> [String] {
+
+    private static func capabilityNames(
+        from capabilities: [CapabilityConfiguration]
+    ) -> [String] {
         capabilities
             .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
-    
-    private func capabilitySummary(_ capability: CapabilityConfiguration) -> String {
+
+    private func capabilitySummary(_ capability: CapabilityConfiguration)
+        -> String
+    {
         capability.name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
+
     private func volumeMountSummary(_ volume: VolumeConfiguration) -> String {
         let name = volume.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let path = volume.path.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = name.isEmpty ? "Anonymous volume" : name
-        
+
         return path.isEmpty ? displayName : "\(displayName) -> \(path)"
     }
-    
+
     private func volumeMountValues(_ volume: VolumeConfiguration) -> [String] {
         let name = volume.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let path = volume.path.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         return [name.isEmpty ? "Anonymous volume" : name, path]
     }
-    
+
     private func portSummary(_ port: PortsConfiguration) -> String {
         "\(port.hostAddress):\(port.host):\(port.container)/\(port.publishProtocol.rawValue.uppercased())"
     }
-    
+
     private func portValues(_ port: PortsConfiguration) -> [String] {
         [
             "\(port.hostAddress):\(port.host)",
             "\(port.container)",
-            port.publishProtocol.rawValue.uppercased()
+            port.publishProtocol.rawValue.uppercased(),
         ]
     }
-    
+
     private func showAvailableVolumes(for id: VolumeConfiguration.ID) {
         guard !self.volumeInitialized else {
             self.volumePickerTarget = VolumePickerTarget(id: id)
             return
         }
-        
+
         Task {
             do {
                 self.showProgressView = true
@@ -463,94 +514,128 @@ struct CreateContainerView: View {
             }
         }
     }
-    
+
     private func createContainer() {
-        let trimmedReference = imageReference.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+        let trimmedReference = imageReference.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
         guard !trimmedReference.isEmpty else {
             self.errorMessage = "Image is not specified."
             return
         }
-        
+
         Task {
             self.showProgressView = true
-            
+
             do {
                 var validVolumeFSs: [Filesystem] = []
                 let mountOptions: [String] = []
                 let existingVolumes = try await volumeManager.list()
-                
+
                 for volumeConfig in self.volumes {
-                    let trimmedName = volumeConfig.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let destination = volumeConfig.path.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let hasMountInput = !trimmedName.isEmpty || !destination.isEmpty
-                    
+                    let trimmedName = volumeConfig.name.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    let destination = volumeConfig.path.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    let hasMountInput =
+                        !trimmedName.isEmpty || !destination.isEmpty
+
                     guard hasMountInput else {
                         continue
                     }
-                    
+
                     guard destination.hasPrefix("/") else {
-                        self.errorMessage = "Volume mount path must be an absolute container path."
+                        self.errorMessage =
+                            "Volume mount path must be an absolute container path."
                         return
                     }
-                    
+
                     let volume: Volume
-                    if let existingVolume = existingVolumes.first(where: { $0.name == trimmedName }) {
+                    if let existingVolume = existingVolumes.first(where: {
+                        $0.name == trimmedName
+                    }) {
                         volume = existingVolume
                     } else {
                         var volumeName = trimmedName
                         var labels: [KeyValue] = []
-                        
+
                         if volumeName.isEmpty {
-                            volumeName = VolumeStorage.generateAnonymousVolumeName()
+                            volumeName =
+                                VolumeStorage.generateAnonymousVolumeName()
                             labels.append(.init(key: Volume.anonymousLabel))
                         }
-                        
-                        volume = try await volumeManager.create(name: volumeName, labels: labels, options: [], sizeInBytes: nil)
+
+                        volume = try await volumeManager.create(
+                            name: volumeName,
+                            labels: labels,
+                            options: [],
+                            sizeInBytes: nil
+                        )
                     }
-                    
-                    let fs = Filesystem.volume(name: volume.name, format: volume.format, source: volume.source, destination: destination, options: mountOptions)
-                    
+
+                    let fs = Filesystem.volume(
+                        name: volume.name,
+                        format: volume.format,
+                        source: volume.source,
+                        destination: destination,
+                        options: mountOptions
+                    )
+
                     validVolumeFSs.append(fs)
                 }
-                
+
                 self.container.volumes = validVolumeFSs
-                self.container.platform = try Platform(from: self.platformString)
-                self.container.shmSize = self.shmSizeInMiB > 0 ? UInt64(self.shmSizeInMiB) * 1024 * 1024 : nil
-                self.container.capabilities = Self.capabilityNames(from: self.capabilities)
-                
-                let validPorts = self.ports.filter({$0.host > 0 && $0.container > 0})
-                
+                self.container.platform = try Platform(
+                    from: self.platformString
+                )
+                self.container.shmSize =
+                    self.shmSizeInMiB > 0
+                    ? UInt64(self.shmSizeInMiB) * 1024 * 1024 : nil
+                self.container.capabilities = Self.capabilityNames(
+                    from: self.capabilities
+                )
+
+                let validPorts = self.ports.filter({
+                    $0.host > 0 && $0.container > 0
+                })
+
                 self.container.publishPorts = validPorts.map(\.publishedPort)
-                
-                let validEnvironments = self.environments.filter({!$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty})
-                
+
+                let validEnvironments = self.environments.filter({
+                    !$0.key.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+                })
+
                 self.process.environments = validEnvironments.map { kv in
                     "\(kv.key)=\(kv.value)"
                 }
-                
+
                 // Make copies for actor boundary crossing
                 let process = self.process
                 let container = self.container
                 let resource = self.resource
                 let registryScheme = self.registryScheme
-                
+
                 try await containerManager.create(
                     imageReference: trimmedReference,
-                    imagesDir: UserDefaults.applicationDataRoot.appendingPathComponent("images"),
+                    imagesDir: UserDefaults.applicationDataRoot
+                        .appendingPathComponent("images"),
                     arguments: [],
                     process: process,
                     container: container,
                     resource: resource,
                     registryScheme: registryScheme
                 )
-                
+
                 close()
-                
+
             } catch (let error) {
                 self.errorMessage = "\(error)"
             }
-            
+
             self.showProgressView = false
         }
     }
@@ -558,19 +643,23 @@ struct CreateContainerView: View {
 
 private struct PortMappingEditor: View {
     @Binding var port: PortsConfiguration
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Host Address", text: $port.hostAddress)
                 .textFieldStyle(.roundedBorder)
-            
+
             HStack(spacing: 8) {
                 TextField("Host Port", value: $port.host, format: .number)
                     .textFieldStyle(.roundedBorder)
-                TextField("Container Port", value: $port.container, format: .number)
-                    .textFieldStyle(.roundedBorder)
+                TextField(
+                    "Container Port",
+                    value: $port.container,
+                    format: .number
+                )
+                .textFieldStyle(.roundedBorder)
             }
-            
+
             Picker("Protocol", selection: $port.publishProtocol) {
                 Text("TCP").tag(PublishProtocol.tcp)
                 Text("UDP").tag(PublishProtocol.udp)
@@ -582,11 +671,12 @@ private struct PortMappingEditor: View {
 
 private struct CapabilityEditor: View {
     @Binding var capability: CapabilityConfiguration
-    
+
     var body: some View {
         EditableField(
             title: "Capability",
-            description: "Use normalized CAP_* names, for example CAP_NET_ADMIN.",
+            description:
+                "Use normalized CAP_* names, for example CAP_NET_ADMIN.",
             placeholder: "CAP_NET_ADMIN",
             value: $capability.name
         )
@@ -596,9 +686,9 @@ private struct CapabilityEditor: View {
 private struct VolumeRow: View {
     @Binding var volumeName: String
     @Binding var path: String
-    
+
     var showAvailableVolume: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -608,17 +698,20 @@ private struct VolumeRow: View {
                 HStack(spacing: 4) {
                     TextField("my-volume", text: $volumeName)
                         .textFieldStyle(.roundedBorder)
-                    Button(action: {
-                        self.showAvailableVolume()
-                    }, label: {
-                        Label("Choose", systemImage: "ellipsis.circle")
-                            .labelStyle(.iconOnly)
-                    })
+                    Button(
+                        action: {
+                            self.showAvailableVolume()
+                        },
+                        label: {
+                            Label("Choose", systemImage: "ellipsis.circle")
+                                .labelStyle(.iconOnly)
+                        }
+                    )
                     .buttonStyle(.borderless)
                     .help("Choose from existing volumes")
                 }
             }
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Path")
                     .font(.caption)
