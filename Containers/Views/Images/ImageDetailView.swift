@@ -58,6 +58,9 @@ struct ImageDetailView: View {
             tabTitle: { category in
                 category.rawValue.localizedCapitalized
             },
+            fixedHeightTab: { category in
+                category == .inspect
+            },
             tabContent: { category in
                 switch category {
                 case .overview:

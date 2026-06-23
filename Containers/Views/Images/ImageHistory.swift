@@ -59,9 +59,31 @@ struct ImageHistory: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if layers.isEmpty {
-                emptyStateView
+                VStack(spacing: 16) {
+                    Image(systemName: "square.stack.3d.up.slash")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+                    Text("No layers found")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("Unable to retrieve layer information for this image")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(40)
             } else {
-                layersListView
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(Array(layers.enumerated()), id: \.element.id) {
+                            index,
+                            layer in
+                            layerRow(layer: layer, index: index)
+                        }
+                    }
+                    .padding(20)
+                }
+                .frame(maxHeight: 500)
             }
         }
         .task {
@@ -81,38 +103,6 @@ struct ImageHistory: View {
                 }
             }
         )
-    }
-
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "square.stack.3d.up.slash")
-                .font(.system(size: 48))
-                .foregroundStyle(.tertiary)
-            Text("No layers found")
-                .font(.headline)
-                .foregroundStyle(.primary)
-            Text("Unable to retrieve layer information for this image")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
-    }
-
-    private var layersListView: some View {
-        ScrollView {
-
-            // Layers list
-            VStack(spacing: 8) {
-                ForEach(Array(layers.enumerated()), id: \.element.id) {
-                    index,
-                    layer in
-                    layerRow(layer: layer, index: index)
-                }
-            }
-
-            .padding(20)
-        }
     }
 
     private func layerRow(layer: LayerInfo, index: Int) -> some View {
@@ -185,7 +175,6 @@ struct ImageHistory: View {
         }
     }
 
-    @MainActor
     private func loadLayers() async {
         isLoading = true
         defer { isLoading = false }

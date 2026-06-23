@@ -25,9 +25,7 @@ struct VolumeViewModel: Identifiable, Hashable, Equatable {
         self.volume.options.filter({ $0.key != "KB" })
     }
 
-    var id: String {
-        return volume.id
-    }
+    var id: String { volume.id }
 
     init(_ item: VolumeListItem) {
         self.volume = item.volume
@@ -48,15 +46,15 @@ struct VolumeViewModel: Identifiable, Hashable, Equatable {
 
     // Equatable conformance
     static func == (lhs: VolumeViewModel, rhs: VolumeViewModel) -> Bool {
-        return lhs.volume.id == rhs.volume.id
-            && lhs.volume.name == rhs.volume.name && lhs.inUse == rhs.inUse
+        lhs.volume.id == rhs.volume.id && lhs.volume.name == rhs.volume.name
+            && lhs.inUse == rhs.inUse
     }
 
 }
 
 extension VolumeViewModel {
     subscript<T>(dynamicMember keyPath: KeyPath<Volume, T>) -> T {
-        return volume[keyPath: keyPath]
+        volume[keyPath: keyPath]
     }
 }
 

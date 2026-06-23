@@ -29,16 +29,9 @@ struct DetailView<
 
     @State private var displayedTab: Tab
     @State private var contentHeight: CGFloat = 0
-    @State private var isTabContentVisible = false
+    @State private var isTabContentVisible = true
     @State private var tabSwitchGeneration = 0
     @State private var pendingResizeCompletion: (@MainActor () -> Void)?
-    /// True until the first real height measurement comes in and the content
-    /// has faded in for the first time. Lets `onPreferenceChange` tell apart
-    /// "this is the very first measurement, on initial appearance" from
-    /// "this is a remeasure following a tab switch" — the former needs to
-    /// trigger its own fade-in once the height settles; the latter is already
-    /// handled by `switchDisplayedTab`'s own fade logic.
-    @State private var isInitialReveal = true
 
     let tabTitle: (Tab) -> String
     let fixedHeightTab: (Tab) -> Bool
@@ -115,22 +108,13 @@ struct DetailView<
             let completion = pendingResizeCompletion
             pendingResizeCompletion = nil
 
-            // On the very first measurement (initial appearance), there's no
-            // tab-switch fade in flight — content has been invisible since
-            // `isTabContentVisible` starts `false`. Once we know the real
-            // height, lock it in and fade the content in for the first time,
-            // exactly like a tab switch's own reveal. This keeps first load
-            // and tab switches visually identical instead of first load
-            // rendering at a natural size before snapping to the locked height.
-            if isInitialReveal {
-                isInitialReveal = false
-                contentHeight = newHeight
-                isTabContentVisible = true
+            guard newHeight.isFinite, newHeight > 0 else {
                 completion?()
                 return
             }
 
-            if newHeight == contentHeight {
+            if contentHeight == 0 || newHeight == contentHeight {
+                contentHeight = newHeight
                 completion?()
             } else {
                 withAnimation(Self.tabTransitionAnimation) {

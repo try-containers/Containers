@@ -71,6 +71,10 @@ private struct ModalContent<Content: View>: View {
             .clipShape(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.24), lineWidth: 1)
+            }
             .id(id)
     }
 }
@@ -145,14 +149,23 @@ private struct Modal<Item, Content: View>: NSViewRepresentable {
 
 // MARK: - Presenter
 
+private final class ModalPanel: NSPanel {
+    var onCancel: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
+}
+
 @MainActor
 private final class ModalPresenter<PresentedContent: View> {
     private static var parentWindowCornerRadius: CGFloat { 26 }
     private static var presentationAnimationDuration: TimeInterval { 0.22 }
     private static var presentationStartYOffset: CGFloat { 50 }
+    private static var verticalPlacementOffset: CGFloat { 10 }
 
     /// Minimum top inset used to mimic native sheet placement.
-    private static var minTopMargin: CGFloat { 50 }
+    private static var minTopMargin: CGFloat { 20 }
 
     private var panel: NSPanel?
     private var dimmingWindow: NSWindow?
@@ -160,6 +173,7 @@ private final class ModalPresenter<PresentedContent: View> {
     private var parentWindowObservers: [NSObjectProtocol] = []
     private var panelObservers: [NSObjectProtocol] = []
     private var onDismiss: (() -> Void)?
+    private var parentWindowStyleMask: NSWindow.StyleMask?
     private var isDismissing = false
 
     /// Prevents panel resize notifications caused by our own repositioning.
@@ -191,7 +205,13 @@ private final class ModalPresenter<PresentedContent: View> {
         self.dimmingWindow = dimmingWindow
         self.hostingView = hosting
         self.parentWindow = parentWindow
+        self.parentWindowStyleMask = parentWindow.styleMask
         self.isDismissing = false
+
+        parentWindow.styleMask.remove(.resizable)
+        panel.onCancel = { [weak self] in
+            self?.dismiss(notify: true)
+        }
 
         observeParentWindow(parentWindow)
         observePanel(panel)
@@ -281,8 +301,7 @@ private final class ModalPresenter<PresentedContent: View> {
         panel.setContentSize(size)
     }
 
-    private func prepareForPresentation(panel: NSPanel, dimmingWindow: NSWindow)
-    {
+    private func prepareForPresentation(panel: NSPanel, dimmingWindow: NSWindow) {
         panel.alphaValue = 0
         dimmingWindow.alphaValue = 0
 
@@ -338,7 +357,12 @@ private final class ModalPresenter<PresentedContent: View> {
 
         let onDismiss = self.onDismiss
 
+        if let parentWindowStyleMask {
+            parentWindow?.styleMask = parentWindowStyleMask
+        }
+
         self.onDismiss = nil
+        self.parentWindowStyleMask = nil
         self.panel = nil
         self.dimmingWindow = nil
         self.hostingView = nil
@@ -350,8 +374,8 @@ private final class ModalPresenter<PresentedContent: View> {
         }
     }
 
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+    private func makePanel() -> ModalPanel {
+        let panel = ModalPanel(
             contentRect: .zero,
             styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
@@ -454,7 +478,8 @@ private final class ModalPresenter<PresentedContent: View> {
         -> CGFloat
     {
         let centeredTopMargin = (parentFrame.height - panelHeight) / 2
-        let topMargin = max(minTopMargin, centeredTopMargin)
+        let adjustedTopMargin = centeredTopMargin - verticalPlacementOffset
+        let topMargin = max(minTopMargin, adjustedTopMargin)
         return parentFrame.maxY - topMargin - panelHeight
     }
 }

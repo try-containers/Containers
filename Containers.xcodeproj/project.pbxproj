@@ -246,6 +246,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 9829EC4D2E17BA3D00A9F8D3 /* Build configuration list for PBXNativeTarget "Containers" */;
 			buildPhases = (
+				771304772FE81E1000EEA64D /* ShellScript */,
 				9829EC3E2E17BA3C00A9F8D3 /* Sources */,
 				9829EC3F2E17BA3C00A9F8D3 /* Frameworks */,
 				9829EC402E17BA3C00A9F8D3 /* Resources */,
@@ -327,6 +328,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		771304772FE81E1000EEA64D /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nswift-format lint -r ${PROJECT_DIR} --configuration swift-format.txt\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		773508602F34E40500C5471F /* Sources */ = {

@@ -15,7 +15,7 @@ struct UserDefault<Value> {
 
     var wrappedValue: Value {
         get {
-            return container.object(forKey: key) as? Value ?? defaultValue
+            container.object(forKey: key) as? Value ?? defaultValue
         }
         set {
             container.set(newValue, forKey: key)
@@ -30,11 +30,16 @@ extension UserDefaults {
 
     /// Returns the default app root inside the app sandbox.
     static var defaultAppRoot: URL {
-        FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first!
-        .appendingPathComponent("app.containers")
+        guard
+            let appRoot = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first
+        else {
+            fatalError("AppRoot unavailable")
+        }
+
+        return appRoot.appendingPathComponent("app.containers")
     }
 
     /// Root directory for containers, images, volumes, kernels, and build data.

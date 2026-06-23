@@ -21,7 +21,10 @@ private struct PortsConfiguration: Identifiable {
         let address = try? IPAddress(
             hostAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         )
-        let fallbackAddress = try! IPAddress("127.0.0.1")
+
+        guard let fallbackAddress = try? IPAddress("127.0.0.1") else {
+            fatalError("Invalid fallback IP Addres")
+        }
 
         return .init(
             hostAddress: address ?? fallbackAddress,
@@ -114,8 +117,7 @@ struct CreateContainerView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Show error")
-                    .popover(isPresented: $showErrorPopover, arrowEdge: .bottom)
-                    {
+                    .popover(isPresented: $showErrorPopover, arrowEdge: .bottom) {
                         errorPopover(message: errorMessage)
                     }
                 }

@@ -35,7 +35,7 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
     var imageDescription: ImageDescription
 
     var id: String {
-        return indexDigest + manifestDigest + createdDate.description
+        indexDigest + manifestDigest + createdDate.description
     }
 
     init(_ item: ImageListItem) {
@@ -91,8 +91,7 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
 
     // Equatable conformance
     static func == (lhs: ImageViewModel, rhs: ImageViewModel) -> Bool {
-        return lhs.indexDigest == rhs.indexDigest
-            && lhs.manifestDigest == rhs.manifestDigest
+        lhs.indexDigest == rhs.indexDigest && lhs.manifestDigest == rhs.manifestDigest
     }
 }
 

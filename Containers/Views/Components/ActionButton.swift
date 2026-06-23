@@ -42,7 +42,7 @@ struct ActionButton: View {
 
 extension ActionButton: Equatable {
     static func == (lhs: ActionButton, rhs: ActionButton) -> Bool {
-        return lhs.help == rhs.help && lhs.label == rhs.label
-            && lhs.icon == rhs.icon && lhs.role == rhs.role
+        lhs.help == rhs.help && lhs.label == rhs.label && lhs.icon == rhs.icon
+            && lhs.role == rhs.role
     }
 }
