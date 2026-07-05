@@ -93,7 +93,7 @@ struct EditableListRow: View {
     }
 }
 
-private extension View {
+extension View {
     @ViewBuilder
     func optionalPadding(_ insets: EdgeInsets?) -> some View {
         if let insets {

@@ -15,17 +15,17 @@ public struct Volume: Sendable, Codable, Identifiable, Equatable {
     public var labels: [String: String]
     public var options: [String: String]
     public var sizeInBytes: UInt64?
-    
+
     public var id: String { name }
-    
+
     /// Label key used to mark anonymous volumes.
     public static let anonymousLabel = "com.apple.container.resource.anonymous"
-    
+
     /// Whether this volume is anonymous (auto-created, not explicitly named by user).
     public var isAnonymous: Bool {
         labels[Self.anonymousLabel] != nil
     }
-    
+
     public init(
         name: String,
         driver: String = "local",
@@ -55,7 +55,7 @@ public enum VolumeError: Error, LocalizedError {
     case invalidVolumeName(String)
     case unsupportedDriver(String)
     case storageError(String)
-    
+
     public var errorDescription: String? {
         switch self {
         case .volumeNotFound(let name):
@@ -78,10 +78,10 @@ public enum VolumeError: Error, LocalizedError {
 public struct VolumeStorage {
     /// Regex pattern for valid volume names.
     public static let volumeNamePattern = "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
-    
+
     /// Default volume size: 512 GB.
     public static let defaultVolumeSizeBytes: UInt64 = 512 * 1024 * 1024 * 1024
-    
+
     /// Validate a volume name.
     public static func isValidVolumeName(_ name: String) -> Bool {
         guard !name.isEmpty, name.count <= 255 else { return false }
@@ -89,12 +89,12 @@ public struct VolumeStorage {
         let range = NSRange(name.startIndex..., in: name)
         return regex?.firstMatch(in: name, range: range) != nil
     }
-    
+
     /// Generate a unique anonymous volume name.
     public static func anonymousVolumeName() -> String {
         UUID().uuidString.lowercased()
     }
-    
+
     /// Generate a unique anonymous volume name (alias).
     public static func generateAnonymousVolumeName() -> String {
         anonymousVolumeName()

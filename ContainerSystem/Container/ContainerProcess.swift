@@ -15,6 +15,6 @@ public struct ContainerProcess: Sendable {
     public var envFile: [String] = []
     public var tty = false
     public var user: String?
-    
+
     public init() {}
 }

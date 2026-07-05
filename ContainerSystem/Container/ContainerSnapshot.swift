@@ -3,8 +3,8 @@
 //  Containers
 //
 
-import Foundation
 import ContainerizationOCI
+import Foundation
 
 /// Runtime status of a container.
 public enum RuntimeStatus: String, Sendable, Codable, Hashable {
@@ -20,23 +20,23 @@ public struct ContainerSnapshot: Sendable, Codable {
     public var status: RuntimeStatus
     public var networks: [Attachment]
     public var startedDate: Date?
-    
+
     public var id: String {
         configuration.id
     }
-    
+
     public var platform: Platform {
         configuration.platform
     }
-    
+
     public var volumeNames: [String] {
         configuration.mounts.compactMap(\.volumeName)
     }
-    
+
     public var volumeFSs: [Filesystem] {
         configuration.mounts.filter(\.isVolume)
     }
-    
+
     public init(
         configuration: ContainerConfiguration,
         status: RuntimeStatus,

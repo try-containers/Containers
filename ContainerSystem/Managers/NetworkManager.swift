@@ -9,8 +9,8 @@
 //
 
 import Foundation
-import Observation
 import Logging
+import Observation
 
 /// Manages DNS resolver configuration for container domains.
 /// Create instances via public init() - stateless utility manager.
@@ -22,24 +22,29 @@ public final class NetworkManager {
     private static let filePrefix = "containerization."
     private static let nameserver = "127.0.0.1"
     private static let port = "2053"
-    
+
     private let logger: Logger
-    
+
     /// Public initializer - creates instance
     public init() {
         var logger = Logger(label: "app.containers.manager.dns")
         logger.logLevel = .debug
         self.logger = logger
     }
-    
+
     // MARK: - Public API
-    
+
     public func listDomains() -> [String] {
         let fileManager = FileManager.default
-        guard let contents = try? fileManager.contentsOfDirectory(atPath: Self.resolverDirectory) else {
+        guard
+            let contents = try? fileManager.contentsOfDirectory(
+                atPath: Self.resolverDirectory
+            )
+        else {
             return []
         }
-        return contents
+        return
+            contents
             .filter { $0.hasPrefix(Self.filePrefix) }
             .map { String($0.dropFirst(Self.filePrefix.count)) }
             .sorted()
@@ -75,9 +80,9 @@ public final class NetworkManager {
                 return "Domain name cannot be empty."
             case .notSupported:
                 return """
-                DNS domain management requires administrator privileges and is not available in the GUI. 
-                You can manually create resolver files in /etc/resolver/ if needed.
-                """
+                    DNS domain management requires administrator privileges and is not available in the GUI. 
+                    You can manually create resolver files in /etc/resolver/ if needed.
+                    """
             }
         }
     }

@@ -9,12 +9,12 @@ import Foundation
 
 /// Configuration for a process running inside a container.
 public struct ProcessConfiguration: Sendable, Codable {
-    
+
     /// Represents a user identity for the process.
     public enum User: Sendable, Codable, Equatable, CustomStringConvertible {
         case raw(userString: String)
         case id(uid: UInt32, gid: UInt32)
-        
+
         public var description: String {
             switch self {
             case .raw(let userString):
@@ -24,20 +24,20 @@ public struct ProcessConfiguration: Sendable, Codable {
             }
         }
     }
-    
+
     /// Resource limit configuration.
     public struct Rlimit: Sendable, Codable {
         public var limit: String
         public var soft: UInt64
         public var hard: UInt64
-        
+
         public init(limit: String, soft: UInt64, hard: UInt64) {
             self.limit = limit
             self.soft = soft
             self.hard = hard
         }
     }
-    
+
     public var executable: String
     public var arguments: [String]
     public var environment: [String]
@@ -46,7 +46,7 @@ public struct ProcessConfiguration: Sendable, Codable {
     public var user: User
     public var supplementalGroups: [UInt32]
     public var rlimits: [Rlimit]
-    
+
     public init(
         executable: String,
         arguments: [String] = [],

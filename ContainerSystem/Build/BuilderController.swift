@@ -1,3 +1,8 @@
+import Containerization
+import ContainerizationError
+import ContainerizationExtras
+import ContainerizationOCI
+import ContainerizationOS
 //
 //  BuilderController.swift
 //  Containers
@@ -5,29 +10,24 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 import Foundation
-import Containerization
-import ContainerizationError
-import ContainerizationExtras
-import ContainerizationOCI
-import ContainerizationOS
 import Logging
 
 /// Coordinates the BuildKit builder container lifecycle.
 @MainActor
 internal final class BuilderController {
-    
+
     private let runtime: ContainerRuntime
     private let logger: Logger
-    
+
     internal static let builderContainerId = Builder.builderContainerId
-    
+
     internal init() {
         self.runtime = ContainerRuntime.shared
         var logger = Logger(label: "app.containers.builder.controller")
         logger.logLevel = .info
         self.logger = logger
     }
-    
+
     #if DEBUG
     /// Internal initializer for testing - allows injection of test runtime
     internal init(testRuntime: ContainerRuntime) {
@@ -37,12 +37,14 @@ internal final class BuilderController {
         self.logger = logger
     }
     #endif
-    
+
     // MARK: - Internal API
-    
+
     /// Start the BuildKit builder container
     /// This method is idempotent - if builder is already running, it will restart it to ensure fresh mounts
-    internal func start(cpus: Int64 = 2, memory: UInt64 = 1024.mib()) async throws {
+    internal func start(cpus: Int64 = 2, memory: UInt64 = 1024.mib())
+        async throws
+    {
         logger.info("Starting builder with cpus=\(cpus), memory=\(memory)")
 
         let containersService = try await runtime.getContainersService()
@@ -62,24 +64,28 @@ internal final class BuilderController {
                 attributes: nil
             )
         }
-        
+
         // Content store path needs to be accessible by builder for image operations
         let imagesPath = appRoot.appendingPathComponent("images").path
-        
+
         // BuildKit data directory - needs to be persistent and support mmap for BoltDB
-        let buildkitDataPath = appRoot.appendingPathComponent("buildkit-data").path
-        
+        let buildkitDataPath = appRoot.appendingPathComponent("buildkit-data")
+            .path
+
         // Check if BoltDB database exists and might be corrupted
         // If BuildKit previously crashed, the database can be in a bad state
-        let workerDbPath = (buildkitDataPath as NSString).appendingPathComponent("worker.db")
+        let workerDbPath = (buildkitDataPath as NSString)
+            .appendingPathComponent("worker.db")
         if FileManager.default.fileExists(atPath: workerDbPath) {
-            logger.info("Found existing BuildKit database, checking if it needs cleanup")
+            logger.info(
+                "Found existing BuildKit database, checking if it needs cleanup"
+            )
             // For now, always delete and recreate to avoid corruption issues
             // In the future, we could try to validate the database first
             try? FileManager.default.removeItem(atPath: buildkitDataPath)
             logger.info("Cleaned up BuildKit data directory")
         }
-        
+
         if !FileManager.default.fileExists(atPath: buildkitDataPath) {
             try FileManager.default.createDirectory(
                 atPath: buildkitDataPath,
@@ -88,26 +94,38 @@ internal final class BuilderController {
             )
         }
 
-        let builderPlatform = ContainerizationOCI.Platform(arch: "arm64", os: "linux", variant: "v8")
+        let builderPlatform = ContainerizationOCI.Platform(
+            arch: "arm64",
+            os: "linux",
+            variant: "v8"
+        )
 
         // Check if builder container already exists
         let containerList = await containersService.list()
-        let existingContainer = containerList.first(where: { $0.configuration.id == Self.builderContainerId })
+        let existingContainer = containerList.first(where: {
+            $0.configuration.id == Self.builderContainerId
+        })
 
         if let existingContainer {
-            logger.info("Found existing builder container, cleaning it up to ensure fresh start")
+            logger.info(
+                "Found existing builder container, cleaning it up to ensure fresh start"
+            )
             // Always delete existing builder to ensure we start with clean tmpfs mount
             // This avoids BoltDB corruption issues
             switch existingContainer.status {
             case .running:
-                try await containersService.stop(id: Self.builderContainerId, options: .default)
+                try await containersService.stop(
+                    id: Self.builderContainerId,
+                    options: .default
+                )
                 try await containersService.delete(id: Self.builderContainerId)
             case .stopped:
                 try await containersService.delete(id: Self.builderContainerId)
             case .stopping:
                 throw ContainerizationError(
                     .invalidState,
-                    message: "builder is stopping, please wait until it is fully stopped before proceeding"
+                    message:
+                        "builder is stopping, please wait until it is fully stopped before proceeding"
                 )
             case .unknown:
                 try? await containersService.delete(id: Self.builderContainerId)
@@ -150,7 +168,11 @@ internal final class BuilderController {
             progressUpdate: { _ in }
         )
 
-        var config = ContainerConfiguration(id: Self.builderContainerId, image: imageDescription, process: processConfig)
+        var config = ContainerConfiguration(
+            id: Self.builderContainerId,
+            image: imageDescription,
+            process: processConfig
+        )
         config.resources = resources
         config.mounts = [
             .init(
@@ -187,37 +209,55 @@ internal final class BuilderController {
 
         // Attach to default network (sandboxed mode uses built-in NAT networking with automatic DNS)
         let defaultNetworkName = "default"
-        config.networks = [AttachmentConfiguration(network: defaultNetworkName, options: AttachmentOptions(hostname: Self.builderContainerId))]
+        config.networks = [
+            AttachmentConfiguration(
+                network: defaultNetworkName,
+                options: AttachmentOptions(hostname: Self.builderContainerId)
+            )
+        ]
 
         logger.info("Getting kernel")
-        let kernel = try await kernelService.getDefaultKernel(platform: .current)
+        let kernel = try await kernelService.getDefaultKernel(
+            platform: .current
+        )
 
         logger.info("Creating BuildKit container")
         let options = ContainerCreateOptions(autoRemove: false)
-        try await containersService.create(configuration: config, kernel: kernel, options: options)
+        try await containersService.create(
+            configuration: config,
+            kernel: kernel,
+            options: options
+        )
 
         try await startBuildKitProcess(service: containersService)
 
         logger.info("Builder started successfully")
     }
-    
+
     /// Restart the builder container to pick up fresh virtiofs mounts
     /// This is necessary when new subdirectories have been created in mounted paths
     /// because virtiofs in sandboxed apps doesn't dynamically show new subdirectories
-    internal func restart(cpus: Int64 = 2, memory: UInt64 = 1024.mib()) async throws {
+    internal func restart(cpus: Int64 = 2, memory: UInt64 = 1024.mib())
+        async throws
+    {
         logger.info("Restarting builder to pick up fresh mounts")
-        
+
         let containersService = try await runtime.getContainersService()
-        
+
         // Stop the existing builder
         let containerList = await containersService.list()
-        let existingContainer = containerList.first(where: { $0.configuration.id == Self.builderContainerId })
-        
+        let existingContainer = containerList.first(where: {
+            $0.configuration.id == Self.builderContainerId
+        })
+
         if let existingContainer {
             switch existingContainer.status {
             case .running:
                 logger.info("Stopping existing builder")
-                try await containersService.stop(id: Self.builderContainerId, options: .default)
+                try await containersService.stop(
+                    id: Self.builderContainerId,
+                    options: .default
+                )
                 try await containersService.delete(id: Self.builderContainerId)
             case .stopped:
                 logger.info("Deleting stopped builder")
@@ -225,72 +265,100 @@ internal final class BuilderController {
             case .stopping:
                 throw ContainerizationError(
                     .invalidState,
-                    message: "builder is stopping, please wait until it is fully stopped before proceeding"
+                    message:
+                        "builder is stopping, please wait until it is fully stopped before proceeding"
                 )
             case .unknown:
                 try? await containersService.delete(id: Self.builderContainerId)
             }
         }
-        
+
         // Start a fresh builder with the new mounts
         try await start(cpus: cpus, memory: memory)
     }
-    
+
     // MARK: - Private Methods
-    
+
     /// Validate that a name is a valid entity name.
     @discardableResult
     private func validEntityName(_ name: String) throws -> Bool {
         guard !name.isEmpty, name.count <= 255 else {
-            throw ContainerizationError(.invalidArgument, message: "invalid entity name '\(name)': must be between 1 and 255 characters")
+            throw ContainerizationError(
+                .invalidArgument,
+                message:
+                    "invalid entity name '\(name)': must be between 1 and 255 characters"
+            )
         }
-        
+
         let entityNamePattern = "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
         let regex = try NSRegularExpression(pattern: entityNamePattern)
         let range = NSRange(name.startIndex..., in: name)
-        
+
         guard regex.firstMatch(in: name, range: range) != nil else {
-            throw ContainerizationError(.invalidArgument, message: "invalid entity name '\(name)': must match \(entityNamePattern)")
+            throw ContainerizationError(
+                .invalidArgument,
+                message:
+                    "invalid entity name '\(name)': must match \(entityNamePattern)"
+            )
         }
-        
+
         return true
     }
-    
+
     private func startBuildKitProcess(service: ContainersService) async throws {
         do {
             logger.info("Bootstrapping BuildKit container")
-            
+
             // Create pipes to capture BuildKit's stdout/stderr for debugging
             let stdoutPipe = Pipe()
             let stderrPipe = Pipe()
-            
-            try await service.bootstrap(id: Self.builderContainerId, stdio: [nil, stdoutPipe.fileHandleForWriting, stderrPipe.fileHandleForWriting])
+
+            try await service.bootstrap(
+                id: Self.builderContainerId,
+                stdio: [
+                    nil, stdoutPipe.fileHandleForWriting,
+                    stderrPipe.fileHandleForWriting,
+                ]
+            )
 
             logger.info("Starting BuildKit process")
-            
+
             // Start a task to read and log BuildKit output
             Task {
-                for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
+                for try await line in stdoutPipe.fileHandleForReading.bytes
+                    .lines
+                {
                     self.logger.info("BuildKit stdout: \(line)")
                 }
             }
             Task {
-                for try await line in stderrPipe.fileHandleForReading.bytes.lines {
+                for try await line in stderrPipe.fileHandleForReading.bytes
+                    .lines
+                {
                     self.logger.error("BuildKit stderr: \(line)")
                 }
             }
-            
-            try await service.startProcess(id: Self.builderContainerId, processID: Self.builderContainerId)
+
+            try await service.startProcess(
+                id: Self.builderContainerId,
+                processID: Self.builderContainerId
+            )
 
             logger.info("BuildKit process started successfully")
         } catch {
             logger.error("Failed to start BuildKit: \(error)")
-            try? await service.stop(id: Self.builderContainerId, options: .default)
+            try? await service.stop(
+                id: Self.builderContainerId,
+                options: .default
+            )
             try? await service.delete(id: Self.builderContainerId)
             if error is ContainerizationError {
                 throw error
             }
-            throw ContainerizationError(.internalError, message: "failed to start BuildKit: \(error)")
+            throw ContainerizationError(
+                .internalError,
+                message: "failed to start BuildKit: \(error)"
+            )
         }
     }
 }

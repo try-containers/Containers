@@ -7,51 +7,51 @@
 //  Created by Axel Martinez on 2026/02/04.
 //
 
-import Foundation
-import Observation
 import ContainerizationEXT4
 import ContainerizationError
-import SystemPackage
+import Foundation
 import Logging
+import Observation
+import SystemPackage
 
 /// Manages volume operations.
 /// Create instances via public init() - automatically references shared runtime.
 @Observable
 @MainActor
 public final class VolumeManager {
-    
+
     /// Internal runtime reference (hidden from UI)
     internal let runtime: ContainerRuntime
-    
+
     private let logger: Logger
-    
+
     // Storage constants
     private static let blockFile = "volume.ext4"
-    
+
     /// Public initializer - creates instance referencing shared runtime
     public init() {
         self.runtime = ContainerRuntime.shared
-        
+
         var logger = Logger(label: "app.containers.manager.volumes")
         logger.logLevel = .info
-        
+
         self.logger = logger
     }
-    
+
     #if DEBUG
     /// Internal initializer for testing - allows injection of test runtime
     internal init(testRuntime: ContainerRuntime) {
         self.runtime = testRuntime
-        
+
         var logger = Logger(label: "app.containers.manager.volumes.test")
         logger.logLevel = .debug
-        
+
         self.logger = logger
     }
     #endif
-    
+
     // MARK: - Public API
-    
+
     @discardableResult
     public func create(
         name: String,
@@ -60,41 +60,52 @@ public final class VolumeManager {
         sizeInBytes: UInt64?
     ) async throws -> Volume {
         guard VolumeStorage.isValidVolumeName(name) else {
-            throw VolumeError.invalidVolumeName("invalid volume name '\(name)': must match \(VolumeStorage.volumeNamePattern)")
+            throw VolumeError.invalidVolumeName(
+                "invalid volume name '\(name)': must match \(VolumeStorage.volumeNamePattern)"
+            )
         }
-        
+
         let store = try await getStore()
         let existingVolumes = try await store.list()
-        
+
         if existingVolumes.contains(where: { $0.name == name }) {
             throw VolumeError.volumeAlreadyExists(name)
         }
-        
+
         let volumesRoot = try getVolumesRoot()
         let volumeDir = volumesRoot.appendingPathComponent(name)
-        
-        try FileManager.default.createDirectory(at: volumeDir, withIntermediateDirectories: true)
-        
+
+        try FileManager.default.createDirectory(
+            at: volumeDir,
+            withIntermediateDirectories: true
+        )
+
         let blockPath = volumeDir.appendingPathComponent(Self.blockFile).path
         let filesystemSize = sizeInBytes ?? VolumeStorage.defaultVolumeSizeBytes
-        let labelsDict = labels.reduce(into: [String: String]()) { $0[$1.key] = $1.value }
-        let optionsDict = options.reduce(into: [String: String]()) { $0[$1.key] = $1.value }
-        
+        let labelsDict = labels.reduce(into: [String: String]()) {
+            $0[$1.key] = $1.value
+        }
+        let optionsDict = options.reduce(into: [String: String]()) {
+            $0[$1.key] = $1.value
+        }
+
         do {
             let formatter = try EXT4.Formatter(
                 FilePath(blockPath),
                 blockSize: 4096,
                 minDiskSize: filesystemSize
             )
-            
+
             try formatter.close()
         } catch {
             // Clean up the directory on failure
             try? FileManager.default.removeItem(at: volumeDir)
-            
-            throw VolumeError.storageError("failed to create volume image: \(error)")
+
+            throw VolumeError.storageError(
+                "failed to create volume image: \(error)"
+            )
         }
-        
+
         let volume = Volume(
             name: name,
             driver: "local",
@@ -104,25 +115,25 @@ public final class VolumeManager {
             options: optionsDict,
             sizeInBytes: filesystemSize
         )
-        
+
         try await store.create(volume)
-        
+
         logger.info("Created volume: \(name)")
-        
+
         return volume
     }
-    
+
     public func list() async throws -> [Volume] {
         let store = try await getStore()
-        
+
         return try await store.list()
     }
-    
+
     public func listWithUsage() async throws -> [VolumeListItem] {
         let store = try await getStore()
         let service = try await runtime.getContainersService()
         let usedVolumeNames = Set(await service.list().flatMap(\.volumeNames))
-        
+
         return try await store.list().map { volume in
             VolumeListItem(
                 volume: volume,
@@ -130,14 +141,14 @@ public final class VolumeManager {
             )
         }
     }
-    
+
     public func delete(volumes: [Volume]) async throws {
         let store = try await getStore()
         let service = try await runtime.getContainersService()
         let containers = await service.list()
-        
+
         var failed: [(String, Error)] = []
-        
+
         for volume in volumes {
             do {
                 // Check if volume is in use by any container
@@ -146,59 +157,66 @@ public final class VolumeManager {
                         mount.isVolume && mount.volumeName == volume.name
                     }
                 }
-                
+
                 if inUse {
                     throw VolumeError.volumeInUse(volume.name)
                 }
-                
+
                 try await store.delete(volume.name)
-                
+
                 let volumesRoot = try getVolumesRoot()
                 let volumeDir = volumesRoot.appendingPathComponent(volume.name)
-                
+
                 if FileManager.default.fileExists(atPath: volumeDir.path) {
                     try FileManager.default.removeItem(at: volumeDir)
                 }
-                
+
                 logger.info("Deleted volume: \(volume.name)")
             } catch {
                 logger.error("Failed to delete volume \(volume.name): \(error)")
                 failed.append((volume.name, error))
             }
         }
-        
+
         if !failed.isEmpty {
             throw ContainerizationError(
                 .internalError,
-                message: "Failed to delete one or more volumes: \n\(failed.map({"\($0.0): \($0.1)"}).joined(separator: "\n"))"
+                message:
+                    "Failed to delete one or more volumes: \n\(failed.map({"\($0.0): \($0.1)"}).joined(separator: "\n"))"
             )
         }
     }
-    
+
     // MARK: - Private Helpers
-    
+
     private func getVolumesRoot() throws -> URL {
         let appRoot = try runtime.getAppRoot()
         let volumesRoot = appRoot.appendingPathComponent("volumes")
-        
-        try FileManager.default.createDirectory(at: volumesRoot, withIntermediateDirectories: true)
-        
+
+        try FileManager.default.createDirectory(
+            at: volumesRoot,
+            withIntermediateDirectories: true
+        )
+
         return volumesRoot
     }
-    
+
     private func getStore() async throws -> FilesystemEntityStore<Volume> {
         let volumesRoot = try getVolumesRoot()
-        
-        return try FilesystemEntityStore<Volume>(path: volumesRoot, type: "volumes", log: logger)
+
+        return try FilesystemEntityStore<Volume>(
+            path: volumesRoot,
+            type: "volumes",
+            log: logger
+        )
     }
 }
 public struct VolumeListItem: Sendable {
     public let volume: Volume
     public let inUse: Bool
-    
+
     public init(volume: Volume, inUse: Bool) {
         self.volume = volume
         self.inUse = inUse
     }
 }
-

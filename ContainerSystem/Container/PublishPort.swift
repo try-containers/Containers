@@ -5,18 +5,18 @@
 //  Local implementation of PublishPort (replaces ContainerResource.PublishPort)
 //
 
-import Foundation
 import ContainerizationExtras
+import Foundation
 
 /// Network protocol for published ports.
 public enum PublishProtocol: String, Sendable, Codable, CaseIterable {
     case tcp
     case udp
-    
+
     public init() {
         self = .tcp
     }
-    
+
     public init(_ value: String) {
         switch value.lowercased() {
         case "udp":
@@ -34,14 +34,18 @@ public struct PublishPort: Sendable, Codable {
     public var containerPort: UInt16
     public var proto: PublishProtocol
     public var count: UInt16
-    
+
     public init(
-        hostAddress: IPAddress = try! IPAddress("127.0.0.1"),
+        hostAddress: IPAddress? = try? IPAddress("127.0.0.1"),
         hostPort: UInt16,
         containerPort: UInt16,
         proto: PublishProtocol = .tcp,
         count: UInt16 = 1
     ) {
+        guard let hostAddress else {
+            fatalError("Invalid IP Addess")
+        }
+
         self.hostAddress = hostAddress
         self.hostPort = hostPort
         self.containerPort = containerPort
@@ -62,7 +66,8 @@ extension Array where Element == PublishPort {
         var seen = Set<String>()
         for port in self {
             for i in 0..<port.count {
-                let key = "\(port.hostAddress):\(port.hostPort + i)/\(port.proto.rawValue)"
+                let key =
+                    "\(port.hostAddress):\(port.hostPort + i)/\(port.proto.rawValue)"
                 if seen.contains(key) {
                     return true
                 }

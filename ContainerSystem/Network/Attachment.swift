@@ -5,8 +5,8 @@
 //  Local implementation of network attachment types (replaces ContainerResource network types)
 //
 
-import Foundation
 import ContainerizationExtras
+import Foundation
 
 /// Represents a network attachment for a running container.
 public struct Attachment: Sendable, Codable {
@@ -16,7 +16,7 @@ public struct Attachment: Sendable, Codable {
     public var ipv4Gateway: IPv4Address
     public var ipv6Address: CIDRv6?
     public var macAddress: MACAddress?
-    
+
     public init(
         network: String,
         hostname: String,
@@ -38,8 +38,11 @@ public struct Attachment: Sendable, Codable {
 public struct AttachmentConfiguration: Sendable, Codable {
     public var network: String
     public var options: AttachmentOptions
-    
-    public init(network: String, options: AttachmentOptions = AttachmentOptions()) {
+
+    public init(
+        network: String,
+        options: AttachmentOptions = AttachmentOptions()
+    ) {
         self.network = network
         self.options = options
     }
@@ -48,7 +51,7 @@ public struct AttachmentConfiguration: Sendable, Codable {
 /// Options for a network attachment.
 public struct AttachmentOptions: Sendable, Codable {
     public var hostname: String
-    
+
     public init(hostname: String = "") {
         self.hostname = hostname
     }

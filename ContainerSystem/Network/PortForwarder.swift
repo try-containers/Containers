@@ -6,17 +6,17 @@
 //  Replaces the SocketForwarder module from the apple/container package.
 //
 
-import Foundation
 import Containerization
 import ContainerizationError
+import Foundation
 import Logging
 
 /// Manages port forwarding from host TCP/UDP ports to container ports via vsock.
 public actor PortForwarder {
-    
+
     private let log: Logger
     private var forwarders: [String: ActiveForwarder] = [:]
-    
+
     /// Represents an active port forwarding session.
     private struct ActiveForwarder {
         let id: String
@@ -25,15 +25,16 @@ public actor PortForwarder {
         let proto: PublishProtocol
         let listener: Task<Void, Never>
     }
-    
+
     public init(log: Logger) {
         self.log = log
     }
-    
-    /// Start forwarding a host port to a container port.
+
+    /// Start forwarding one or more host TCP ports to container ports.
     /// - Parameters:
     ///   - publishPort: The port forwarding configuration.
     ///   - container: The running LinuxContainer to forward to.
+    /// - Throws: An error if the listener socket cannot be created, bound, or started.
     public func startForwarding(
         publishPort: PublishPort,
         container: LinuxContainer
@@ -41,18 +42,21 @@ public actor PortForwarder {
         for i: UInt16 in 0..<publishPort.count {
             let hostPort = publishPort.hostPort + i
             let containerPort = publishPort.containerPort + i
-            let id = "\(hostPort)-\(containerPort)-\(publishPort.proto.rawValue)"
-            
+            let id =
+                "\(hostPort)-\(containerPort)-\(publishPort.proto.rawValue)"
+
             guard forwarders[id] == nil else {
                 log.warning("Port forwarding already active for \(id)")
                 continue
             }
-            
+
             guard publishPort.proto == .tcp else {
-                log.warning("UDP port forwarding not yet supported, skipping port \(hostPort)")
+                log.warning(
+                    "UDP port forwarding not yet supported, skipping port \(hostPort)"
+                )
                 continue
             }
-            
+
             let listener = Task { [log] in
                 do {
                     try await Self.tcpForwardLoop(
@@ -65,10 +69,12 @@ public actor PortForwarder {
                 } catch is CancellationError {
                     // Normal shutdown
                 } catch {
-                    log.error("Port forwarding failed for \(hostPort) -> \(containerPort): \(error)")
+                    log.error(
+                        "Port forwarding failed for \(hostPort) -> \(containerPort): \(error)"
+                    )
                 }
             }
-            
+
             forwarders[id] = ActiveForwarder(
                 id: id,
                 hostPort: hostPort,
@@ -76,11 +82,13 @@ public actor PortForwarder {
                 proto: publishPort.proto,
                 listener: listener
             )
-            
-            log.info("Started port forwarding: \(hostPort) -> \(containerPort)/\(publishPort.proto.rawValue)")
+
+            log.info(
+                "Started port forwarding: \(hostPort) -> \(containerPort)/\(publishPort.proto.rawValue)"
+            )
         }
     }
-    
+
     /// Stop all port forwarding for a specific container.
     public func stopAll() {
         for (_, forwarder) in forwarders {
@@ -89,18 +97,24 @@ public actor PortForwarder {
         forwarders.removeAll()
         log.info("Stopped all port forwarding")
     }
-    
+
     /// Stop forwarding for a specific port.
-    public func stopForwarding(hostPort: UInt16, containerPort: UInt16, proto: PublishProtocol) {
+    public func stopForwarding(
+        hostPort: UInt16,
+        containerPort: UInt16,
+        proto: PublishProtocol
+    ) {
         let id = "\(hostPort)-\(containerPort)-\(proto.rawValue)"
         if let forwarder = forwarders.removeValue(forKey: id) {
             forwarder.listener.cancel()
-            log.info("Stopped port forwarding: \(hostPort) -> \(containerPort)/\(proto.rawValue)")
+            log.info(
+                "Stopped port forwarding: \(hostPort) -> \(containerPort)/\(proto.rawValue)"
+            )
         }
     }
-    
+
     // MARK: - TCP Forwarding
-    
+
     /// Creates a TCP listening socket, accepts connections, and forwards each to
     /// the container's port via vsock.
     private static func tcpForwardLoop(
@@ -112,18 +126,27 @@ public actor PortForwarder {
     ) async throws {
         let serverFD = socket(AF_INET, SOCK_STREAM, 0)
         guard serverFD >= 0 else {
-            throw ContainerizationError(.internalError, message: "Failed to create socket: \(errno)")
+            throw ContainerizationError(
+                .internalError,
+                message: "Failed to create socket: \(errno)"
+            )
         }
-        
+
         // Allow address reuse
         var reuseAddr: Int32 = 1
-        setsockopt(serverFD, SOL_SOCKET, SO_REUSEADDR, &reuseAddr, socklen_t(MemoryLayout<Int32>.size))
-        
+        setsockopt(
+            serverFD,
+            SOL_SOCKET,
+            SO_REUSEADDR,
+            &reuseAddr,
+            socklen_t(MemoryLayout<Int32>.size)
+        )
+
         // Bind to address
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = hostPort.bigEndian
-        
+
         if hostAddress == "0.0.0.0" || hostAddress.isEmpty {
             addr.sin_addr.s_addr = INADDR_ANY
         } else {
@@ -131,41 +154,51 @@ public actor PortForwarder {
                 inet_pton(AF_INET, cStr, &addr.sin_addr)
             }
         }
-        
+
         let bindResult = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 bind(serverFD, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
-        
+
         guard bindResult == 0 else {
             Darwin.close(serverFD)
-            throw ContainerizationError(.internalError, message: "Failed to bind to \(hostAddress):\(hostPort): \(errno)")
+            throw ContainerizationError(
+                .internalError,
+                message:
+                    "Failed to bind to \(hostAddress):\(hostPort): \(errno)"
+            )
         }
-        
+
         guard listen(serverFD, 128) == 0 else {
             Darwin.close(serverFD)
-            throw ContainerizationError(.internalError, message: "Failed to listen on \(hostAddress):\(hostPort): \(errno)")
+            throw ContainerizationError(
+                .internalError,
+                message:
+                    "Failed to listen on \(hostAddress):\(hostPort): \(errno)"
+            )
         }
-        
+
         // Set non-blocking so we can check for cancellation
         let flags = fcntl(serverFD, F_GETFL)
         _ = fcntl(serverFD, F_SETFL, flags | O_NONBLOCK)
-        
+
         defer { Darwin.close(serverFD) }
-        
-        log.info("Listening on \(hostAddress):\(hostPort) for forwarding to container port \(containerPort)")
-        
+
+        log.info(
+            "Listening on \(hostAddress):\(hostPort) for forwarding to container port \(containerPort)"
+        )
+
         while !Task.isCancelled {
             var clientAddr = sockaddr_in()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-            
+
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                     accept(serverFD, $0, &clientAddrLen)
                 }
             }
-            
+
             if clientFD < 0 {
                 if errno == EAGAIN || errno == EWOULDBLOCK {
                     // No pending connections, sleep briefly and retry
@@ -180,7 +213,7 @@ public actor PortForwarder {
                 try await Task.sleep(for: .milliseconds(100))
                 continue
             }
-            
+
             // Handle each connection in a separate task
             Task {
                 await Self.handleForwardedConnection(
@@ -192,7 +225,7 @@ public actor PortForwarder {
             }
         }
     }
-    
+
     /// Handles a single forwarded TCP connection: dials the container's vsock port
     /// and relays data bidirectionally.
     private static func handleForwardedConnection(
@@ -202,9 +235,14 @@ public actor PortForwarder {
         log: Logger
     ) async {
         do {
-            let vsockHandle = try await container.dialVsock(port: UInt32(containerPort))
-            let clientHandle = FileHandle(fileDescriptor: clientFD, closeOnDealloc: true)
-            
+            let vsockHandle = try await container.dialVsock(
+                port: UInt32(containerPort)
+            )
+            let clientHandle = FileHandle(
+                fileDescriptor: clientFD,
+                closeOnDealloc: true
+            )
+
             // Relay data bidirectionally
             await withTaskGroup(of: Void.self) { group in
                 // Client -> Container
@@ -220,7 +258,7 @@ public actor PortForwarder {
                     }
                     try? vsockHandle.close()
                 }
-                
+
                 // Container -> Client
                 group.addTask {
                     do {
@@ -236,9 +274,10 @@ public actor PortForwarder {
                 }
             }
         } catch {
-            log.error("Failed to forward connection to container port \(containerPort): \(error)")
+            log.error(
+                "Failed to forward connection to container port \(containerPort): \(error)"
+            )
             Darwin.close(clientFD)
         }
     }
 }
-

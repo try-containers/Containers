@@ -16,16 +16,15 @@ import Observation
 @Observable
 @MainActor
 public final class SystemManager {
-    
-    /// Internal runtime reference (hidden from UI)
+
     internal let runtime: ContainerRuntime
-    
-    /// Public observable state (computed from runtime)
+
+    /// Public observable state
     public var isRunning: Bool { runtime.isRunning }
     public var isStarting: Bool { runtime.isStarting }
     public var isStopping: Bool { runtime.isStopping }
     public var startupError: Error? { runtime.startupError }
-    
+
     /// System status for UI
     public enum SystemStatus: Equatable {
         case notStarted
@@ -34,7 +33,7 @@ public final class SystemManager {
         case stopping
         case failed
     }
-    
+
     public var systemStatus: SystemStatus {
         switch runtime.systemStatus {
         case .notStarted: return .notStarted
@@ -44,32 +43,30 @@ public final class SystemManager {
         case .failed: return .failed
         }
     }
-    
+
     /// Public initializer - creates instance referencing shared runtime
     public init() {
         self.runtime = ContainerRuntime.shared
     }
-    
+
     #if DEBUG
     /// Internal initializer for testing - allows injection of test runtime
     internal init(testRuntime: ContainerRuntime) {
         self.runtime = testRuntime
     }
     #endif
-    
+
     // MARK: - Lifecycle Methods
-    
-    /// Start the container system
-    /// - Parameters:
-    ///   - appRoot: Root directory for container data
+
+    /// Start the container system.
+    /// - Parameter appRoot: Root directory for container data.
+    /// - Throws: An error if the runtime cannot initialize prerequisites, storage, services, or networking.
     public func start(appRoot: URL) async throws {
         try await runtime.start(appRoot: appRoot)
     }
-    
+
     /// Stop the container system
     public func stop() async throws {
         try await runtime.stop()
     }
 }
-
-

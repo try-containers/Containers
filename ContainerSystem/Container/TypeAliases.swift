@@ -5,9 +5,9 @@
 //  Type aliases for containerization package types used throughout the project.
 //
 
-import Foundation
 import Containerization
 import ContainerizationOCI
+import Foundation
 
 /// Alias for Image.Description from the Containerization package.
 public typealias ImageDescription = Containerization.Image.Description
@@ -19,14 +19,17 @@ extension Containerization.Image.Description: @retroactive Codable {
         case reference
         case descriptor
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let reference = try container.decode(String.self, forKey: .reference)
-        let descriptor = try container.decode(Descriptor.self, forKey: .descriptor)
+        let descriptor = try container.decode(
+            Descriptor.self,
+            forKey: .descriptor
+        )
         self.init(reference: reference, descriptor: descriptor)
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(reference, forKey: .reference)
@@ -34,12 +37,14 @@ extension Containerization.Image.Description: @retroactive Codable {
     }
 }
 
-extension Containerization.Image.Description: @retroactive CustomStringConvertible {
+extension Containerization.Image.Description:
+    @retroactive CustomStringConvertible
+{
     public var description: String {
         guard let annotations = self.descriptor.annotations else {
             return self.reference
         }
-        
+
         if let name = annotations[AnnotationKeys.containerizationImageName] {
             return name
         }
@@ -47,7 +52,7 @@ extension Containerization.Image.Description: @retroactive CustomStringConvertib
         if let name = annotations[AnnotationKeys.containerdImageName] {
             return name
         }
-        
+
         if let name = annotations[AnnotationKeys.openContainersImageName] {
             return name
         }

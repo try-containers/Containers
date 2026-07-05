@@ -12,7 +12,7 @@ public enum RequestScheme: String, Sendable, Codable {
     case auto
     case http
     case https
-    
+
     public init(_ value: String) throws {
         switch value.lowercased() {
         case "auto":

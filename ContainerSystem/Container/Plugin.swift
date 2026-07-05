@@ -11,7 +11,7 @@ import Foundation
 public struct Plugin: Sendable {
     public var name: String
     public var binaryURL: URL
-    
+
     public init(name: String, binaryURL: URL) {
         self.name = name
         self.binaryURL = binaryURL

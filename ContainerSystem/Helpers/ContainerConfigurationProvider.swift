@@ -7,10 +7,10 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
-import Foundation
+import ContainerSystem
 import Containerization
 import ContainerizationOCI
-import ContainerSystem
+import Foundation
 
 /// Protocol for types that provide access to container configuration
 protocol ContainerConfigurationProvider {
@@ -18,29 +18,33 @@ protocol ContainerConfigurationProvider {
 }
 
 extension ContainerConfigurationProvider {
-    
+
     var imageName: String {
-        return self.configuration.image.reference
+        self.configuration.image.reference
     }
-    
+
     var portsString: String? {
         if self.configuration.publishedPorts.isEmpty {
             return nil
         }
-        
-        return self.configuration.publishedPorts.map(\.description).joined(separator: "\n")
+
+        return self.configuration.publishedPorts.map(\.description).joined(
+            separator: "\n"
+        )
     }
-    
+
     var volumeFSs: [Filesystem] {
         let fileSystems = self.configuration.mounts
         let volumes = fileSystems.filter({ $0.isVolume })
-        
+
         return volumes
     }
-    
+
     var volumeNames: [String] {
-        let volumeNames = self.volumeFSs.map(\.volumeName).filter({$0 != nil}).map({$0!})
-        
+        let volumeNames = self.volumeFSs
+            .compactMap(\.volumeName)
+            .map({ $0 })
+
         return volumeNames
     }
 }

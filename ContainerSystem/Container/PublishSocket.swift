@@ -13,8 +13,12 @@ public struct PublishSocket: Sendable, Codable {
     public var containerPath: URL
     public var hostPath: URL
     public var permissions: FilePermissions?
-    
-    public init(containerPath: URL, hostPath: URL, permissions: FilePermissions? = nil) {
+
+    public init(
+        containerPath: URL,
+        hostPath: URL,
+        permissions: FilePermissions? = nil
+    ) {
         self.containerPath = containerPath
         self.hostPath = hostPath
         self.permissions = permissions

@@ -5,8 +5,8 @@
 //  Created by Axel Martinez on 2026/02/04.
 //
 
-import Foundation
 import ContainerizationOCI
+import Foundation
 
 public struct ContainerInfo: Sendable {
     public var name = ""
@@ -24,19 +24,19 @@ public struct ContainerInfo: Sendable {
     public var capabilities: [String] = []
     public var shmSize: UInt64?
     public var stopSignal: String?
-    
+
     // PRAGMA: DNS
-    
+
     public var dnsDisabled = false
     public var dnsNameservers: [String] = []
     public var dnsDomain: String? = nil
     public var dnsSearchDomains: [String] = []
     public var dnsOptions: [String] = []
-    
+
     // PRAGMA: FLAGS
     public var deleteOnTermination = false
     public var virtualization: Bool = false
     public var ssh = false
-    
+
     public init() {}
 }

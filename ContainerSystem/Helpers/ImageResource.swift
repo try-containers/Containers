@@ -36,7 +36,12 @@ public struct ImageResource: Codable, Sendable {
         public let size: Int64
         public let config: ContainerizationOCI.Image
 
-        public init(platform: Platform, digest: String, size: Int64, config: ContainerizationOCI.Image) {
+        public init(
+            platform: Platform,
+            digest: String,
+            size: Int64,
+            config: ContainerizationOCI.Image
+        ) {
             self.platform = platform
             self.digest = digest
             self.size = size
@@ -67,7 +72,12 @@ public struct ImageResource: Codable, Sendable {
         self.variants = variants
     }
 
-    public init(name: String, descriptor: Descriptor, variants: [Variant], creationDate: Date) {
+    public init(
+        name: String,
+        descriptor: Descriptor,
+        variants: [Variant],
+        creationDate: Date
+    ) {
         self.configuration = ImageConfiguration(
             name: name,
             descriptor: descriptor,
@@ -93,7 +103,10 @@ extension ImageResource {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.configuration = try container.decode(ImageConfiguration.self, forKey: .configuration)
+        self.configuration = try container.decode(
+            ImageConfiguration.self,
+            forKey: .configuration
+        )
         self.variants = try container.decode([Variant].self, forKey: .variants)
     }
 }

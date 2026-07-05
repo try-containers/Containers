@@ -5,9 +5,9 @@
 //  Mock runtime for isolated testing without real container operations.
 //
 
-import Foundation
 import Containerization
 import ContainerizationOCI
+import Foundation
 import Logging
 
 @testable import ContainerSystem
@@ -38,7 +38,10 @@ final class MockContainerRuntime: ContainerRuntime {
         try fm.createDirectory(at: appRoot, withIntermediateDirectories: true)
 
         let imagesRoot = appRoot.appendingPathComponent("images")
-        try fm.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
+        try fm.createDirectory(
+            at: imagesRoot,
+            withIntermediateDirectories: true
+        )
 
         // Set appRoot so getAppRoot() works
         self.appRoot = appRoot
@@ -47,7 +50,10 @@ final class MockContainerRuntime: ContainerRuntime {
         let localContentStore = try LocalContentStore(
             path: imagesRoot.appendingPathComponent("content")
         )
-        let imageStore = try ImageStore(path: imagesRoot, contentStore: localContentStore)
+        let imageStore = try ImageStore(
+            path: imagesRoot,
+            contentStore: localContentStore
+        )
         let snapshotsPath = imagesRoot.appendingPathComponent("snapshots")
 
         let images = try ImagesService(
@@ -100,5 +106,3 @@ final class MockContainerRuntime: ContainerRuntime {
         }
     }
 }
-
-
