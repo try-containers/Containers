@@ -45,7 +45,6 @@ struct VolumeOverview: View {
             InfoRow(label: "Created", value: volume.formattedCreated),
             InfoRow(label: "Driver", value: volume.driver),
             InfoRow(label: "Format", value: volume.format),
-            InfoRow(label: "Source", value: volume.source.nilIfEmpty ?? "N/A"),
         ]
     }
 
@@ -63,11 +62,5 @@ struct VolumeOverview: View {
                 $0.key.localizedStandardCompare($1.key) == .orderedAscending
             }
             .map { InfoRow(label: $0.key, value: $0.value) }
-    }
-}
-
-extension String {
-    fileprivate var nilIfEmpty: String? {
-        isEmpty ? nil : self
     }
 }

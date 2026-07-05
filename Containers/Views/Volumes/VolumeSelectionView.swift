@@ -16,7 +16,7 @@ struct VolumeSelectionView: View {
     @SwiftUI.State private var searchText: String = ""
     @SwiftUI.State private var selectedVolume: Volume?
 
-    @Environment(\.close) private var close
+    @Environment(\.dismiss) private var dismiss
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -110,7 +110,7 @@ struct VolumeSelectionView: View {
                 Spacer()
 
                 Button("Cancel") {
-                    close()
+                    dismiss()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
@@ -118,7 +118,7 @@ struct VolumeSelectionView: View {
                 Button("Select") {
                     if let volume = selectedVolume {
                         self.onVolumeSelect(volume.name)
-                        close()
+                        dismiss()
                     }
                 }
                 .buttonStyle(.borderedProminent)

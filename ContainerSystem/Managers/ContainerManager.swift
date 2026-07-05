@@ -21,6 +21,7 @@ public final class ContainerManager {
     /// Internal runtime reference (hidden from UI)
     internal let runtime: ContainerRuntime
     private let logger: Logger
+    private static let internalContainerIDs: Set<String> = ["buildkit"]
     
     /// Observable property that triggers UI updates when containers change
     /// This mirrors the runtime's lastContainerStateChange property
@@ -54,6 +55,7 @@ public final class ContainerManager {
     
     // MARK: - Public API
     
+    @discardableResult
     public func create(
         imageReference: String,
         imagesDir: URL,
@@ -62,7 +64,7 @@ public final class ContainerManager {
         container: ContainerInfo,
         resource: ContainerConfiguration.Resources,
         registryScheme: String = RequestScheme.auto.rawValue
-    ) async throws {
+    ) async throws -> String {
         let service = try await runtime.getContainersService()
         let containerID = try Self.createContainerID(name: container.name)
         let existingContainers = await service.list()
@@ -90,6 +92,8 @@ public final class ContainerManager {
         if !container.cidfile.isEmpty {
             try writeCIDFile(path: container.cidfile, id: configuration.id)
         }
+
+        return configuration.id
     }
    
     public func start(id: String, attachStdout: Bool = false, attachStdin: Bool = false) async throws {
@@ -112,7 +116,9 @@ public final class ContainerManager {
     public func list() async throws -> [ContainerSnapshot] {
         let service = try await runtime.getContainersService()
         
-        return await service.list()
+        return await service.list().filter { snapshot in
+            !Self.internalContainerIDs.contains(snapshot.configuration.id)
+        }
     }
     
     public func get(id: String) async throws -> ContainerSnapshot {

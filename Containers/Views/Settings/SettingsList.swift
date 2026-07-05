@@ -69,9 +69,17 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                         if let index = items.firstIndex(where: {
                             $0.id == item.id
                         }) {
-                            EditableRow(
+                            EditableListRow(
                                 text: rowSummary(items[index]),
                                 isSelected: selectedItemID == item.id,
+                                showsSelection: true,
+                                rowInsets: EdgeInsets(
+                                    top: 6,
+                                    leading: 8,
+                                    bottom: 6,
+                                    trailing: 8
+                                ),
+                                minHeight: 34,
                                 onSelect: {
                                     selectedItemID = item.id
                                 },
@@ -93,34 +101,18 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
                     Divider()
 
                     // Bottom toolbar
-                    HStack(spacing: 0) {
-                        Button(action: addItem) {
-                            Image(systemName: "plus")
-                                .frame(width: 26, height: 22)
-                        }
-                        .buttonStyle(.plain)
-                        .help(addLabel)
-
-                        Divider()
-                            .frame(height: 22)
-
-                        Button(action: removeSelectedItem) {
-                            Image(systemName: "minus")
-                                .frame(width: 26, height: 22)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(items.isEmpty || selectedItemID == nil)
-                        .help("Remove selected row")
-
-                        Spacer()
-                    }
-                    .frame(height: 26)
-                    .background(Color(nsColor: .quaternarySystemFill))
+                    EditableListToolbar(
+                        addLabel: addLabel,
+                        isRemoveDisabled: items.isEmpty || selectedItemID == nil,
+                        backgroundColor: Color(nsColor: .quaternarySystemFill),
+                        add: addItem,
+                        remove: removeSelectedItem
+                    )
                 }
             }
         }
         .groupBoxStyle(SettingsListGroupBoxStyle())
-        .modal(
+        .sheet(
             isPresented: Binding(
                 get: { editingItemID != nil },
                 set: { isPresented in
@@ -129,7 +121,7 @@ struct SettingsList<Item: Identifiable, EditorContent: View>: View {
             )
         ) {
             if let binding = editingItemBinding {
-                EditableListItemEditor(title: title) {
+                EditableListEditor(title: title) {
                     editorContent(binding)
                 }
             }
@@ -195,62 +187,5 @@ struct SettingsListGroupBoxStyle: GroupBoxStyle {
         }
         .background(Color(nsColor: .quaternarySystemFill))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-private struct EditableRow: View {
-    var text: String
-    var isSelected: Bool
-    var onSelect: () -> Void
-    var onEdit: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(text.isEmpty ? "New Item" : text)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(text.isEmpty ? .tertiary : .primary)
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-        .background(selectionBackground)
-        .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
-        .onTapGesture(count: 2) { onEdit() }
-    }
-
-    @ViewBuilder
-    private var selectionBackground: some View {
-        if isSelected {
-            RoundedRectangle(cornerRadius: 0)
-                .fill(Color.accentColor.opacity(0.18))
-        } else {
-            Color.clear
-        }
-    }
-}
-
-struct EditableListItemEditor<Content: View>: View {
-    var title: String
-    @ViewBuilder var content: Content
-    @Environment(\.close) private var close
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(title)
-                .font(.title2)
-                .fontWeight(.semibold)
-            content
-            HStack {
-                Spacer()
-                Button("Done") { close() }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 420, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
     }
 }

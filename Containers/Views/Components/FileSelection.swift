@@ -5,134 +5,114 @@
 //  Created by Axel Martinez on 2026/02/08.
 //
 
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-extension FileSelection {
-    init(
-        fileURL: Binding<URL>,
-        errorMessage: Binding<String?>,
-        allowedContentTypes: [UTType]
-    ) {
-        let fileBinding = Binding<URL?>(
-            get: {
-                URL(filePath: fileURL.wrappedValue.absoluteString)
-            },
-            set: { newURL in
-                if let newURL {
-                    fileURL.wrappedValue = newURL
-                }
-            }
-        )
-        self._fileURL = fileBinding
-        self._errorMessage = errorMessage
-        self.allowedContentTypes = allowedContentTypes
-    }
-}
-
 struct FileSelection: View {
-    // file scheme, ie: file://
-    @Binding var fileURL: URL?
-    @Binding var errorMessage: String?
+    let title: String
+    let description: String?
+    let placeholder: String
+    let fileURL: Binding<URL?>
+    let allowedContentTypes: [UTType]
+    let canChooseDirectories: Bool
+    let defaultDirectory: URL?
+    let onSelection: (() -> Void)?
+    let isPresented: Binding<Bool>?
 
-    var allowedContentTypes: [UTType]
-
-    @State private var showImporter: Bool = false
+    init(
+        title: String,
+        description: String? = nil,
+        placeholder: String,
+        fileURL: Binding<URL?>,
+        allowedContentTypes: [UTType] = [],
+        canChooseDirectories: Bool = false,
+        defaultDirectory: URL? = nil,
+        onSelection: (() -> Void)? = nil,
+        isPresented: Binding<Bool>? = nil
+    ) {
+        self.title = title
+        self.description = description
+        self.placeholder = placeholder
+        self.fileURL = fileURL
+        self.allowedContentTypes = allowedContentTypes
+        self.canChooseDirectories = canChooseDirectories
+        self.defaultDirectory = defaultDirectory
+        self.onSelection = onSelection
+        self.isPresented = isPresented
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(fileURL?.absoluteString ?? "")
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+        HStack(alignment: .top) {
+            Text("\(title):")
                 .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .leading
+                    width: EditableFormLayout.labelWidth,
+                    alignment: .trailing
                 )
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.secondary.opacity(0.5))
-                        .stroke(
-                            .secondary.opacity(0.8),
-                            style: .init(lineWidth: 1)
+                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(fileURL.wrappedValue?.path ?? placeholder)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(
+                            fileURL.wrappedValue == nil ? .secondary : .primary
                         )
-                )
+                        .padding(.horizontal, 8)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: 22,
+                            alignment: .leading
+                        )
+                        .background {
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color(nsColor: .textBackgroundColor))
+                                .stroke(
+                                    Color(nsColor: .separatorColor),
+                                    lineWidth: 1
+                                )
+                        }
 
-            Button {
-                if let fileURL {
-                    self.openFile(fileURL)
+                    Button("Choose...", action: selectFile)
                 }
-            } label: {
-                Image(systemName: "arrow.right")
-                    .contentShape(Rectangle())
-                    .fontWeight(.semibold)
+
+                if let description {
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .buttonStyle(.link)
-            .pointerStyle(.link)
-            .disabled(fileURL == nil)
-
-            Spacer()
-
-            Button(
-                action: {
-                    self.showImporter = true
-                },
-                label: {
-                    Image(systemName: "ellipsis")
-                        .padding(.horizontal, 2)
-                        .frame(maxHeight: .infinity)
-                }
+            .frame(
+                width: EditableFormLayout.controlWidth,
+                alignment: .leading
             )
-            .buttonStyle(.bordered)
-            .pointerStyle(.link)
-
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .fileImporter(
-            isPresented: $showImporter,
-            allowedContentTypes: self.allowedContentTypes,
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else {
-                    self.errorMessage = "File Url is not available."
-                    return
-                }
-                self.fileURL =
-                    url.isFileURL
-                    ? url
-                    : URL(
-                        filePath: url.absoluteString
-                    )
-            case .failure(let error):
-                self.errorMessage = "failed to import file: \(error)."
-                return
-            }
+        .onChange(of: isPresented?.wrappedValue ?? false) { _, isPresented in
+            guard isPresented else { return }
+            selectFile()
+            self.isPresented?.wrappedValue = false
         }
-        .fileDialogBrowserOptions([.includeHiddenFiles])
-        .fileDialogDefaultDirectory(
-            fileURL?.parent
-                ?? (try? FileManager.default
-                    .url(
-                        for: .desktopDirectory,
-                        in: .userDomainMask,
-                        appropriateFor: nil,
-                        create: false
-                    ))
-        )
-        .fileDialogConfirmationLabel(Text("Select"))
     }
 
-    private func openFile(_ url: URL) {
-        let result = NSWorkspace.shared.selectFile(
-            url.absoluteString,
-            inFileViewerRootedAtPath: url.parent.absoluteString
-        )
-        if !result {
-            self.errorMessage = "Failed to open the File."
+    private func selectFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = !canChooseDirectories
+        panel.canChooseDirectories = canChooseDirectories
+        panel.canCreateDirectories = false
+        panel.showsHiddenFiles = true
+        panel.directoryURL = fileURL.wrappedValue?.parent ?? defaultDirectory
+
+        if !allowedContentTypes.isEmpty {
+            panel.allowedContentTypes = allowedContentTypes
         }
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        fileURL.wrappedValue = url
+        onSelection?()
     }
 }

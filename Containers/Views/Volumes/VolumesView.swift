@@ -10,8 +10,6 @@ import SwiftUI
 
 struct VolumesView: View {
     @Environment(VolumeManager.self) private var volumeManager
-    @Environment(SystemManager.self) private var system
-
     @Binding var searchText: String
     var refreshTrigger: Int
 
@@ -19,8 +17,10 @@ struct VolumesView: View {
     @State private var lastUpdated: Date? = nil
     @State private var showInUseContainerForVolume: VolumeViewModel?
     @State private var selectedVolume: VolumeViewModel?
+    @State private var volumeToDelete: VolumeViewModel?
     @State private var showVolumeDetail: Bool = false
     @State private var showCreateVolumeView: Bool = false
+    @State private var showDeleteConfirmation: Bool = false
     @State private var error: Error?
     @State private var showError: Bool = false
 
@@ -40,162 +40,104 @@ struct VolumesView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if system.isRunning {
-                Table(
-                    of: VolumeViewModel.self,
-                    columns: {
-
-                        TableColumn("Name") { volume in
-                            Button(
-                                action: {
-                                    selectedVolume = volume
-                                    showVolumeDetail = true
-                                },
-                                label: {
-                                    Text(volume.name)
-                                        .font(.headline)
-                                        .lineLimit(1)
-                                        .underline()
-                                }
-                            )
-                            .buttonStyle(.link)
-                            .pointerStyle(.link)
-                            .frame(height: 32)
-                        }
-                        .width(min: 80, ideal: 80)
-
-                        TableColumn("Type") { volume in
-                            Text(volume.volumeType.rawValue)
-                        }
-                        .width(80)
-
-                        TableColumn("State") { volume in
-                            Group {
-                                if volume.inUse {
-                                    Button(
-                                        action: {
-                                            showInUseContainerForVolume = volume
-                                        },
-                                        label: {
-                                            Text("In use")
-                                                .lineLimit(1)
-                                                .underline()
-
-                                        }
-                                    )
-                                    .buttonStyle(.link)
-                                    .pointerStyle(.link)
-                                } else {
-                                    Text("Unused")
-                                }
-                            }
-                            .lineLimit(1)
-
-                        }
-                        .width(64)
-
-                        TableColumn("Size") { volume in
-                            if let size = volume.formattedSize {
-                                Text(size)
-                            } else {
-                                Text("(Not Specified")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .width(min: 80, ideal: 80, max: 120)
-
-                        TableColumn("Created") { volume in
-                            Text(volume.formattedCreated)
-                        }
-                        .width(min: 80, ideal: 80, max: 160)
-
-                        TableColumn("Actions") { volume in
-
-                            HStack(spacing: 12) {
-                                Button(
-                                    action: {
-                                        Task {
-                                            do {
-                                                try await volumeManager.delete(
-                                                    volumes: [volume.volume])
-
-                                                await self.listVolumes()
-                                            } catch (let err) {
-                                                self.error = err
-                                                self.showError = true
-                                            }
-                                        }
-                                    },
-                                    label: {
-                                        Image(systemName: "trash.fill")
-                                            .foregroundStyle(
-                                                volume.inUse
-                                                    ? .secondary : Color.red
-                                            )
-                                    }
-                                )
-                                .disabled(volume.inUse)
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 8)
-                        }
-                        .width(80)
-
+        ListView(
+            rows: filteredVolumes,
+            refreshTrigger: refreshTrigger,
+            lastUpdated: lastUpdated,
+            emptyTitle: "No Volumes Found",
+            matchingEmptyTitle: "No Matching Volumes",
+            emptySystemImage: NavigationTab.volumes.icon,
+            isFiltering: !trimmedText.isEmpty,
+            onClear: {
+                volumes = []
+                lastUpdated = nil
+            },
+            onRefresh: listVolumes
+        ) {
+            TableColumn("Name") { volume in
+                Button(
+                    action: {
+                        selectedVolume = volume
+                        showVolumeDetail = true
                     },
-                    rows: {
-                        ForEach(filteredVolumes)
+                    label: {
+                        Text(volume.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .underline()
                     }
                 )
-                .tableStyle(.inset)
-                .alternatingRowBackgrounds(.disabled)
-                .overlay(
-                    alignment: .center,
-                    content: {
-                        if filteredVolumes.isEmpty {
-                            ContentUnavailableView(
-                                trimmedText.isEmpty
-                                    ? "No Volumes Found"
-                                    : "No Matching Volumes",
-                                systemImage: NavigationTab.volumes.icon
-                            )
-                        }
-                    }
-                )
-            } else {
-                ContainerSystemView()
+                .buttonStyle(.link)
+                .pointerStyle(.link)
+                .frame(height: 32)
             }
-        }
-        .onChange(
-            of: self.system.isRunning,
-            initial: true,
-            {
-                guard self.system.isRunning else {
-                    self.volumes = []
-                    self.lastUpdated = nil
-                    return
-                }
+            .width(min: 80, ideal: 80)
 
-                Task {
-                    guard self.lastUpdated == nil else {
-                        return
+            TableColumn("Type") { volume in
+                Text(volume.volumeType.rawValue)
+            }
+            .width(80)
+
+            TableColumn("State") { volume in
+                Group {
+                    if volume.inUse {
+                        Button(
+                            action: {
+                                showInUseContainerForVolume = volume
+                            },
+                            label: {
+                                Text("In use")
+                                    .lineLimit(1)
+                                    .underline()
+                            }
+                        )
+                        .buttonStyle(.link)
+                        .pointerStyle(.link)
+                    } else {
+                        Text("Unused")
                     }
-                    await self.listVolumes()
+                }
+                .lineLimit(1)
+            }
+            .width(64)
+
+            TableColumn("Size") { volume in
+                if let size = volume.formattedSize {
+                    Text(size)
+                } else {
+                    Text("Not Specified")
+                        .foregroundStyle(.secondary)
                 }
             }
-        )
-        .onChange(of: refreshTrigger) {
-            Task {
-                await self.listVolumes()
+            .width(min: 80, ideal: 80, max: 120)
+
+            TableColumn("Created") { volume in
+                Text(volume.formattedCreated)
             }
-        }
-        .onAppear {
-            Task {
-                guard system.isRunning else { return }
-                await self.listVolumes()
+            .width(min: 80, ideal: 80, max: 160)
+
+            TableColumn("Actions") { volume in
+                HStack(spacing: 12) {
+                    Button(
+                        action: {
+                            volumeToDelete = volume
+                            showDeleteConfirmation = true
+                        },
+                        label: {
+                            Image(systemName: "trash.fill")
+                                .foregroundStyle(
+                                    volume.inUse ? .secondary : Color.red
+                                )
+                        }
+                    )
+                    .disabled(volume.inUse)
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8)
             }
+            .width(80)
         }
-        .modal(
+        .sheet(
             isPresented: $showCreateVolumeView,
             onDismiss: {
                 Task {
@@ -206,7 +148,7 @@ struct VolumesView: View {
                 CreateVolumeView()
             }
         )
-        .modal(
+        .sheet(
             isPresented: $showVolumeDetail,
             onDismiss: {
                 selectedVolume = nil
@@ -216,7 +158,7 @@ struct VolumesView: View {
                 VolumeDetailView(volume: volume)
             }
         }
-        .modal(
+        .sheet(
             item: $showInUseContainerForVolume,
             content: { volume in
                 ImageContainersView(volume: volume)
@@ -236,6 +178,37 @@ struct VolumesView: View {
                 }
             }
         )
+        .confirmationDialog(
+            "Delete Volume?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                guard let volume = volumeToDelete else {
+                    return
+                }
+
+                Task {
+                    do {
+                        try await volumeManager.delete(volumes: [volume.volume])
+                        await self.listVolumes()
+                    } catch (let err) {
+                        self.error = err
+                        self.showError = true
+                    }
+                }
+
+                volumeToDelete = nil
+            }
+
+            Button("Cancel", role: .cancel) {
+                volumeToDelete = nil
+            }
+        } message: {
+            if let volume = volumeToDelete {
+                Text("Delete \(volume.name)? This cannot be undone.")
+            }
+        }
     }
 
     func listVolumes() async {

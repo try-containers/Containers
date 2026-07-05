@@ -33,7 +33,7 @@ public enum DefaultsStore {
     /// Image tags match the containerization package version pinned in Package.resolved.
     private static nonisolated(unsafe) let defaults: [Key: String] = [
         .defaultInitImage: "ghcr.io/apple/containerization/vminit:0.28.0",
-        .defaultBuilderImage: "ghcr.io/apple/container-builder-shim/builder:latest",
+        .defaultBuilderImage: "ghcr.io/apple/container-builder-shim/builder:0.12.0",
         .defaultKernelURL: "https://github.com/kata-containers/kata-containers/releases/download/3.26.0/kata-static-3.26.0-arm64.tar.zst",
         .defaultKernelBinaryPath: "opt/kata/share/kata-containers/vmlinux-6.18.5-177",
         .buildRosetta: "true",

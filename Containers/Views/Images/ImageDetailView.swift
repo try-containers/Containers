@@ -14,8 +14,7 @@ struct ImageDetailView: View {
     let image: ImageViewModel
     let createContainer: () -> Void
 
-    @Environment(\.close) private var close
-
+    @Environment(\.dismiss) private var dismiss
     @Binding var showSaveImage: Bool
     @Binding var showDeleteConfirmation: Bool
 
@@ -46,7 +45,7 @@ struct ImageDetailView: View {
             selectedTab: $selectedCategory,
             showTabs: true,
             usesFixedMaximumHeight: false,
-            onClose: close,
+            onClose: { dismiss() },
             header: {
                 Text(image.name)
                     .font(.title2)
@@ -82,9 +81,9 @@ struct ImageDetailView: View {
     @ViewBuilder
     private var actionButtons: some View {
         ActionButton(
-            label: "Container",
-            icon: "cube.fill",
-            help: "Create container"
+            label: "Run",
+            icon: "play.fill",
+            help: "Run container"
         ) {
             createContainer()
         }

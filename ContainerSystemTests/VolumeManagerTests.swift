@@ -62,11 +62,35 @@ struct VolumeManagerTests {
         #expect(volume.name == volumeName)
         #expect(volume.driver == "local")
         #expect(volume.format == "ext4")
+        #expect(volume.source.hasSuffix("volume.ext4"))
+        #expect(volume.sizeInBytes == 1024 * 1024)
         
         let volumes = try await manager.list()
         #expect(volumes.contains(where: { $0.name == volumeName }))
     }
     
+    @Test("Create volume without size uses default size")
+    @MainActor
+    func testCreateVolumeWithoutSize() async throws {
+        let (_, testRuntime) = try await setupTestSystem()
+
+        let volumeName = "test-volume-\(UUID().uuidString)"
+        let manager = VolumeManager(testRuntime: testRuntime)
+
+        let volume = try await manager.create(
+            name: volumeName,
+            labels: [],
+            options: [],
+            sizeInBytes: nil
+        )
+
+        #expect(volume.source.hasSuffix("volume.ext4"))
+        #expect(volume.sizeInBytes == VolumeStorage.defaultVolumeSizeBytes)
+
+        let volumes = try await manager.list()
+        #expect(volumes.first(where: { $0.name == volumeName })?.sizeInBytes == VolumeStorage.defaultVolumeSizeBytes)
+    }
+
     @Test("Create volume with invalid name throws error")
     @MainActor
     func testCreateVolumeInvalidName() async throws {

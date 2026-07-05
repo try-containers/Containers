@@ -26,7 +26,7 @@ public final class VolumeManager {
     private let logger: Logger
     
     // Storage constants
-    private static let blockFile = "volume.img"
+    private static let blockFile = "volume.ext4"
     
     /// Public initializer - creates instance referencing shared runtime
     public init() {
@@ -76,7 +76,7 @@ public final class VolumeManager {
         try FileManager.default.createDirectory(at: volumeDir, withIntermediateDirectories: true)
         
         let blockPath = volumeDir.appendingPathComponent(Self.blockFile).path
-        let size = sizeInBytes ?? VolumeStorage.defaultVolumeSizeBytes
+        let filesystemSize = sizeInBytes ?? VolumeStorage.defaultVolumeSizeBytes
         let labelsDict = labels.reduce(into: [String: String]()) { $0[$1.key] = $1.value }
         let optionsDict = options.reduce(into: [String: String]()) { $0[$1.key] = $1.value }
         
@@ -84,7 +84,7 @@ public final class VolumeManager {
             let formatter = try EXT4.Formatter(
                 FilePath(blockPath),
                 blockSize: 4096,
-                minDiskSize: size
+                minDiskSize: filesystemSize
             )
             
             try formatter.close()
@@ -102,7 +102,7 @@ public final class VolumeManager {
             source: blockPath,
             labels: labelsDict,
             options: optionsDict,
-            sizeInBytes: size
+            sizeInBytes: filesystemSize
         )
         
         try await store.create(volume)

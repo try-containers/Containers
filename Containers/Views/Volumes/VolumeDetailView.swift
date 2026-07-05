@@ -11,7 +11,7 @@ import SwiftUI
 struct VolumeDetailView: View {
     let volume: VolumeViewModel
 
-    @Environment(\.close) private var close
+    @Environment(\.dismiss) private var dismiss
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
 
     enum DetailCategory: String, CaseIterable, Hashable {
@@ -22,7 +22,7 @@ struct VolumeDetailView: View {
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
-            onClose: close,
+            onClose: { dismiss() },
             header: {
                 Text(volume.name)
                     .font(.title2)

@@ -13,7 +13,7 @@ import SwiftUI
 struct ContainerDetailView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(VolumeManager.self) private var volumeManager
-    @Environment(\.close) private var close
+    @Environment(\.dismiss) private var dismiss
 
     @SwiftUI.State private var container: ContainerViewModel
     @SwiftUI.State private var snapshot: ContainerSnapshot?
@@ -47,7 +47,7 @@ struct ContainerDetailView: View {
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
-            onClose: close,
+            onClose: { dismiss() },
             header: {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(container.id)
@@ -97,7 +97,7 @@ struct ContainerDetailView: View {
                 }
             }
         )
-        .modal(isPresented: $showAddVolumeMount) {
+        .sheet(isPresented: $showAddVolumeMount) {
             AddVolumeMountView(
                 containerID: container.id,
                 existingMountDestinations: snapshot?.configuration.mounts.map(
@@ -128,7 +128,7 @@ struct ContainerDetailView: View {
                         )
 
                         error = nil
-                        close()
+                        dismiss()
                     } catch {
                         self.error = error
                         showError = true

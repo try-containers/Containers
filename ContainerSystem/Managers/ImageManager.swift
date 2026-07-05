@@ -173,6 +173,17 @@ public final class ImageManager {
 
         logger.info("Building image from Dockerfile")
 
+        let didAccessDockerFile = dockerFile.startAccessingSecurityScopedResource()
+        let didAccessContextDirectory = contextDirectory.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessContextDirectory {
+                contextDirectory.stopAccessingSecurityScopedResource()
+            }
+            if didAccessDockerFile {
+                dockerFile.stopAccessingSecurityScopedResource()
+            }
+        }
+
         let tag = tag.isEmpty ? UUID().uuidString.lowercased() : tag
         
         // STEP 1: Generate buildID and create export directory FIRST

@@ -12,8 +12,6 @@ import SwiftUI
 
 struct ImagesView: View {
     @Environment(ImageManager.self) private var imageManager
-    @Environment(SystemManager.self) private var system
-
     @Binding var searchText: String
     var refreshTrigger: Int
 
@@ -48,157 +46,106 @@ struct ImagesView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if system.isRunning {
-                Table(
-                    of: ImageViewModel.self,
-                    columns: {
-                        TableColumn("Name") { image in
-                            Button(action: {
-                                self.showImageDetails = image
-                            }) {
-                                Text(image.name)
+        ListView(
+            rows: filteredImages,
+            refreshTrigger: refreshTrigger,
+            lastUpdated: lastUpdated,
+            emptyTitle: "No Images Found",
+            matchingEmptyTitle: "No Matching Images",
+            emptySystemImage: NavigationTab.images.icon,
+            isFiltering: !trimmedText.isEmpty,
+            onClear: {
+                images = []
+                lastUpdated = nil
+            },
+            onRefresh: listImages
+        ) {
+            TableColumn("Name") { image in
+                Button(action: {
+                    self.showImageDetails = image
+                }) {
+                    Text(image.name)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.link)
+                .pointerStyle(.link)
+                .underline()
+                .frame(height: 36)  // to set minimum row height
+            }
+            .width(min: 150, ideal: 80)
+
+            TableColumn("Tag") { image in
+                Text(image.tag)
+                    .lineLimit(1)
+            }
+            .width(min: 50, ideal: 60)
+
+            TableColumn("Digest") { image in
+                Text(image.formattedDigest)
+                    .lineLimit(1)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+            .width(min: 100, ideal: 120, max: 140)
+
+            TableColumn("State") { image in
+                Group {
+                    if image.inUse {
+                        Button(
+                            action: {
+                                showInUseContainerForImage = image
+                            },
+                            label: {
+                                Text("In use")
                                     .lineLimit(1)
+                                    .underline()
                             }
-                            .buttonStyle(.link)
-                            .pointerStyle(.link)
-                            .underline()
-                            .frame(height: 36)  // to set minimum row height
-                        }
-                        .width(min: 150, ideal: 80)
-
-                        TableColumn("Tag") { image in
-                            Text(image.tag)
-                                .lineLimit(1)
-                        }
-                        .width(min: 50, ideal: 60)
-
-                        TableColumn("Digest") { image in
-                            Text(image.formattedDigest)
-                                .lineLimit(1)
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-                        }
-                        .width(min: 100, ideal: 120, max: 140)
-
-                        TableColumn("State") { image in
-
-                            Group {
-                                if image.inUse {
-                                    Button(
-                                        action: {
-                                            showInUseContainerForImage = image
-                                        },
-                                        label: {
-                                            Text("In use")
-                                                .lineLimit(1)
-                                                .underline()
-
-                                        }
-                                    )
-                                    .buttonStyle(.link)
-                                    .pointerStyle(.link)
-                                } else {
-                                    Text("Unused")
-                                }
-                            }
-                            .lineLimit(1)
-
-                        }
-                        .width(min: 60, ideal: 70)
-
-                        TableColumn("Actions") { image in
-
-                            HStack(spacing: 12) {
-
-                                Button(
-                                    action: {
-                                        self.createContainerForImage = image
-                                    },
-                                    label: {
-                                        Image(systemName: "cube.fill")
-                                            .foregroundStyle(.blue)
-                                    }
-                                )
-                                .buttonStyle(.plain)
-                                .help("Create container from image")
-
-                                Button(
-                                    action: {
-                                        imageToDelete = image
-                                        showDeleteConfirmation = true
-                                    },
-                                    label: {
-                                        Image(systemName: "trash.fill")
-                                            .foregroundStyle(
-                                                image.inUse
-                                                    ? .secondary : Color.red
-                                            )
-                                    }
-                                )
-                                .disabled(image.inUse)
-                                .buttonStyle(.plain)
-                                .help("Delete image")
-
-                            }
-                            .padding(.horizontal, 8)
-                        }
-                        .width(128)
-
-                    },
-                    rows: {
-                        ForEach(filteredImages)
+                        )
+                        .buttonStyle(.link)
+                        .pointerStyle(.link)
+                    } else {
+                        Text("Unused")
                     }
-                )
-                .tableStyle(.inset)
-                .alternatingRowBackgrounds(.disabled)
-                .overlay(
-                    alignment: .center,
-                    content: {
-                        if filteredImages.isEmpty {
-                            ContentUnavailableView(
-                                trimmedText.isEmpty
-                                    ? "No Images Found" : "No Matching Images",
-                                systemImage: NavigationTab.images.icon
-                            )
-                        }
-                    }
-                )
-            } else {
-                ContainerSystemView()
-            }
-        }
-        .onChange(
-            of: self.system.isRunning,
-            initial: true,
-            {
-                guard self.system.isRunning else {
-                    self.images = []
-                    self.lastUpdated = nil
-                    return
                 }
+                .lineLimit(1)
+            }
+            .width(min: 60, ideal: 70)
 
-                Task {
-                    guard self.lastUpdated == nil else {
-                        return
-                    }
+            TableColumn("Actions") { image in
+                HStack(spacing: 12) {
+                    Button(
+                        action: {
+                            self.createContainerForImage = image
+                        },
+                        label: {
+                            Image(systemName: "play.fill")
+                                .foregroundStyle(.blue)
+                        }
+                    )
+                    .buttonStyle(.plain)
+                    .help("Run container from image")
 
-                    await self.listImages()
+                    Button(
+                        action: {
+                            imageToDelete = image
+                            showDeleteConfirmation = true
+                        },
+                        label: {
+                            Image(systemName: "trash.fill")
+                                .foregroundStyle(
+                                    image.inUse ? .secondary : Color.red
+                                )
+                        }
+                    )
+                    .disabled(image.inUse)
+                    .buttonStyle(.plain)
+                    .help("Delete image")
                 }
+                .padding(.horizontal, 8)
             }
-        )
-        .onChange(of: refreshTrigger) {
-            Task {
-                await self.listImages()
-            }
+            .width(128)
         }
-        .onAppear {
-            Task {
-                guard system.isRunning else { return }
-                await self.listImages()
-            }
-        }
-        .modal(
+        .sheet(
             item: $createContainerForImage,
             onDismiss: {
                 Task {
@@ -207,17 +154,18 @@ struct ImagesView: View {
             },
             content: { image in
                 CreateContainerView(
-                    imageReference: image.imageDescription.reference
+                    imageReference: image.imageDescription.reference,
+                    mode: .run
                 )
             }
         )
-        .modal(
+        .sheet(
             item: $showInUseContainerForImage,
             content: { image in
                 ImageContainersView(image: image)
             }
         )
-        .modal(
+        .sheet(
             item: $showImageDetails,
             content: { image in
                 ImageDetailView(
@@ -230,7 +178,7 @@ struct ImagesView: View {
                 )
             }
         )
-        .modal(
+        .sheet(
             isPresented: $showSaveImage,
             onDismiss: {
                 self.imagesToSave = ""

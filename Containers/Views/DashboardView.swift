@@ -61,7 +61,7 @@ struct DashboardView: View {
     // Sheet presentation state for creating new items
     @SwiftUI.State private var showCreateContainerView: Bool = false
     @SwiftUI.State private var showCreateVolumeView: Bool = false
-    @SwiftUI.State private var showBuildImageView: Bool = false
+    @SwiftUI.State private var showCreateImageView: Bool = false
 
     // Refresh trigger (still needed for build image sheet dismiss)
     @SwiftUI.State private var refreshTrigger: Int = 0
@@ -118,7 +118,7 @@ struct DashboardView: View {
             .disabled(!system.isRunning)
             .overlay {
                 if !system.isRunning {
-                    ContainerSystemView()
+                    SystemStatusView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color(nsColor: .windowBackgroundColor))
                 }
@@ -154,7 +154,9 @@ struct DashboardView: View {
                 ToolbarSpacer(.fixed)
 
                 ToolbarItem(placement: .automatic) {
-                    SearchField(text: $searchText)
+                    TextField("Search", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 220)
                         .disabled(!system.isRunning)
                 }
             }
@@ -196,7 +198,7 @@ struct DashboardView: View {
                         .lineLimit(5)
                 }
             )
-            .modal(
+            .sheet(
                 isPresented: $showCreateContainerView,
                 onDismiss: {
                     refreshTrigger += 1
@@ -205,7 +207,7 @@ struct DashboardView: View {
                     CreateContainerView(imageReference: "")
                 }
             )
-            .modal(
+            .sheet(
                 isPresented: $showCreateVolumeView,
                 onDismiss: {
                     refreshTrigger += 1
@@ -214,13 +216,13 @@ struct DashboardView: View {
                     CreateVolumeView()
                 }
             )
-            .modal(
-                isPresented: $showBuildImageView,
+            .sheet(
+                isPresented: $showCreateImageView,
                 onDismiss: {
                     refreshTrigger += 1
                 },
                 content: {
-                    BuildImageView()
+                    CreateImageWizard()
                 }
             )
 
@@ -392,7 +394,7 @@ struct DashboardView: View {
         case .volumes:
             showCreateVolumeView = true
         case .images:
-            showBuildImageView = true
+            showCreateImageView = true
         }
     }
 

@@ -49,203 +49,144 @@ struct ContainersView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if system.isRunning {
-                Table(
-                    of: ContainerViewModel.self,
-                    columns: {
-                        TableColumn("Name") { container in
-                            Button(
-                                action: {
-                                    Task {
-                                        await openDetail(for: container)
-                                    }
-                                },
-                                label: {
-                                    Text(container.name)
-                                        .lineLimit(1)
-                                        .underline()
-                                }
-                            )
-                            .buttonStyle(.link)
-                            .pointerStyle(.link)
-                            .frame(height: 32)  // to set minimum row height
+        ListView(
+            rows: filteredContainers,
+            refreshTrigger: refreshTrigger,
+            lastUpdated: lastUpdated,
+            emptyTitle: "No Containers Found",
+            matchingEmptyTitle: "No Matching Containers",
+            emptySystemImage: NavigationTab.containers.icon,
+            isFiltering: !trimmedText.isEmpty || runningContainersOnly,
+            tableStyle: .automatic,
+            onClear: {
+                containers = []
+                lastUpdated = nil
+            },
+            onRefresh: refreshContainers
+        ) {
+            TableColumn("Name") { container in
+                Button(
+                    action: {
+                        Task {
+                            await openDetail(for: container)
                         }
-                        .width(min: 100, ideal: 150, max: 250)
-
-                        TableColumn("Image") { container in
-                            Text(container.imageName)
-                                .lineLimit(1)
-                        }
-                        .width(min: 120, ideal: 180, max: 300)
-
-                        TableColumn("State") { container in
-                            StatusBadge(status: container.status)
-                        }
-                        .width(min: 64, ideal: 80, max: 100)
-
-                        TableColumn("IP Address") { container in
-                            Text(container.formattedIPAddress)
-                                .lineLimit(1)
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundStyle(
-                                    !container.hasIPAddress
-                                        ? .secondary : .primary
-                                )
-                                .textSelection(.enabled)
-                        }
-                        .width(min: 100, ideal: 120, max: 140)
-
-                        TableColumn("Uptime") { container in
-                            Text(container.formattedUptime)
-                                .lineLimit(1)
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundStyle(
-                                    container.status == .running
-                                        ? .primary : .secondary
-                                )
-                        }
-                        .width(min: 80, ideal: 100, max: 140)
-
-                        TableColumn("Actions") { container in
-                            HStack(spacing: 12) {
-                                switch container.status {
-                                case .running:
-                                    Button(
-                                        action: {
-                                            Task {
-                                                do {
-                                                    try await containerManager
-                                                        .stop(
-                                                            ids: [container.id],
-                                                            timeoutSeconds:
-                                                                Int32(
-                                                                    UserDefaults
-                                                                        .stopContainerTimeoutSeconds
-                                                                )
-                                                        )
-                                                } catch (let err) {
-                                                    self.error = err
-                                                    self.showError = true
-                                                }
-                                            }
-                                        },
-                                        label: {
-                                            Image(systemName: "stop.fill")
-                                                .foregroundStyle(.gray)
-                                        }
-                                    )
-                                    .buttonStyle(.plain)
-
-                                case .stopped:
-                                    Button(
-                                        action: {
-                                            Task {
-                                                do {
-                                                    try await containerManager
-                                                        .start(
-                                                            id: container.id,
-                                                            attachStdout: false,
-                                                            attachStdin: false
-                                                        )
-                                                } catch (let err) {
-                                                    self.error = err
-                                                    self.showError = true
-                                                }
-                                            }
-                                        },
-                                        label: {
-                                            Image(systemName: "play.fill")
-                                                .foregroundStyle(.blue)
-                                        }
-                                    )
-                                    .buttonStyle(.plain)
-
-                                case .stopping:
-                                    Image(systemName: "slash.circle")
-                                        .foregroundStyle(.secondary)
-
-                                case .unknown:
-                                    Image(systemName: "slash.circle")
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Button(
-                                    action: {
-                                        selectedContainer = container
-                                        showDeleteConfirmation = true
-                                    },
-                                    label: {
-                                        Image(systemName: "trash.fill")
-                                            .foregroundStyle(.red)
-                                    }
-                                )
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 8)
-                        }
-                        .width(min: 92, ideal: 92, max: 92)
                     },
-                    rows: {
-                        ForEach(filteredContainers)
+                    label: {
+                        Text(container.name)
+                            .lineLimit(1)
+                            .underline()
                     }
                 )
-                .tableStyle(.automatic)
-                .alternatingRowBackgrounds(.disabled)
-                .overlay(
-                    alignment: .center,
-                    content: {
-                        if filteredContainers.isEmpty {
-                            ContentUnavailableView(
-                                self.trimmedText.isEmpty
-                                    && !self.runningContainersOnly
-                                    ? "No Containers Found"
-                                    : "No Matching Containers",
-                                systemImage: NavigationTab.containers.icon
-                            )
+                .buttonStyle(.link)
+                .pointerStyle(.link)
+                .frame(height: 32)  // to set minimum row height
+            }
+            .width(min: 100, ideal: 150, max: 250)
+
+            TableColumn("Image") { container in
+                Text(container.imageName)
+                    .lineLimit(1)
+            }
+            .width(min: 120, ideal: 180, max: 300)
+
+            TableColumn("State") { container in
+                StatusBadge(status: container.status)
+            }
+            .width(min: 64, ideal: 80, max: 100)
+
+            TableColumn("IP Address") { container in
+                Text(container.formattedIPAddress)
+                    .lineLimit(1)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(
+                        !container.hasIPAddress
+                            ? .secondary : .primary
+                    )
+                    .textSelection(.enabled)
+            }
+            .width(min: 100, ideal: 120, max: 140)
+
+            TableColumn("Uptime") { container in
+                Text(container.formattedUptime)
+                    .lineLimit(1)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(
+                        container.status == .running
+                            ? .primary : .secondary
+                    )
+            }
+            .width(min: 80, ideal: 100, max: 140)
+
+            TableColumn("Actions") { container in
+                HStack(spacing: 12) {
+                    switch container.status {
+                    case .running:
+                        Button(
+                            action: {
+                                Task {
+                                    do {
+                                        try await containerManager.stop(
+                                            ids: [container.id],
+                                            timeoutSeconds: Int32(
+                                                UserDefaults.stopContainerTimeoutSeconds
+                                            )
+                                        )
+                                    } catch (let err) {
+                                        self.error = err
+                                        self.showError = true
+                                    }
+                                }
+                            },
+                            label: {
+                                Image(systemName: "stop.fill")
+                                    .foregroundStyle(.gray)
+                            }
+                        )
+                        .buttonStyle(.plain)
+
+                    case .stopped:
+                        Button(
+                            action: {
+                                Task {
+                                    do {
+                                        try await containerManager.start(
+                                            id: container.id,
+                                            attachStdout: false,
+                                            attachStdin: false
+                                        )
+                                    } catch (let err) {
+                                        self.error = err
+                                        self.showError = true
+                                    }
+                                }
+                            },
+                            label: {
+                                Image(systemName: "play.fill")
+                                    .foregroundStyle(.blue)
+                            }
+                        )
+                        .buttonStyle(.plain)
+
+                    case .stopping, .unknown:
+                        Image(systemName: "slash.circle")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button(
+                        action: {
+                            selectedContainer = container
+                            showDeleteConfirmation = true
+                        },
+                        label: {
+                            Image(systemName: "trash.fill")
+                                .foregroundStyle(.red)
                         }
-                    }
-                )
-            } else {
-                ContainerSystemView()
-            }
-        }
-        .onChange(
-            of: self.system.isRunning,
-            initial: true,
-            {
-                guard self.system.isRunning else {
-                    self.containers = []
-                    self.lastUpdated = nil
-                    return
+                    )
+                    .buttonStyle(.plain)
                 }
-
-                Task {
-                    guard self.lastUpdated == nil else {
-                        return
-                    }
-
-                    do {
-                        self.containers = (try await containerManager.list())
-                            .map({ ContainerViewModel($0) })
-                        self.lastUpdated = Date()
-                    } catch (let err) {
-                        self.error = err
-                        self.showError = true
-                    }
-                }
+                .padding(.horizontal, 8)
             }
-        )
-        .onChange(of: refreshTrigger) {
-            Task {
-                await refreshContainers()
-            }
-        }
-        .onAppear {
-            Task {
-                guard system.isRunning else { return }
-                await refreshContainers()
-            }
+            .width(min: 92, ideal: 92, max: 92)
         }
         .onChange(of: containerManager.lastContainerChange) {
             Task {
@@ -253,7 +194,7 @@ struct ContainersView: View {
                 await refreshContainers()
             }
         }
-        .modal(
+        .sheet(
             isPresented: $showCreateContainerView,
             onDismiss: {
                 Task {
@@ -264,7 +205,7 @@ struct ContainersView: View {
                 CreateContainerView(imageReference: "")
             }
         )
-        .modal(item: $detailPresentation) { presentation in
+        .sheet(item: $detailPresentation) { presentation in
             ContainerDetailView(
                 container: presentation.container,
                 initialSnapshot: presentation.snapshot

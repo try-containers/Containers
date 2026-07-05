@@ -11,129 +11,102 @@ import SwiftUI
 
 struct CreateVolumeView: View {
     @Environment(VolumeManager.self) private var volumeManager
-    @Environment(\.close) private var close
+    @Environment(\.dismiss) private var dismiss
 
     @SwiftUI.State private var name: String = ""
     @SwiftUI.State private var options: [KeyValue] = []
     @SwiftUI.State private var labels: [KeyValue] = []
-    @SwiftUI.State private var sizeValue: Double = 1
-    @SwiftUI.State private var sizeUnit: UnitInformationStorage = .megabytes
+    @SwiftUI.State private var sizeValue: Double = 512
+    @SwiftUI.State private var sizeUnit: UnitInformationStorage = .gigabytes
     @SwiftUI.State private var errorMessage: String?
     @SwiftUI.State private var showAdditionalSettings: Bool = false
     @SwiftUI.State private var showProgressView: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Create New Volume")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+        CreateView(
+            title: "Create New Volume",
+            errorMessage: $errorMessage,
+            isWorking: showProgressView,
+            progressTitle: "Creating volume...",
+            width: 550,
+            height: 550,
+            onCancel: { dismiss() },
+            content: {
+                VStack(alignment: .leading, spacing: 20) {
+                    EditableField(
+                        title: "Name",
+                        placeholder: "Ex: volume-1",
+                        value: $name
+                    )
 
-                    Text("Configure your new volume settings")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    EditableField(
+                        title: "Size",
+                        description:
+                            "Sets the maximum capacity for the volume. Disk space is used as data is written, not reserved up front.",
+                        placeholder: "Size",
+                        value: $sizeValue,
+                        format: .number,
+                        fieldWidth: 240,
+                        options: [.megabytes, .gigabytes, .terabytes],
+                        selection: $sizeUnit
+                    )
+
+                    EditableList(
+                        items: $labels,
+                        title: "Metadata",
+                        columnTitles: ["Key", "Value"],
+                        addLabel: "Add Label",
+                        newItem: { KeyValue() },
+                        rowSummary: keyValueSummary,
+                        rowValues: { [$0.key, $0.value] },
+                        rowContent: { keyValue in
+                            EditableListRowEdit(fields: [
+                                .init(
+                                    placeholder: "Key",
+                                    text: keyValue.key,
+                                    isMonospaced: true
+                                ),
+                                .init(
+                                    placeholder: "Value",
+                                    text: keyValue.value,
+                                    isMonospaced: true
+                                ),
+                            ])
+                        },
+                        editorContent: { _ in
+                            EmptyView()
+                        }
+                    )
+
+                    EditableList(
+                        items: $options,
+                        title: "Driver Specific Options",
+                        columnTitles: ["Key", "Value"],
+                        addLabel: "Add Option",
+                        newItem: { KeyValue() },
+                        rowSummary: keyValueSummary,
+                        rowValues: { [$0.key, $0.value] },
+                        rowContent: { keyValue in
+                            EditableListRowEdit(fields: [
+                                .init(
+                                    placeholder: "Key",
+                                    text: keyValue.key,
+                                    isMonospaced: true
+                                ),
+                                .init(
+                                    placeholder: "Value",
+                                    text: keyValue.value,
+                                    isMonospaced: true
+                                ),
+                            ])
+                        },
+                        editorContent: { _ in
+                            EmptyView()
+                        }
+                    )
                 }
-                Spacer()
-            }
-            .padding(20)
-            .background(Color(nsColor: .controlBackgroundColor))
-
-            Divider()
-
-            // Content
-
-            VStack(alignment: .leading, spacing: 20) {
-                // Error message
-
-                if let errorMessage = self.errorMessage {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        Text(errorMessage)
-                            .font(.subheadline)
-                            .foregroundStyle(.red)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.red.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-
-                // Volume Name Section
-
-                EditableField(
-                    title: "Name",
-                    placeholder: "Ex: volume-1",
-                    value: $name
-                )
-
-                // Volume Size
-
-                EditableField(
-                    title: "Size",
-                    placeholder: "Size",
-                    value: $sizeValue,
-                    format: .number,
-                    fieldWidth: 200,
-                    options: [.megabytes, .gigabytes, .terabytes],
-                    selection: $sizeUnit
-                )
-
-                // Labels
-
-                EditableList(
-                    items: $labels,
-                    title: "Metadata",
-                    columnTitles: ["Key", "Value"],
-                    addLabel: "Add Label",
-                    newItem: { KeyValue() },
-                    rowSummary: keyValueSummary,
-                    rowValues: { [$0.key, $0.value] },
-                    editorContent: { $keyValue in
-                        KeyValueEditor(keyValue: $keyValue)
-                    }
-                )
-
-                // Options
-
-                EditableList(
-                    items: $options,
-                    title: "Driver Specific Options",
-                    columnTitles: ["Key", "Value"],
-                    addLabel: "Add Option",
-                    newItem: { KeyValue() },
-                    rowSummary: keyValueSummary,
-                    rowValues: { [$0.key, $0.value] },
-                    editorContent: { $keyValue in
-                        KeyValueEditor(keyValue: $keyValue)
-                    }
-                )
-            }
-            .padding(20)
-
-            Divider()
-
-            // Bottom Bar
-            HStack {
-                if showProgressView {
-                    ProgressView()
-                        .controlSize(.small)
-                        .padding(.trailing, 8)
-                    Text("Creating volume...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Button("Cancel") {
-                    close()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-
+            },
+            actions: {
                 Button("Create Volume") {
                     createVolume()
                 }
@@ -143,10 +116,7 @@ struct CreateVolumeView: View {
                     name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
             }
-            .padding(16)
-            .background(Color(nsColor: .controlBackgroundColor))
-        }
-        .frame(width: 550, height: 550)
+        )
         .animation(.default, value: self.labels.count)
         .animation(.default, value: self.options.count)
         .animation(.default, value: showAdditionalSettings)
@@ -194,10 +164,14 @@ struct CreateVolumeView: View {
                 let validLabels = self.labels.filter({
                     !$0.key.trimmingCharacters(in: .whitespacesAndNewlines)
                         .isEmpty
+                        && !$0.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .isEmpty
                 })
                 let validOptions = self.options.filter({
                     !$0.key.trimmingCharacters(in: .whitespacesAndNewlines)
                         .isEmpty
+                        && !$0.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .isEmpty
                 })
 
                 // Convert to bytes for API
@@ -217,7 +191,7 @@ struct CreateVolumeView: View {
                     sizeInBytes: sizeInBytes
                 )
 
-                close()
+                dismiss()
             } catch (let error) {
                 self.errorMessage = "\(error)"
             }

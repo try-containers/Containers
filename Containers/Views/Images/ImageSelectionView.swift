@@ -16,7 +16,7 @@ struct ImageSelectionView: View {
 
     @SwiftUI.State private var searchText: String = ""
 
-    @Environment(\.close) private var close
+    @Environment(\.dismiss) private var dismiss
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -41,7 +41,7 @@ struct ImageSelectionView: View {
                     Button(
                         action: {
                             self.onImageSelect(image.reference)
-                            close()
+                            dismiss()
                         },
                         label: {
                             Text(image.reference)
@@ -66,7 +66,7 @@ struct ImageSelectionView: View {
 
             Button(
                 action: {
-                    close()
+                    dismiss()
                 },
                 label: {
                     Text("Cancel")

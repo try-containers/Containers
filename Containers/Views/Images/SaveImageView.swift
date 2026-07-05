@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 
 struct SaveImageView: View {
     @Environment(ImageManager.self) private var imageManager
-    @Environment(\.close) private var close
+    @Environment(\.dismiss) private var dismiss
 
     var images: [ImageDescription]
 
@@ -68,14 +68,14 @@ struct SaveImageView: View {
 
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Output Directory")
-                FileSelection(
-                    fileURL: $outputDirectory,
-                    errorMessage: $errorMessage,
-                    allowedContentTypes: [.directory]
-                )
-            }
+            FileSelection(
+                title: "Output Directory",
+                description: "Choose where to save the OCI archive",
+                placeholder: "No output directory selected",
+                fileURL: $outputDirectory,
+                canChooseDirectories: true,
+                onSelection: { errorMessage = nil }
+            )
 
             Divider()
 
@@ -119,7 +119,7 @@ struct SaveImageView: View {
             HStack(spacing: 16) {
                 Button(
                     action: {
-                        close()
+                        dismiss()
                     },
                     label: {
                         Text("Cancel")
@@ -176,7 +176,7 @@ struct SaveImageView: View {
 
                                 let _ = NSWorkspace.shared.open(outputDirectory)
 
-                                close()
+                                dismiss()
                             } catch (let error) {
                                 self.errorMessage = "\(error)"
                             }
@@ -199,13 +199,13 @@ struct SaveImageView: View {
         .padding(.all, 24)
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
-        .modal(
+        .sheet(
             isPresented: $showProgressView,
             content: {
                 ProgressView()
             }
         )
-        .modal(
+        .sheet(
             isPresented: $showPickLocalImage,
             content: {
                 let referencesArray: [String] = self.imageReferences.split(

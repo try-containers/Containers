@@ -14,7 +14,7 @@ struct AddVolumeMountView: View {
     let onMount: (Volume, String) async throws -> Void
 
     @Environment(VolumeManager.self) private var volumeManager
-    @Environment(\.close) private var close
+    @Environment(\.dismiss) private var dismiss
 
     @SwiftUI.State private var volumeName: String = ""
     @SwiftUI.State private var mountPath: String = ""
@@ -62,7 +62,7 @@ struct AddVolumeMountView: View {
                     Text("Volume")
                         .font(.headline)
                     Text(
-                        "Choose an existing volume, enter a new volume name, or leave empty to create an anonymous volume."
+                        "Choose an existing volume, enter a new volume name, or leave empty to create an anonymous volume. Mounts and tmpfs are configured when creating a container."
                     )
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -81,7 +81,7 @@ struct AddVolumeMountView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Container Path")
+                    Text("Target")
                         .font(.headline)
                     Text(
                         "The absolute path where the volume will be mounted inside the container."
@@ -112,7 +112,7 @@ struct AddVolumeMountView: View {
                 Spacer()
 
                 Button("Cancel") {
-                    close()
+                    dismiss()
                 }
                 .buttonStyle(.bordered)
                 .disabled(isMounting)
@@ -132,7 +132,7 @@ struct AddVolumeMountView: View {
             .background(Color(nsColor: .controlBackgroundColor))
         }
         .frame(width: 520, height: 420)
-        .modal(isPresented: $showVolumePicker) {
+        .sheet(isPresented: $showVolumePicker) {
             VolumeSelectionView(
                 volumes: availableVolumes,
                 onVolumeSelect: { selectedName in
@@ -181,6 +181,7 @@ struct AddVolumeMountView: View {
             do {
                 let volumes = try await volumeManager.list()
                 let volume: Volume
+
                 if let existing = volumes.first(where: {
                     $0.name == trimmedName
                 }) {
@@ -201,7 +202,7 @@ struct AddVolumeMountView: View {
                 }
 
                 try await onMount(volume, destination)
-                close()
+                dismiss()
             } catch {
                 errorMessage = "\(error)"
             }

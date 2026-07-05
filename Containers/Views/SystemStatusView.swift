@@ -1,5 +1,5 @@
 //
-//  ContainerSystemView.swift
+//  SystemStatusView.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/02/08.
@@ -8,7 +8,7 @@
 import ContainerSystem
 import SwiftUI
 
-struct ContainerSystemView: View {
+struct SystemStatusView: View {
     @Environment(SystemManager.self) private var system
 
     var body: some View {
