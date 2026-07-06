@@ -136,7 +136,7 @@ struct CreateContainerView: View {
         CreateView(
             title: mode.title,
             errorMessage: $errorMessage,
-            isWorking: showProgressView,
+            isProcessing: showProgressView,
             progressTitle: mode.progressTitle,
             width: 660,
             height: 560,

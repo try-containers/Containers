@@ -222,7 +222,7 @@ struct DashboardView: View {
                     refreshTrigger += 1
                 },
                 content: {
-                    CreateImageWizard()
+                    CreateImageView()
                 }
             )
 

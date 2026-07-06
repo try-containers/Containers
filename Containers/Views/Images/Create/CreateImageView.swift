@@ -13,7 +13,7 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct CreateImageWizard: View {
+struct CreateImageView: View {
     let tarContentTypes = [UTType(filenameExtension: "tar")].compactMap { $0 }
 
     enum CreationMethod: String, CaseIterable {
@@ -41,11 +41,10 @@ struct CreateImageWizard: View {
     enum Step: Int, CaseIterable {
         case method = 0
         case configuration = 1
-        case review = 2
 
         var isCentered: Bool {
             switch self {
-            case .method, .review:
+            case .method:
                 true
             case .configuration:
                 false
@@ -72,21 +71,18 @@ struct CreateImageWizard: View {
     @SwiftUI.State private var buildPlatform: PlatformSelection = .platform(.current)
     @SwiftUI.State private var buildArguments: [KeyValue] = []
     @SwiftUI.State private var targetStage: String = ""
-    @SwiftUI.State private var showTarFileSelection: Bool = false
     @SwiftUI.State private var shouldLoadPullFeaturedImages: Bool = false
-    @SwiftUI.State private var tarFileSelectionCompletion: (() -> Void)?
 
     var body: some View {
         CreateView(
             title: "Create Image",
             errorMessage: $errorMessage,
-            isWorking: isCreating,
+            isProcessing: isCreating,
             progressTitle: progressMessage,
             width: 600,
-            height: 520,
-            showsContentWhileWorking: false,
-            disablesCancelWhileWorking: false,
-            contentAlignment: currentStep.isCentered ? .center : .topLeading,
+            height: 480,
+            showsHeader: false,
+            contentAlignment: .center,
             contentID: currentStep,
             contentTransition: stepTransition,
             onCancel: {
@@ -114,7 +110,8 @@ struct CreateImageWizard: View {
                 }
 
                 if !isCreating {
-                    if currentStep != .review {
+                    switch currentStep {
+                    case .method:
                         Button(
                             action: nextStep,
                             label: {
@@ -126,7 +123,7 @@ struct CreateImageWizard: View {
                         .controlSize(.large)
                         .tint(.blue)
                         .disabled(!canProceedToNextStep)
-                    } else {
+                    case .configuration:
                         Button(
                             action: createImage,
                             label: {
@@ -137,24 +134,12 @@ struct CreateImageWizard: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                         .tint(.blue)
+                        .disabled(!canProceedToNextStep)
                     }
                 }
             }
         )
         .animation(.default, value: isCreating)
-        .background {
-            FileSelection(
-                title: "Tar Archive",
-                description: "Select a tar archive containing the image",
-                placeholder: "No tar archive selected",
-                fileURL: $tarFile,
-                allowedContentTypes: tarContentTypes,
-                defaultDirectory: defaultFileDialogDirectory,
-                onSelection: completeTarFileSelection,
-                isPresented: $showTarFileSelection
-            )
-            .hidden()
-        }
     }
 
     @ViewBuilder
@@ -162,7 +147,8 @@ struct CreateImageWizard: View {
         switch currentStep {
         case .method:
             CreateImageMethodStep(
-                selectedMethod: $selectedMethod
+                selectedMethod: $selectedMethod,
+                onSelection: selectCreationMethod
             )
         case .configuration:
             CreateImageConfigurationStep(
@@ -183,19 +169,6 @@ struct CreateImageWizard: View {
                 buildArguments: $buildArguments,
                 targetStage: $targetStage,
                 tarFile: $tarFile
-            )
-        case .review:
-            CreateImageReviewStep(
-                selectedMethod: selectedMethod,
-                imageName: imageName,
-                tag: tag,
-                pullPlatform: pullPlatform,
-                dockerFile: dockerFile,
-                contextDirectory: contextDirectory,
-                buildTag: buildTag,
-                buildPlatform: buildPlatform,
-                targetStage: targetStage,
-                tarFile: tarFile
             )
         }
     }
@@ -247,8 +220,6 @@ struct CreateImageWizard: View {
             case .none:
                 return false
             }
-        case .review:
-            return true
         }
     }
 
@@ -256,16 +227,24 @@ struct CreateImageWizard: View {
         selectedMethod = method
     }
 
-    private func selectTarFile(afterSelection: (() -> Void)? = nil) {
-        tarFileSelectionCompletion = afterSelection
-        showTarFileSelection = true
-    }
-
-    private func completeTarFileSelection() {
+    private func selectTarArchiveAndLoad() {
         errorMessage = nil
-        let completion = tarFileSelectionCompletion
-        tarFileSelectionCompletion = nil
-        completion?()
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.canCreateDirectories = false
+        panel.showsHiddenFiles = true
+        panel.directoryURL = tarFile?.parent ?? defaultFileDialogDirectory
+        panel.allowedContentTypes = tarContentTypes
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        tarFile = url
+        createImage()
     }
 
     private func prepareStepTransition() {
@@ -277,29 +256,8 @@ struct CreateImageWizard: View {
     }
 
     func nextStep() {
-        if currentStep == .method, selectedMethod == .load {
-            if tarFile != nil {
-                prepareStepTransition()
-                stepTransitionDirection = 1
-                withAnimation(.default) {
-                    currentStep = .review
-                    errorMessage = nil
-                } completion: {
-                    completeStepTransition()
-                }
-                return
-            }
-
-            selectTarFile {
-                prepareStepTransition()
-                stepTransitionDirection = 1
-                withAnimation(.default) {
-                    currentStep = .review
-                    errorMessage = nil
-                } completion: {
-                    completeStepTransition()
-                }
-            }
+        if selectedMethod == .load {
+            selectTarArchiveAndLoad()
             return
         }
 
@@ -354,7 +312,6 @@ struct CreateImageWizard: View {
                 dismiss()
 
             } catch {
-                // On error, go back to review step and show error
                 isCreating = false
                 errorMessage = "\(error)"
             }

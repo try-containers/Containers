@@ -25,7 +25,7 @@ public struct ContainerInfo: Sendable {
     public var shmSize: UInt64?
     public var stopSignal: String?
 
-    // PRAGMA: DNS
+    // MARK: DNS
 
     public var dnsDisabled = false
     public var dnsNameservers: [String] = []
@@ -33,7 +33,8 @@ public struct ContainerInfo: Sendable {
     public var dnsSearchDomains: [String] = []
     public var dnsOptions: [String] = []
 
-    // PRAGMA: FLAGS
+    // MARK: FLAGS
+
     public var deleteOnTermination = false
     public var virtualization: Bool = false
     public var ssh = false

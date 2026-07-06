@@ -26,7 +26,7 @@ struct CreateVolumeView: View {
         CreateView(
             title: "Create New Volume",
             errorMessage: $errorMessage,
-            isWorking: showProgressView,
+            isProcessing: showProgressView,
             progressTitle: "Creating volume...",
             width: 550,
             height: 550,

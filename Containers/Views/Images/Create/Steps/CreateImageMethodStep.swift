@@ -8,65 +8,71 @@
 import SwiftUI
 
 struct CreateImageMethodStep: View {
-    @Binding var selectedMethod: CreateImageWizard.CreationMethod?
+    @Binding var selectedMethod: CreateImageView.CreationMethod?
+
+    let onSelection: (CreateImageView.CreationMethod) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ForEach(CreateImageWizard.CreationMethod.allCases, id: \.self) {
-                method in
-                Button {
-                    selectedMethod = method
-                } label: {
-                    HStack(spacing: 16) {
-                        Image(systemName: method.icon)
-                            .font(.system(size: 32))
-                            .foregroundStyle(
-                                selectedMethod == method
-                                    ? .blue : .secondary
-                            )
-                            .frame(width: 48)
+        VStack(spacing: 24) {
+            Image(systemName: "shippingbox.circle")
+                .font(.system(size: 68, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(method.rawValue)
-                                .font(.headline)
-                                .foregroundStyle(.primary)
+            VStack(spacing: 6) {
+                Text("Create an Image")
+                    .font(.title2)
+                    .fontWeight(.semibold)
 
-                            Text(method.description)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        if selectedMethod == method {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.blue)
-                                .font(.system(size: 24))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                    .contentShape(Rectangle())
-                    .background {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(
-                                selectedMethod == method
-                                    ? Color.accentColor.opacity(0.1)
-                                    : Color.clear
-                            )
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                selectedMethod == method
-                                    ? Color.accentColor
-                                    : Color.secondary.opacity(0.3),
-                                lineWidth: 2
-                            )
-                    }
-                }
-                .buttonStyle(.plain)
+                Text("Choose how you want to add an image to your library.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(CreateImageView.CreationMethod.allCases, id: \.self) { method in
+                    methodRow(method)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
+        .frame(width: 460, alignment: .center)
+    }
+
+    private func methodRow(_ method: CreateImageView.CreationMethod) -> some View {
+        Button {
+            onSelection(method)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(
+                    systemName: selectedMethod == method
+                        ? "largecircle.fill.circle" : "circle"
+                )
+                .font(.system(size: 13))
+                .foregroundStyle(
+                    selectedMethod == method ? Color.accentColor : .secondary
+                )
+                .frame(width: 18, height: 18)
+                .padding(.top, 2)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(method.rawValue)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+
+                    Text(method.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 300, alignment: .leading)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

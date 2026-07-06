@@ -75,7 +75,6 @@ struct BuildDockerfileView: View {
                 value: $targetStage
             )
         }
-        .frame(maxWidth: .infinity, minHeight: 320, alignment: .center)
     }
 
     private var platformOptions: [PlatformSelection] {

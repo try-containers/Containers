@@ -1,14 +1,15 @@
-import Containerization
-import ContainerizationError
-import ContainerizationExtras
-import ContainerizationOCI
-import ContainerizationOS
 //
 //  BuilderController.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/02/08.
 //
+
+import Containerization
+import ContainerizationError
+import ContainerizationExtras
+import ContainerizationOCI
+import ContainerizationOS
 import Foundation
 import Logging
 
@@ -110,25 +111,24 @@ internal final class BuilderController {
             logger.info(
                 "Found existing builder container, cleaning it up to ensure fresh start"
             )
-            // Always delete existing builder to ensure we start with clean tmpfs mount
-            // This avoids BoltDB corruption issues
-            switch existingContainer.status {
-            case .running:
-                try await containersService.stop(
-                    id: Self.builderContainerId,
-                    options: .default
-                )
+            if existingContainer.status == .running {
+                do {
+                    try await containersService.stop(
+                        id: Self.builderContainerId,
+                        options: .default
+                    )
+                } catch {
+                    logger.warning(
+                        "Failed to stop existing builder, proceeding with delete: \(error)"
+                    )
+                }
+            }
+            do {
                 try await containersService.delete(id: Self.builderContainerId)
-            case .stopped:
-                try await containersService.delete(id: Self.builderContainerId)
-            case .stopping:
-                throw ContainerizationError(
-                    .invalidState,
-                    message:
-                        "builder is stopping, please wait until it is fully stopped before proceeding"
+            } catch {
+                logger.warning(
+                    "Failed to delete existing builder, continuing anyway: \(error)"
                 )
-            case .unknown:
-                try? await containersService.delete(id: Self.builderContainerId)
             }
         }
 
@@ -174,6 +174,7 @@ internal final class BuilderController {
             process: processConfig
         )
         config.resources = resources
+        config.capabilities = ["ALL"]
         config.mounts = [
             .init(
                 type: .tmpfs,
@@ -215,6 +216,7 @@ internal final class BuilderController {
                 options: AttachmentOptions(hostname: Self.builderContainerId)
             )
         ]
+        config.dns = ContainerConfiguration.DNSConfiguration()
 
         logger.info("Getting kernel")
         let kernel = try await kernelService.getDefaultKernel(
@@ -251,25 +253,30 @@ internal final class BuilderController {
         })
 
         if let existingContainer {
-            switch existingContainer.status {
-            case .running:
+            if existingContainer.status == .running {
                 logger.info("Stopping existing builder")
-                try await containersService.stop(
-                    id: Self.builderContainerId,
-                    options: .default
+                do {
+                    try await containersService.stop(
+                        id: Self.builderContainerId,
+                        options: .default
+                    )
+                } catch {
+                    logger.warning(
+                        "Failed to cleanly stop existing builder, proceeding with delete: \(error)"
+                    )
+                }
+            } else {
+                logger.info(
+                    "Deleting existing builder (status: \(existingContainer.status))"
                 )
+            }
+
+            do {
                 try await containersService.delete(id: Self.builderContainerId)
-            case .stopped:
-                logger.info("Deleting stopped builder")
-                try await containersService.delete(id: Self.builderContainerId)
-            case .stopping:
-                throw ContainerizationError(
-                    .invalidState,
-                    message:
-                        "builder is stopping, please wait until it is fully stopped before proceeding"
+            } catch {
+                logger.warning(
+                    "Failed to delete existing builder cleanly, continuing anyway: \(error)"
                 )
-            case .unknown:
-                try? await containersService.delete(id: Self.builderContainerId)
             }
         }
 

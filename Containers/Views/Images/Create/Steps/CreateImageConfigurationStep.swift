@@ -12,7 +12,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct CreateImageConfigurationStep: View {
-    let selectedMethod: CreateImageWizard.CreationMethod?
+    let selectedMethod: CreateImageView.CreationMethod?
     let defaultFileDialogDirectory: URL?
     let tarContentTypes: [UTType]
     let shouldLoadPullFeaturedImages: Bool

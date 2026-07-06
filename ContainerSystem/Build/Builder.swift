@@ -8,22 +8,33 @@
 //
 
 import Containerization
+import ContainerizationArchive
 import ContainerizationError
 import ContainerizationOCI
 import ContainerizationOS
+import CryptoKit
 import Foundation
+import GRPCCore
+import GRPCNIOTransportHTTP2
 import Logging
 import NIO
+import NIOCore
+import NIOHPACK
+import NIOHTTP2
+import NIOPosix
 
 /// Builder that uses ImagesService instead of XPC-based ClientImage
 public struct Builder: Sendable {
     public static let builderContainerId = "buildkit"
 
-    let client: BuilderClientProtocol
-    let clientAsync: BuilderClientAsyncProtocol
+    let client:
+        Com_Apple_Container_Build_V1_Builder.Client<
+            HTTP2ClientTransport.WrappedChannel
+        >
+    let grpcClient: GRPCClient<HTTP2ClientTransport.WrappedChannel>
     let group: EventLoopGroup
     let builderShimSocket: FileHandle
-    let channel: GRPCChannel
+    let clientTask: Task<Void, any Swift.Error>
     let imagesService: ImagesService
     let contentStore: ContentStore
 
@@ -35,31 +46,29 @@ public struct Builder: Sendable {
         imagesService: ImagesService,
         contentStore: ContentStore
     ) throws {
-        // Socket buffer configuration would be done here if the APIs were public
-        // For now we skip this as setSendBufSize/setRecvBufSize are internal
-        var config = ClientConnection.Configuration.default(
-            target: .connectedSocket(socket.fileDescriptor),
-            eventLoopGroup: group
-        )
-        config.connectionIdleTimeout = TimeAmount(.seconds(600))
-        config.connectionKeepalive = .init(
-            interval: TimeAmount(.seconds(600)),
-            timeout: TimeAmount(.seconds(500)),
-            permitWithoutCalls: true
-        )
-        config.connectionBackoff = .init(
-            initialBackoff: TimeInterval(1),
-            maximumBackoff: TimeInterval(10)
-        )
-        config.callStartBehavior = .fastFailure
-        config.httpMaxFrameSize = 8 << 10
-        config.maximumReceiveMessageLength = 512 << 20
-        config.httpTargetWindowSize = 16 << 10
+        try socket.setSendBufSize(4 << 20)
+        try socket.setRecvBufSize(2 << 20)
 
-        let channel = ClientConnection(configuration: config)
-        self.channel = channel
-        self.clientAsync = BuilderClientAsync(channel: channel)
-        self.client = BuilderClient(channel: channel)
+        let channel = try ClientBootstrap(group: group)
+            .channelInitializer { channel in
+                channel.eventLoop.makeCompletedFuture(withResultOf: {
+                    try channel.pipeline.syncOperations.addHandler(
+                        HTTP2ConnectBufferingHandler()
+                    )
+                })
+            }
+            .withConnectedSocket(socket.fileDescriptor)
+            .wait()
+
+        let transport = HTTP2ClientTransport.WrappedChannel.wrapping(
+            channel: channel
+        )
+        let grpcClient = GRPCClient(transport: transport)
+
+        self.grpcClient = grpcClient
+        self.client = Com_Apple_Container_Build_V1_Builder.Client(
+            wrapping: grpcClient
+        )
         self.group = group
         self.builderShimSocket = socket
         self.imagesService = imagesService
@@ -68,11 +77,25 @@ public struct Builder: Sendable {
         var logger = Logger(label: "app.containers.sandboxed-builder")
         logger.logLevel = .info
         self.logger = logger
+        self.clientTask = Task {
+            do {
+                try await grpcClient.runConnections()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as RPCError where error.code == .unavailable {
+                logger.debug("gRPC connection closed: \(error)")
+                throw error
+            } catch {
+                logger.error("gRPC client connection error: \(error)")
+                throw error
+            }
+        }
     }
 
     public func info() async throws -> InfoResponse {
-        let opts = CallOptions(timeLimit: .timeout(.seconds(30)))
-        return try await self.clientAsync.info(InfoRequest(), callOptions: opts)
+        var options = CallOptions.defaults
+        options.timeout = .seconds(30)
+        return try await self.client.info(InfoRequest(), options: options)
     }
 
     /// Perform a sandboxed build using custom pipeline that handles image resolution
@@ -110,11 +133,6 @@ public struct Builder: Sendable {
         )
         logger.info("Build config: exports=\(config.exports.map { $0.type })")
 
-        let respStream = self.clientAsync.performBuild(
-            reqStream,
-            callOptions: try CallOptions(config)
-        )
-
         logger.info("Initializing sandboxed build pipeline")
         let pipeline = BuildPipeline(
             config: config,
@@ -137,8 +155,25 @@ public struct Builder: Sendable {
         }
 
         do {
-            try await pipeline.run(sender: continuation, receiver: respStream)
+            try await self.client.performBuild(
+                metadata: try Self.buildMetadata(config),
+                options: .defaults,
+                requestProducer: { writer in
+                    for await message in reqStream {
+                        try await writer.write(message)
+                    }
+                },
+                onResponse: { response in
+                    try await pipeline.run(
+                        sender: continuation,
+                        receiver: response.messages
+                    )
+                }
+            )
             progressTask.cancel()
+            grpcClient.beginGracefulShutdown()
+            clientTask.cancel()
+            try await group.shutdownGracefully()
             logger.info("Build completed successfully")
         } catch {
             progressTask.cancel()
@@ -147,15 +182,61 @@ public struct Builder: Sendable {
             if let builderError = error as? SandboxedBuilderError,
                 builderError == .buildComplete
             {
+                grpcClient.beginGracefulShutdown()
+                clientTask.cancel()
+                try await group.shutdownGracefully()
                 logger.info("Build completed successfully")
                 return
             }
 
             logger.error("Pipeline execution failed: \(error)")
-            _ = channel.close()
+            grpcClient.beginGracefulShutdown()
+            clientTask.cancel()
             try await group.shutdownGracefully()
             throw error
         }
+    }
+
+    static func buildMetadata(_ config: Builder.BuildConfig) throws -> Metadata {
+        var metadata = Metadata()
+        metadata.addString(config.buildID, forKey: "build-id")
+        metadata.addString(
+            URL(fileURLWithPath: config.contextDir).path(percentEncoded: false),
+            forKey: "context"
+        )
+        metadata.addString(
+            config.dockerfile.base64EncodedString(),
+            forKey: "dockerfile"
+        )
+        metadata.addString(config.terminal != nil ? "tty" : "plain", forKey: "progress")
+        metadata.addString(config.target, forKey: "target")
+
+        for tag in config.tags {
+            metadata.addString(tag, forKey: "tag")
+        }
+        for platform in config.platforms {
+            metadata.addString(platform.description, forKey: "platforms")
+        }
+        if config.noCache {
+            metadata.addString("", forKey: "no-cache")
+        }
+        for label in config.labels {
+            metadata.addString(label, forKey: "labels")
+        }
+        for buildArg in config.buildArgs {
+            metadata.addString(buildArg, forKey: "build-args")
+        }
+        for output in config.exports {
+            metadata.addString(try output.stringValue, forKey: "outputs")
+        }
+        for cacheIn in config.cacheIn {
+            metadata.addString(cacheIn, forKey: "cache-in")
+        }
+        for cacheOut in config.cacheOut {
+            metadata.addString(cacheOut, forKey: "cache-out")
+        }
+
+        return metadata
     }
 }
 
@@ -177,14 +258,14 @@ private actor BuildPipeline {
         self.imagesService = imagesService
         self.contentStore = contentStore
         var logger = Logger(label: "app.containers.sandboxed-pipeline")
-        logger.logLevel = .info
+        logger.logLevel = .debug
         self.logger = logger
     }
 
-    func run(
+    func run<Receiver: AsyncSequence>(
         sender: AsyncStream<ClientStream>.Continuation,
-        receiver: GRPCAsyncResponseStream<ServerStream>
-    ) async throws {
+        receiver: Receiver
+    ) async throws where Receiver.Element == ServerStream {
         defer { sender.finish() }
 
         logger.info("Build pipeline started")
@@ -569,37 +650,12 @@ private actor BuildPipeline {
             "Export transfer: direction=\(buildTransfer.direction), complete=\(buildTransfer.complete), source=\(buildTransfer.source), dataSize=\(buildTransfer.data.count)"
         )
 
-        // The source path from BuildKit is like "/var/lib/container-builder-shim/exports/{buildID}/out.tar"
-        // We need to extract the relative path and write to our export directory
-        let exportBasePath = "/var/lib/container-builder-shim/exports/"
-        guard buildTransfer.source.hasPrefix(exportBasePath) else {
+        guard let exportPath = exportDestination(for: buildTransfer) else {
             logger.error(
-                "Unexpected export source path: \(buildTransfer.source)"
+                "Could not resolve export destination for: \(buildTransfer.source)"
             )
             return
         }
-
-        let relativePath = String(
-            buildTransfer.source.dropFirst(exportBasePath.count)
-        )
-
-        // Construct the host filesystem path
-        // The export directory structure is: appRoot/.build/{buildID}/
-        guard
-            let appRoot = try? FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: false
-            )
-            .appendingPathComponent("com.axelmartinez.Containers")
-        else {
-            logger.error("Could not determine app root")
-            return
-        }
-
-        let exportPath = appRoot.appendingPathComponent(".build")
-            .appendingPathComponent(relativePath)
 
         logger.info("Writing export data to: \(exportPath.path)")
 
@@ -642,6 +698,24 @@ private actor BuildPipeline {
         if buildTransfer.complete {
             logger.info("Export transfer complete for: \(exportPath.path)")
         }
+    }
+
+    private func exportDestination(for buildTransfer: BuildTransfer) -> URL? {
+        let sourceLastPathComponent = URL(fileURLWithPath: buildTransfer.source)
+            .lastPathComponent
+        let destinations = config.exports.compactMap(\.destination)
+
+        if let matchingDestination = destinations.first(where: {
+            $0.lastPathComponent == sourceLastPathComponent
+        }) {
+            return matchingDestination
+        }
+
+        guard destinations.count == 1 else {
+            return nil
+        }
+
+        return destinations[0]
     }
 
     private func handleFSSyncRead(
@@ -748,52 +822,285 @@ private actor BuildPipeline {
         sender: AsyncStream<ClientStream>.Continuation,
         buildID: String
     ) async throws {
-        // BuildKit is asking for a list of files to transfer
-        // For now, send back an empty walk response to indicate we have no files
-        // A full implementation would enumerate the context directory and send file info
-
         let mode = packet.metadata["mode"] ?? "json"
+        let followPaths =
+            packet.metadata["followpaths"]?.split(separator: ",").map(
+                String.init
+            ) ?? []
+        logger.info(
+            "FSSync walk: contextDir=\(contextDir.path), mode=\(mode), followpaths=\(followPaths)"
+        )
 
-        if mode == "json" {
-            // Send JSON list of files
-            let fileList: [[String: Any]] = []  // Empty for now
-            let jsonData = try JSONSerialization.data(withJSONObject: fileList)
+        let matchedFiles = try matchPaths(
+            contextDir: contextDir,
+            followPaths: followPaths
+        )
+        logger.info(
+            "FSSync walk matched \(matchedFiles.count) files: \(matchedFiles.prefix(5).map { $0.relativePath })"
+        )
 
-            var response = ClientStream()
-            response.buildID = buildID
-            response.buildTransfer = BuildTransfer()
-            response.buildTransfer.id = packet.id
-            response.buildTransfer.source = packet.source
-            response.buildTransfer.complete = true
-            response.buildTransfer.direction = .outof
-            response.buildTransfer.isDirectory = false
-            response.buildTransfer.metadata = [
-                "os": "linux",
-                "stage": "fssync",
-                "mode": "json",
-            ]
-            response.buildTransfer.data = jsonData
-            response.packetType = .buildTransfer(response.buildTransfer)
-            sender.yield(response)
+        if mode == "tar" {
+            try await sendTarWalk(
+                packet: packet,
+                contextDir: contextDir,
+                files: matchedFiles,
+                sender: sender,
+                buildID: buildID
+            )
         } else {
-            // Send empty tar for tar mode
-            var response = ClientStream()
-            response.buildID = buildID
-            response.buildTransfer = BuildTransfer()
-            response.buildTransfer.id = packet.id
-            response.buildTransfer.source = packet.source
-            response.buildTransfer.complete = true
-            response.buildTransfer.direction = .outof
-            response.buildTransfer.isDirectory = false
-            response.buildTransfer.metadata = [
+            try sendJSONWalk(
+                packet: packet,
+                contextDir: contextDir,
+                files: matchedFiles,
+                sender: sender,
+                buildID: buildID
+            )
+        }
+    }
+
+    private struct MatchedFile {
+        let url: URL
+        let relativePath: String
+        let isDirectory: Bool
+    }
+
+    private func matchPaths(contextDir: URL, followPaths: [String]) throws
+        -> [MatchedFile]
+    {
+        let fm = FileManager.default
+        let root = contextDir.standardizedFileURL
+        var results: [MatchedFile] = []
+
+        for pattern in followPaths {
+            let candidate = root.appendingPathComponent(pattern)
+            if fm.fileExists(atPath: candidate.path) {
+                let attrs = try fm.attributesOfItem(atPath: candidate.path)
+                let isDir =
+                    (attrs[.type] as? FileAttributeType) == .typeDirectory
+                results.append(
+                    MatchedFile(
+                        url: candidate,
+                        relativePath: pattern,
+                        isDirectory: isDir
+                    )
+                )
+            }
+        }
+
+        results.sort { $0.relativePath < $1.relativePath }
+        return results
+    }
+
+    private func sendJSONWalk(
+        packet: BuildTransfer,
+        contextDir: URL,
+        files: [MatchedFile],
+        sender: AsyncStream<ClientStream>.Continuation,
+        buildID: String
+    ) throws {
+        let fm = FileManager.default
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        let fileInfos = try files.map { match -> FSSyncFileInfo in
+            let attrs = try fm.attributesOfItem(atPath: match.url.path)
+            let size = (attrs[.size] as? UInt64) ?? 0
+            let mode =
+                (attrs[.posixPermissions] as? NSNumber)?.uint32Value ?? 0o644
+            let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+            let target: String = {
+                guard
+                    (attrs[.type] as? FileAttributeType) == .typeSymbolicLink
+                else { return "" }
+                return (try? fm.destinationOfSymbolicLink(atPath: match.url.path))
+                    ?? ""
+            }()
+            return FSSyncFileInfo(
+                name: match.relativePath,
+                modTime: formatter.string(from: modDate),
+                mode: mode,
+                size: size,
+                isDir: match.isDirectory,
+                uid: 0,
+                gid: 0,
+                target: target
+            )
+        }
+
+        var response = ClientStream()
+        response.buildID = buildID
+        response.buildTransfer = BuildTransfer()
+        response.buildTransfer.id = packet.id
+        response.buildTransfer.source = packet.source
+        response.buildTransfer.complete = true
+        response.buildTransfer.direction = .outof
+        response.buildTransfer.metadata = [
+            "os": "linux",
+            "stage": "fssync",
+            "mode": "json",
+        ]
+        response.buildTransfer.data = try JSONEncoder().encode(fileInfos)
+        response.packetType = .buildTransfer(response.buildTransfer)
+        sender.yield(response)
+    }
+
+    private func sendTarWalk(
+        packet: BuildTransfer,
+        contextDir: URL,
+        files: [MatchedFile],
+        sender: AsyncStream<ClientStream>.Continuation,
+        buildID: String
+    ) async throws {
+        let tarURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString + ".tar")
+        defer { try? FileManager.default.removeItem(at: tarURL) }
+
+        let hash = try writeTar(
+            files: files,
+            contextDir: contextDir,
+            destination: tarURL
+        )
+        let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
+
+        logger.info(
+            "FSSync tar walk created \(tarURL.lastPathComponent) hash=\(hashString)"
+        )
+
+        // Send header packet with hash (no data yet)
+        var header = BuildTransfer()
+        header.id = packet.id
+        header.source = tarURL.path
+        header.complete = false
+        header.direction = .outof
+        header.metadata = [
+            "os": "linux",
+            "stage": "fssync",
+            "mode": "tar",
+            "hash": hashString,
+        ]
+        var headerResp = ClientStream()
+        headerResp.buildID = buildID
+        headerResp.buildTransfer = header
+        headerResp.packetType = .buildTransfer(header)
+        sender.yield(headerResp)
+
+        // Stream tar file in chunks
+        let chunkSize = 1 << 20  // 1 MiB
+        guard let handle = try? FileHandle(forReadingFrom: tarURL) else {
+            throw SandboxedBuilderError.imageMissing
+        }
+        defer { try? handle.close() }
+
+        while true {
+            let chunk = handle.readData(ofLength: chunkSize)
+            if chunk.isEmpty { break }
+
+            var part = BuildTransfer()
+            part.id = packet.id
+            part.source = tarURL.path
+            part.complete = false
+            part.direction = .outof
+            part.metadata = [
                 "os": "linux",
                 "stage": "fssync",
                 "mode": "tar",
             ]
-            response.buildTransfer.data = Data()
-            response.packetType = .buildTransfer(response.buildTransfer)
-            sender.yield(response)
+            part.data = chunk
+
+            var partResp = ClientStream()
+            partResp.buildID = buildID
+            partResp.buildTransfer = part
+            partResp.packetType = .buildTransfer(part)
+            sender.yield(partResp)
         }
+
+        // Final packet (complete=true, no data)
+        var done = BuildTransfer()
+        done.id = packet.id
+        done.source = tarURL.path
+        done.complete = true
+        done.direction = .outof
+        done.metadata = [
+            "os": "linux",
+            "stage": "fssync",
+            "mode": "tar",
+        ]
+        var doneResp = ClientStream()
+        doneResp.buildID = buildID
+        doneResp.buildTransfer = done
+        doneResp.packetType = .buildTransfer(done)
+        sender.yield(doneResp)
+    }
+
+    private func writeTar(
+        files: [MatchedFile],
+        contextDir: URL,
+        destination: URL
+    ) throws -> SHA256.Digest {
+        let fm = FileManager.default
+        try? fm.removeItem(at: destination)
+
+        let config = ArchiveWriterConfiguration(
+            format: .paxRestricted,
+            filter: .none
+        )
+        let writer = try ArchiveWriter(configuration: config)
+        try writer.open(file: destination)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        var hasher = SHA256()
+
+        for match in files {
+            let attrs = try fm.attributesOfItem(atPath: match.url.path)
+            let entry = WriteEntry()
+            entry.path = match.relativePath
+
+            if let fileType = attrs[.type] as? FileAttributeType {
+                switch fileType {
+                case .typeDirectory:
+                    entry.fileType = .directory
+                case .typeSymbolicLink:
+                    entry.fileType = .symbolicLink
+                    entry.symlinkTarget =
+                        (try? fm.destinationOfSymbolicLink(
+                            atPath: match.url.path
+                        )) ?? ""
+                case .typeRegular:
+                    entry.fileType = .regular
+                default:
+                    continue
+                }
+            }
+            if let perms = attrs[.posixPermissions] as? NSNumber {
+                #if os(macOS)
+                entry.permissions = perms.uint16Value
+                #else
+                entry.permissions = perms.uint32Value
+                #endif
+            }
+            if let size = attrs[.size] as? UInt64 {
+                entry.size = Int64(size)
+            }
+            entry.owner = 0
+            entry.group = 0
+            if let modDate = attrs[.modificationDate] as? Date {
+                entry.modificationDate = modDate
+            }
+
+            hasher.update(data: try encoder.encode(entry))
+
+            if entry.fileType == .regular {
+                let data = try Data(contentsOf: match.url)
+                hasher.update(data: data)
+                try writer.writeEntry(entry: entry, data: data)
+            } else {
+                try writer.writeEntry(entry: entry, data: nil)
+            }
+        }
+
+        try writer.finishEncoding()
+        return hasher.finalize()
     }
 
     private func handleIO(
@@ -825,15 +1132,7 @@ private actor BuildPipeline {
     private func pullImage(reference: String, platform: Platform) async throws
         -> ImageDescription
     {
-        // Normalize the image reference to include registry host
-        var normalizedRef = reference
-        if !reference.contains("/") {
-            normalizedRef = "docker.io/library/\(reference)"
-        } else if reference.split(separator: "/").count == 2
-            && !reference.contains(".")
-        {
-            normalizedRef = "docker.io/\(reference)"
-        }
+        let normalizedRef = try ClientImage.normalizeReference(reference)
 
         // Check if image already exists
         let existingImages = try await imagesService.list()
@@ -898,6 +1197,136 @@ private struct SimpleTerminalCommand: Codable {
         return data.base64EncodedString().trimmingCharacters(
             in: CharacterSet(charactersIn: "=")
         )
+    }
+}
+
+private struct FSSyncFileInfo: Codable {
+    let name: String
+    let modTime: String
+    let mode: UInt32
+    let size: UInt64
+    let isDir: Bool
+    let uid: UInt32
+    let gid: UInt32
+    let target: String
+}
+
+extension WriteEntry: @retroactive Encodable {
+    enum CodingKeys: String, CodingKey {
+        case path
+        case fileType
+        case size
+        case permissions
+        case owner
+        case group
+        case symlinkTarget
+        case hardlink
+        case creationDate
+        case modificationDate
+        case contentAccessDate
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(fileType.rawValue, forKey: .fileType)
+        try container.encodeIfPresent(permissions, forKey: .permissions)
+        try container.encodeIfPresent(path, forKey: .path)
+        try container.encodeIfPresent(size, forKey: .size)
+        try container.encodeIfPresent(owner, forKey: .owner)
+        try container.encodeIfPresent(group, forKey: .group)
+        try container.encodeIfPresent(symlinkTarget, forKey: .symlinkTarget)
+        try container.encodeIfPresent(hardlink, forKey: .hardlink)
+        try container.encodeIfPresent(creationDate, forKey: .creationDate)
+        try container.encodeIfPresent(modificationDate, forKey: .modificationDate)
+        try container.encodeIfPresent(contentAccessDate, forKey: .contentAccessDate)
+    }
+}
+
+extension FileHandle {
+    @discardableResult
+    func setSendBufSize(_ bytes: Int) throws -> Int {
+        try setSockOpt(
+            level: SOL_SOCKET,
+            name: SO_SNDBUF,
+            value: bytes
+        )
+        return bytes
+    }
+
+    @discardableResult
+    func setRecvBufSize(_ bytes: Int) throws -> Int {
+        try setSockOpt(
+            level: SOL_SOCKET,
+            name: SO_RCVBUF,
+            value: bytes
+        )
+        return bytes
+    }
+
+    private func setSockOpt(level: Int32, name: Int32, value: Int) throws {
+        var socketValue = Int32(value)
+        let result = withUnsafePointer(to: &socketValue) { pointer -> Int32 in
+            pointer.withMemoryRebound(
+                to: UInt8.self,
+                capacity: MemoryLayout<Int32>.size
+            ) { rawPointer in
+                setsockopt(
+                    self.fileDescriptor,
+                    level,
+                    name,
+                    rawPointer,
+                    socklen_t(MemoryLayout<Int32>.size)
+                )
+            }
+        }
+
+        if result == -1 {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EPERM)
+        }
+    }
+}
+
+/// Buffers incoming bytes until the gRPC HTTP/2 pipeline is configured.
+private final class HTTP2ConnectBufferingHandler:
+    ChannelDuplexHandler, RemovableChannelHandler
+{
+    typealias InboundIn = ByteBuffer
+    typealias InboundOut = ByteBuffer
+    typealias OutboundIn = ByteBuffer
+    typealias OutboundOut = ByteBuffer
+
+    private var removalScheduled = false
+    private var bufferedReads: [NIOAny] = []
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        bufferedReads.append(data)
+    }
+
+    func channelReadComplete(context: ChannelHandlerContext) {}
+
+    func flush(context: ChannelHandlerContext) {
+        if !removalScheduled {
+            removalScheduled = true
+            context.eventLoop.assumeIsolatedUnsafeUnchecked().execute {
+                context.pipeline.syncOperations.removeHandler(self, promise: nil)
+            }
+        }
+        context.flush()
+    }
+
+    func removeHandler(
+        context: ChannelHandlerContext,
+        removalToken: ChannelHandlerContext.RemovalToken
+    ) {
+        var didRead = false
+        while !bufferedReads.isEmpty {
+            context.fireChannelRead(bufferedReads.removeFirst())
+            didRead = true
+        }
+        if didRead {
+            context.fireChannelReadComplete()
+        }
+        context.leavePipeline(removalToken: removalToken)
     }
 }
 

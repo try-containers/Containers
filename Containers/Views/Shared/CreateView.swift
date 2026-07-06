@@ -10,12 +10,11 @@ import SwiftUI
 struct CreateView<Content: View, Actions: View, Progress: View>: View {
     let title: String
     let errorMessage: Binding<String?>
-    let isWorking: Bool
+    let isProcessing: Bool
     let progressTitle: String?
     let width: CGFloat
     let height: CGFloat
-    let showsContentWhileWorking: Bool
-    let disablesCancelWhileWorking: Bool
+    let showsHeader: Bool
     let contentAlignment: Alignment
     let scrollsContent: Bool
     let contentID: AnyHashable?
@@ -28,12 +27,11 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
     init(
         title: String,
         errorMessage: Binding<String?> = .constant(nil),
-        isWorking: Bool = false,
+        isProcessing: Bool = false,
         progressTitle: String? = nil,
         width: CGFloat,
         height: CGFloat,
-        showsContentWhileWorking: Bool = true,
-        disablesCancelWhileWorking: Bool = true,
+        showsHeader: Bool = true,
         contentAlignment: Alignment = .topLeading,
         scrollsContent: Bool = false,
         contentID: AnyHashable? = nil,
@@ -45,12 +43,11 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
     ) {
         self.title = title
         self.errorMessage = errorMessage
-        self.isWorking = isWorking
+        self.isProcessing = isProcessing
         self.progressTitle = progressTitle
         self.width = width
         self.height = height
-        self.showsContentWhileWorking = showsContentWhileWorking
-        self.disablesCancelWhileWorking = disablesCancelWhileWorking
+        self.showsHeader = showsHeader
         self.contentAlignment = contentAlignment
         self.scrollsContent = scrollsContent
         self.contentID = contentID
@@ -63,9 +60,9 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-
-            Divider()
+            if showsHeader {
+                header
+            }
 
             contentArea
 
@@ -74,7 +71,7 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
             footer
         }
         .frame(width: width, height: height)
-        .interactiveDismissDisabled(isWorking)
+        .interactiveDismissDisabled(isProcessing)
         .alert(
             "Error",
             isPresented: Binding(
@@ -104,9 +101,9 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
-        .opacity(isWorking && !showsContentWhileWorking ? 0 : 1)
+        .opacity(isProcessing ? 0 : 1)
         .overlay {
-            if isWorking {
+            if isProcessing {
                 progressStatus
             }
         }
@@ -169,7 +166,6 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
-            .disabled(isWorking && disablesCancelWhileWorking)
 
             actions
         }

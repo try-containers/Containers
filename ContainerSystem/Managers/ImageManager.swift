@@ -426,6 +426,13 @@ public final class ImageManager {
                     )
                 }
 
+                guard FileManager.default.fileExists(atPath: dest.path) else {
+                    throw ContainerizationError(
+                        .notFound,
+                        message: "Build output was not created at \(dest.path)"
+                    )
+                }
+
                 let extractedLayoutDirectory =
                     buildSessionDir
                     .appendingPathComponent("oci-layout")
@@ -517,10 +524,14 @@ public final class ImageManager {
 
     public func load(tar: URL) async throws {
         let service = try await runtime.getImagesService()
+        let didAccessTar = tar.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessTar {
+                tar.stopAccessingSecurityScopedResource()
+            }
+        }
 
-        let path = tar.absoluteString
-
-        guard FileManager.default.fileExists(atPath: path) else {
+        guard FileManager.default.fileExists(atPath: tar.path) else {
             throw ContainerizationError(
                 .invalidArgument,
                 message: "File does not exist"
