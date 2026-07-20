@@ -15,9 +15,6 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
     let rows: [RowValue]
     let refreshTrigger: Int
     let lastUpdated: Date?
-    let emptyTitle: String
-    let matchingEmptyTitle: String
-    let emptySystemImage: String
     let isFiltering: Bool
     let tableStyle: ListTableStyle
     let onClear: @MainActor () -> Void
@@ -28,9 +25,6 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
         rows: [RowValue],
         refreshTrigger: Int,
         lastUpdated: Date?,
-        emptyTitle: String,
-        matchingEmptyTitle: String,
-        emptySystemImage: String,
         isFiltering: Bool,
         tableStyle: ListTableStyle = .inset,
         onClear: @escaping @MainActor () -> Void,
@@ -40,9 +34,6 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
         self.rows = rows
         self.refreshTrigger = refreshTrigger
         self.lastUpdated = lastUpdated
-        self.emptyTitle = emptyTitle
-        self.matchingEmptyTitle = matchingEmptyTitle
-        self.emptySystemImage = emptySystemImage
         self.isFiltering = isFiltering
         self.tableStyle = tableStyle
         self.onClear = onClear
@@ -100,15 +91,6 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
             columns: { columns },
             rows: { ForEach(rows) }
         )
-        .alternatingRowBackgrounds(.disabled)
-        .overlay(alignment: .center) {
-            if rows.isEmpty {
-                ContentUnavailableView(
-                    isFiltering ? matchingEmptyTitle : emptyTitle,
-                    systemImage: emptySystemImage
-                )
-            }
-        }
     }
 }
 

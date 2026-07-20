@@ -6,6 +6,7 @@
 //
 
 import ContainerSystem
+import Containerization
 import ContainerizationExtras
 import ContainerizationOCI
 import Foundation
@@ -41,17 +42,13 @@ private struct VolumeConfiguration: Identifiable {
     let id: UUID = UUID()
     var name: String = ""
     var path: String = ""
+    var isAnonymous: Bool = false
 }
 
 private struct MountConfiguration: Identifiable {
     let id: UUID = UUID()
     var hostPath: String = ""
     var containerPath: String = ""
-}
-
-private struct VolumePickerTarget: Identifiable {
-    let id = UUID()
-    let onVolumeSelect: (String) -> Void
 }
 
 private struct CapabilityConfiguration: Identifiable {
@@ -85,14 +82,22 @@ struct CreateContainerView: View {
         var buttonTitle: String {
             switch self {
             case .create:
-                "Create Container"
+                "Create"
             case .run:
-                "Run Container"
+                "Run"
             }
         }
     }
 
     private static let fieldWidth: CGFloat = 420
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case info = "Info"
+        case process = "Process"
+        case options = "Options"
+
+        var id: String { rawValue }
+    }
 
     @Environment(ContainerManager.self) private var containerManager
     @Environment(ImageManager.self) private var imageManager
@@ -120,12 +125,9 @@ struct CreateContainerView: View {
     @SwiftUI.State private var errorMessage: String?
     @SwiftUI.State private var localImages: [ImageDescription] = []
     @SwiftUI.State private var availableVolumes: [Volume] = []
-    @SwiftUI.State private var volumeInitialized: Bool = false
     @SwiftUI.State private var showProgressView: Bool = false
     @SwiftUI.State private var showPickLocalImage: Bool = false
-    @SwiftUI.State private var volumePickerTarget: VolumePickerTarget?
-    @SwiftUI.State private var isProcessOptionsExpanded: Bool = false
-    @SwiftUI.State private var isManagementOptionsExpanded: Bool = false
+    @SwiftUI.State private var selectedTab: Tab = .info
 
     init(imageReference: String, mode: Mode = .create) {
         self.mode = mode
@@ -139,36 +141,21 @@ struct CreateContainerView: View {
             isProcessing: showProgressView,
             progressTitle: mode.progressTitle,
             width: 660,
-            height: 560,
-            scrollsContent: true,
+            height: 460,
+            scrollsContent: selectedTab == .options,
+            contentPadding: selectedTab == .info ? 20 : 0,
             onCancel: { dismiss() },
+            tabBar: {
+                CreateViewTabBar(selection: $selectedTab)
+            },
             content: {
-                VStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        imageSelectionField
-
-                        EditableField(
-                            title: "Name",
-                            description:
-                                "Leave empty to generate a unique name automatically.",
-                            placeholder: "my-container",
-                            value: $container.name,
-                            fieldWidth: Self.fieldWidth
-                        )
-                    }
-                    .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    processOptions
-                    managementOptions
-                }
+                tabContent
             },
             actions: {
                 Button(mode.buttonTitle) {
                     createContainer()
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.large)
                 .disabled(
                     imageReference.trimmingCharacters(
                         in: .whitespacesAndNewlines
@@ -187,27 +174,22 @@ struct CreateContainerView: View {
         .sheet(
             isPresented: $showPickLocalImage,
             content: {
-                ImageSelectionView(
-                    images: self.localImages,
-                    onImageSelect: {
-                        self.imageReference = $0
-                    }
-                )
-            }
-        )
-        .sheet(
-            item: $volumePickerTarget,
-            content: { target in
-                VolumeSelectionView(
-                    volumes: self.availableVolumes,
-                    onVolumeSelect: { selectedName in
-                        target.onVolumeSelect(selectedName)
-                    }
+                ItemPicker(
+                    title: "Choose Image",
+                    actionTitle: "Choose",
+                    items: self.localImages.map {
+                        Item(id: $0.digest, label: $0.reference)
+                    },
+                    onSelect: { self.imageReference = $0.label }
                 )
             }
         )
         .animation(.default, value: self.ports.count)
         .animation(.default, value: self.environments.count)
+        .task {
+            await preloadLocalImages()
+            await preloadVolumes()
+        }
         .onDisappear {
             self.showProgressView = false
         }
@@ -224,45 +206,50 @@ struct CreateContainerView: View {
         return options
     }
 
+    @ViewBuilder
     private var imageSelectionField: some View {
-        HStack(alignment: .top) {
-            Text("Image:")
-                .frame(
-                    width: EditableFormLayout.labelWidth,
-                    alignment: .trailing
-                )
-                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+        if mode == .run {
+            HStack(alignment: .top) {
+                Text("Image:")
+                    .frame(
+                        width: EditableFormLayout.labelWidth,
+                        alignment: .trailing
+                    )
+                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
 
-            HStack(spacing: 8) {
-                Text(
-                    imageReference.isEmpty
-                        ? "No image selected" : imageReference
-                )
-                .foregroundStyle(imageReference.isEmpty ? .secondary : .primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
-                .background {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                        .stroke(Color(nsColor: .separatorColor))
-                }
-
-                Button {
-                    showLocalImageSelection()
-                } label: {
-                    Label("Choose", systemImage: "ellipsis.circle")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.plain)
-                .help("Choose an existing image")
+                Text(imageReference)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+                    .frame(width: Self.fieldWidth, alignment: .leading)
             }
-            .frame(width: Self.fieldWidth, alignment: .leading)
+        } else {
+            EditableField(
+                title: "Image",
+                placeholder: "Select Image...",
+                fieldWidth: Self.fieldWidth,
+                options: localImages.map { $0.reference },
+                selection: $imageReference,
+                selectionActionTitle: "Other...",
+                onSelectionAction: { showPickLocalImage = true }
+            )
+        }
+    }
+
+    private func preloadLocalImages() async {
+        guard localImages.isEmpty else { return }
+        localImages = (try? await imageManager.list().map(\.description)) ?? []
+        if imageReference.isEmpty, let first = localImages.first {
+            imageReference = first.reference
         }
     }
 
     private func showLocalImageSelection() {
+        guard localImages.isEmpty else {
+            showPickLocalImage = true
+            return
+        }
         Task {
             do {
                 showProgressView = true
@@ -276,14 +263,35 @@ struct CreateContainerView: View {
         }
     }
 
-    private var processOptions: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            collapsibleOptionsHeader(
-                title: "Process Options",
-                isExpanded: $isProcessOptionsExpanded
-            )
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .info:
+            infoTab
+        case .process:
+            processTab
+        case .options:
+            optionsTab
+        }
+    }
 
-            if isProcessOptionsExpanded {
+    private var infoTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            imageSelectionField
+
+            EditableField(
+                title: "Name",
+                description:
+                    "Leave empty to generate a unique name automatically.",
+                placeholder: "my-container",
+                value: $container.name
+            )
+        }
+    }
+
+    private var processTab: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 20) {
                 EditableField(
                     title: "Entrypoint",
                     description: "Overrides the image's default entrypoint.",
@@ -309,175 +317,158 @@ struct CreateContainerView: View {
                     ),
                     fieldWidth: Self.fieldWidth
                 )
-
-                EditableList(
-                    items: $environments,
-                    title: "Environment Variables",
-                    columnTitles: ["Key", "Value"],
-                    fieldWidth: Self.fieldWidth,
-                    addLabel: "Add Environment Variable",
-                    newItem: { KeyValue() },
-                    rowSummary: keyValueSummary,
-                    rowValues: { [$0.key, $0.value] },
-                    rowContent: { keyValue in
-                        EditableListRowEdit(fields: [
-                            .init(
-                                placeholder: "Key",
-                                text: keyValue.key,
-                                isMonospaced: true
-                            ),
-                            .init(
-                                placeholder: "Value",
-                                text: keyValue.value,
-                                isMonospaced: true
-                            ),
-                        ])
-                    },
-                    editorContent: { _ in
-                        EmptyView()
-                    }
-                )
             }
-        }
-    }
+            .padding(20)
 
-    private var managementOptions: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            collapsibleOptionsHeader(
-                title: "Management Options",
-                isExpanded: $isManagementOptionsExpanded
+            Divider()
+
+            EditableList(
+                items: $environments,
+                columnTitles: ["Environment Variables", "Value"],
+                fieldWidth: Self.fieldWidth,
+                addLabel: "Add Environment Variable",
+                emptyMessage: "No Environment Variables",
+                newItem: { KeyValue() },
+                rowSummary: keyValueSummary,
+                rowValues: { [$0.key, $0.value] },
+                rowContent: { keyValue in
+                    EditableListRowEdit(fields: [
+                        .init(
+                            placeholder: "Key",
+                            text: keyValue.key,
+                            isMonospaced: true
+                        ),
+                        .init(
+                            placeholder: "Value",
+                            text: keyValue.value,
+                            isMonospaced: true
+                        ),
+                    ])
+                },
+                editorContent: { _ in
+                    EmptyView()
+                }
             )
-
-            if isManagementOptionsExpanded {
-                EditableField(
-                    title: "Platform",
-                    description:
-                        "Choose the image variant to run. AMD64 containers use Rosetta on Apple Silicon.",
-                    placeholder: "Platform",
-                    fieldWidth: Self.fieldWidth,
-                    options: Self.platformOptions,
-                    selection: $platformString
-                )
-
-                // Volumes
-                EditableList(
-                    items: $volumes,
-                    title: "Volumes",
-                    editorDescription:
-                        "Use an existing volume, enter a new volume name, or leave Volume empty to create an anonymous volume.",
-                    columnTitles: ["Volume", "Target"],
-                    fieldWidth: Self.fieldWidth,
-                    addLabel: "Add Volume",
-                    newItem: { VolumeConfiguration() },
-                    rowSummary: volumeMountSummary,
-                    rowValues: volumeMountValues,
-                    canSave: { volume in
-                        !volume.path.trimmingCharacters(
-                            in: .whitespacesAndNewlines
-                        )
-                        .isEmpty
-                    },
-                    editorContent: { $volume in
-                        VolumeRow(
-                            volumeName: $volume.name,
-                            path: $volume.path,
-                            showAvailableVolume: {
-                                showAvailableVolumes {
-                                    volume.name = $0
-                                }
-                            }
-                        )
-                    }
-                )
-
-                EditableList(
-                    items: $mounts,
-                    title: "Mounts",
-                    editorDescription:
-                        "Share a host path with the container. Leave Source empty to create a temporary in-memory mount.",
-                    columnTitles: ["Source", "Target"],
-                    fieldWidth: Self.fieldWidth,
-                    addLabel: "Add Mount",
-                    newItem: { MountConfiguration() },
-                    rowSummary: mountSummary,
-                    rowValues: mountValues,
-                    canSave: { mount in
-                        !mount.containerPath.trimmingCharacters(
-                            in: .whitespacesAndNewlines
-                        ).isEmpty
-                    },
-                    editorContent: { $mount in
-                        MountRow(mount: $mount)
-                    }
-                )
-
-                // Ports
-                EditableList(
-                    items: $ports,
-                    title: "Port Mappings",
-                    columnTitles: ["Host", "Container", "Protocol"],
-                    fieldWidth: Self.fieldWidth,
-                    addLabel: "Add Port Mapping",
-                    newItem: { PortsConfiguration() },
-                    rowSummary: portSummary,
-                    rowValues: portValues,
-                    editorContent: { $port in
-                        PortMappingEditor(port: $port)
-                    }
-                )
-
-                EditableList(
-                    items: $capabilities,
-                    title: "Capabilities",
-                    columnTitles: ["Capability"],
-                    fieldWidth: Self.fieldWidth,
-                    addLabel: "Add Capability",
-                    newItem: { CapabilityConfiguration() },
-                    rowSummary: capabilitySummary,
-                    rowValues: { [capabilitySummary($0)] },
-                    rowContent: { $capability in
-                        EditableListRowEdit(fields: [
-                            .init(
-                                placeholder: "CAP_NET_ADMIN",
-                                text: $capability.name
-                            )
-                        ])
-                    },
-                    editorContent: { _ in
-                        EmptyView()
-                    }
-                )
-            }
         }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
     }
 
-    private func collapsibleOptionsHeader(
-        title: String,
-        isExpanded: Binding<Bool>
-    ) -> some View {
-        Button {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                isExpanded.wrappedValue.toggle()
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(
-                    systemName: isExpanded.wrappedValue
-                        ? "chevron.down" : "chevron.right"
-                )
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 14)
+    private var optionsTab: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            EditableField(
+                title: "Platform",
+                description:
+                    "Choose the image variant to run. AMD64 containers use Rosetta on Apple Silicon.",
+                placeholder: "Platform",
+                fieldWidth: Self.fieldWidth,
+                options: Self.platformOptions,
+                selection: $platformString
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 12)
 
-                Text(title)
-                    .font(.headline)
+            Divider()
 
-                Spacer()
-            }
-            .contentShape(Rectangle())
+            EditableList(
+                items: $volumes,
+                title: "Volumes",
+                editorDescription:
+                    "Select an existing volume or create an anonymous volume. To create a new named volume, use the Volumes section.",
+                columnTitles: ["Name", "Target"],
+                fieldWidth: Self.fieldWidth,
+                addLabel: "Add Volume",
+                emptyMessage: "No Volumes",
+                hasContentBelow: true,
+                newItem: { VolumeConfiguration(name: availableVolumes.last?.name ?? "") },
+                rowSummary: volumeMountSummary,
+                rowValues: volumeMountValues,
+                canSave: { volume in
+                    !volume.path.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .isEmpty
+                },
+                editorContent: { $volume in
+                    VolumeRow(
+                        volumeName: $volume.name,
+                        path: $volume.path,
+                        isAnonymous: $volume.isAnonymous,
+                        availableVolumes: availableVolumes
+                    )
+                }
+            )
+            .padding(.horizontal)
+
+            EditableList(
+                items: $mounts,
+                title: "Mounts",
+                editorDescription:
+                    "Share a host path with the container. Leave Source empty to create a temporary in-memory mount.",
+                columnTitles: ["Source", "Target"],
+                fieldWidth: Self.fieldWidth,
+                addLabel: "Add Mount",
+                emptyMessage: "No Mounts",
+                hasContentBelow: true,
+                newItem: { MountConfiguration() },
+                rowSummary: mountSummary,
+                rowValues: mountValues,
+                canSave: { mount in
+                    !mount.containerPath.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
+                },
+                editorContent: { $mount in
+                    MountRow(mount: $mount)
+                }
+            )
+            .padding(.horizontal)
+
+            EditableList(
+                items: $ports,
+                title: "Port Mappings",
+                columnTitles: ["Host", "Container", "Protocol"],
+                fieldWidth: Self.fieldWidth,
+                addLabel: "Add Port Mapping",
+                emptyMessage: "No Port Mappings",
+                hasContentBelow: true,
+                newItem: { PortsConfiguration() },
+                rowSummary: portSummary,
+                rowValues: portValues,
+                editorContent: { $port in
+                    PortMappingEditor(port: $port)
+                }
+            )
+            .padding(.horizontal)
+
+            EditableList(
+                items: $capabilities,
+                title: "Capabilities",
+                columnTitles: ["Capability"],
+                fieldWidth: Self.fieldWidth,
+                addLabel: "Add Capability",
+                emptyMessage: "No Capabilities",
+                newItem: { CapabilityConfiguration() },
+                rowSummary: capabilitySummary,
+                rowValues: { [capabilitySummary($0)] },
+                rowContent: { $capability in
+                    EditableListRowEdit(fields: [
+                        .init(
+                            placeholder: "CAP_NET_ADMIN",
+                            text: $capability.name
+                        )
+                    ])
+                },
+                editorContent: { _ in
+                    EmptyView()
+                }
+            )
+            .padding(.horizontal)
         }
-        .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -552,30 +543,9 @@ struct CreateContainerView: View {
         ]
     }
 
-    private func showAvailableVolumes(
-        onVolumeSelect: @escaping (String) -> Void
-    ) {
-        guard !self.volumeInitialized else {
-            self.volumePickerTarget = VolumePickerTarget(
-                onVolumeSelect: onVolumeSelect
-            )
-            return
-        }
-
-        Task {
-            do {
-                self.showProgressView = true
-                self.availableVolumes = try await volumeManager.list()
-                self.showProgressView = false
-                self.volumeInitialized = true
-                self.volumePickerTarget = VolumePickerTarget(
-                    onVolumeSelect: onVolumeSelect
-                )
-            } catch (let error) {
-                self.showProgressView = false
-                self.errorMessage = "\(error)"
-            }
-        }
+    private func preloadVolumes() async {
+        guard availableVolumes.isEmpty else { return }
+        availableVolumes = (try? await volumeManager.list()) ?? []
     }
 
     private func createContainer() {
@@ -820,20 +790,37 @@ private struct MountRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Source")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("/Users/me/project", text: $mount.hostPath)
-                    .textFieldStyle(.roundedBorder)
+                Text("Source").font(.caption).foregroundStyle(.secondary)
+                EditableField(
+                    placeholder: "/Users/me/project",
+                    value: $mount.hostPath,
+                    fieldWidth: .infinity,
+                    actionLabel: {
+                        Label("Browse", systemImage: "folder").labelStyle(.iconOnly)
+                    },
+                    action: browseFolder
+                )
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Target (Required)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("/workspace", text: $mount.containerPath)
-                    .textFieldStyle(.roundedBorder)
+                Text("Target (Required)").font(.caption).foregroundStyle(.secondary)
+                EditableField(
+                    placeholder: "/workspace",
+                    value: $mount.containerPath,
+                    fieldWidth: .infinity
+                )
             }
+        }
+    }
+
+    private func browseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        if panel.runModal() == .OK, let url = panel.url {
+            mount.hostPath = url.path
         }
     }
 }
@@ -841,29 +828,30 @@ private struct MountRow: View {
 private struct VolumeRow: View {
     @Binding var volumeName: String
     @Binding var path: String
-
-    var showAvailableVolume: () -> Void
+    @Binding var isAnonymous: Bool
+    let availableVolumes: [Volume]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Volume")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 4) {
-                    TextField("my-volume", text: $volumeName)
-                        .textFieldStyle(.roundedBorder)
-                    Button(
-                        action: {
-                            self.showAvailableVolume()
-                        },
-                        label: {
-                            Label("Choose", systemImage: "ellipsis.circle")
-                                .labelStyle(.iconOnly)
+            Toggle("Anonymous volume", isOn: $isAnonymous)
+                .toggleStyle(.checkbox)
+                .onChange(of: isAnonymous) { _, anonymous in
+                    if anonymous { volumeName = "" }
+                }
+
+            if !isAnonymous {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Volume")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("Volume", selection: $volumeName) {
+                        ForEach(availableVolumes, id: \.name) { volume in
+                            Text(volume.name).tag(volume.name)
                         }
-                    )
-                    .buttonStyle(.borderless)
-                    .help("Choose from existing volumes")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 

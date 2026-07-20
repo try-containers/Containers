@@ -29,6 +29,7 @@ struct CreateImageConfigurationStep: View {
     @Binding var buildArguments: [KeyValue]
     @Binding var targetStage: String
     @Binding var tarFile: URL?
+    @Binding var forceLoad: Bool
 
     var body: some View {
         Group {
@@ -54,6 +55,7 @@ struct CreateImageConfigurationStep: View {
             case .load:
                 LoadTarImageView(
                     tarFile: $tarFile,
+                    force: $forceLoad,
                     tarContentTypes: tarContentTypes,
                     defaultDirectory: defaultFileDialogDirectory,
                     onSelection: onFileSelection

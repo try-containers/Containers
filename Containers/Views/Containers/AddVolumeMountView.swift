@@ -133,11 +133,11 @@ struct AddVolumeMountView: View {
         }
         .frame(width: 520, height: 420)
         .sheet(isPresented: $showVolumePicker) {
-            VolumeSelectionView(
-                volumes: availableVolumes,
-                onVolumeSelect: { selectedName in
-                    volumeName = selectedName
-                }
+            ItemPicker(
+                title: "Choose Volume",
+                actionTitle: "Choose",
+                items: availableVolumes.map { Item(id: $0.name, label: $0.name) },
+                onSelect: { volumeName = $0.label }
             )
         }
     }

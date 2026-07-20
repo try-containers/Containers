@@ -32,10 +32,7 @@ struct ActionButton: View {
             action()
         } label: {
             Label(label, systemImage: icon)
-                .labelStyle(.iconOnly)
-                .frame(width: 8, height: 16)
         }
-        .buttonStyle(.bordered)
         .help(help)
     }
 }

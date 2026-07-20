@@ -10,15 +10,69 @@ import Containerization
 import ContainerizationOCI
 import SwiftUI
 
-struct ImageDetailView: View {
-    let image: ImageViewModel
-    let createContainer: () -> Void
+struct ImageDetailWindow: View {
+    @Environment(ImageManager.self) private var imageManager
+    let imageReference: String
 
-    @Environment(\.dismiss) private var dismiss
-    @Binding var showSaveImage: Bool
-    @Binding var showDeleteConfirmation: Bool
+    @SwiftUI.State private var image: ImageViewModel?
+    @SwiftUI.State private var isLoading: Bool = true
+
+    var body: some View {
+        Group {
+            if let image {
+                ImageDetailView(image: image)
+            } else if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 550, height: 320)
+            } else {
+                ContentUnavailableView(
+                    "Image Not Found",
+                    systemImage: "shippingbox",
+                    description: Text(
+                        "The image '\(imageReference)' no longer exists."
+                    )
+                )
+                .frame(width: 550, height: 320)
+            }
+        }
+        .navigationTitle(image?.name ?? "Image")
+        .task(id: imageReference) {
+            await load()
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let items = try await imageManager.list(platform: .current)
+            if let match = items.first(where: {
+                $0.description.reference == imageReference
+            }) {
+                image = ImageViewModel(match)
+            } else {
+                image = nil
+            }
+        } catch {
+            image = nil
+        }
+    }
+}
+
+struct ImageDetailView: View {
+    @Environment(ImageManager.self) private var imageManager
+    @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.openWindow) private var openWindow
+
+    let image: ImageViewModel
 
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
+    @SwiftUI.State private var showDeleteConfirmation: Bool = false
+    @SwiftUI.State private var showCreateContainer: Bool = false
+    @SwiftUI.State private var error: Error?
+    @SwiftUI.State private var showError: Bool = false
 
     enum DetailCategory: String, CaseIterable, Hashable {
         case overview
@@ -26,39 +80,23 @@ struct ImageDetailView: View {
         case inspect
     }
 
-    init(
-        image: ImageViewModel,
-        selectedTab: DetailCategory = .overview,
-        createContainer: @escaping () -> Void,
-        showSaveImage: Binding<Bool>,
-        showDeleteConfirmation: Binding<Bool>
-    ) {
-        self.image = image
-        self.createContainer = createContainer
-        self._selectedCategory = State(initialValue: selectedTab)
-        self._showDeleteConfirmation = showDeleteConfirmation
-        self._showSaveImage = showSaveImage
-    }
-
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
             showTabs: true,
-            usesFixedMaximumHeight: false,
-            onClose: { dismiss() },
-            header: {
-                Text(image.name)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-            },
-            actionButtons: {
-                actionButtons
-            },
+            actions: actions,
             tabTitle: { category in
                 category.rawValue.localizedCapitalized
             },
-            fixedHeightTab: { category in
-                category == .inspect
+            tabIcon: { category in
+                switch category {
+                case .overview: "info.circle"
+                case .history: "clock.arrow.circlepath"
+                case .inspect: "curlybraces"
+                }
+            },
+            tabWidth: { category in
+                category == .inspect ? 750 : 650
             },
             tabContent: { category in
                 switch category {
@@ -76,34 +114,90 @@ struct ImageDetailView: View {
                 }
             }
         )
+        .sheet(isPresented: $showCreateContainer) {
+            CreateContainerView(
+                imageReference: image.imageDescription.reference,
+                mode: .run
+            )
+        }
+        .confirmationDialog(
+            "Delete Image?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                deleteImage()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Delete \(image.name):\(image.tag)? This cannot be undone."
+            )
+        }
+        .alert(
+            "Error",
+            isPresented: $showError,
+            actions: {
+                Button("OK") { showError = false }
+            },
+            message: {
+                if let error {
+                    Text(error.localizedDescription)
+                }
+            }
+        )
     }
 
-    @ViewBuilder
-    private var actionButtons: some View {
-        ActionButton(
-            label: "Run",
-            icon: "play.fill",
-            help: "Run container"
-        ) {
-            createContainer()
-        }
+    private var actions: [DetailAction] {
+        [
+            DetailAction(
+                id: "run",
+                title: "Run",
+                icon: "play.fill",
+                help: "Run container"
+            ) {
+                showCreateContainer = true
+            },
+            DetailAction(
+                id: "save",
+                title: "Save",
+                icon: "folder.fill",
+                help: "Save image"
+            ) {
+                SaveImagePanel.present(
+                    image: image.imageDescription,
+                    imageManager: imageManager,
+                    onError: { err in
+                        self.error = err
+                        self.showError = true
+                    }
+                )
+            },
+            DetailAction(
+                id: "delete",
+                title: "Delete",
+                icon: "trash",
+                help: "Delete image",
+                isDestructive: true
+            ) {
+                showDeleteConfirmation = true
+            },
+        ]
+    }
 
-        ActionButton(
-            label: "Save",
-            icon: "folder.fill",
-            help: "Save image"
-        ) {
-            showSaveImage = true
+    private func deleteImage() {
+        Task {
+            do {
+                try await imageManager.delete(images: [image.imageDescription])
+                dismissWindow(
+                    id: ContainersApp.imageDetailWindowId,
+                    value: image.imageDescription.reference
+                )
+            } catch {
+                self.error = error
+                self.showError = true
+            }
         }
-
-        ActionButton(
-            label: "Delete",
-            icon: "trash",
-            help: "Delete image",
-            role: .destructive
-        ) {
-            showDeleteConfirmation = true
-        }
-        .foregroundStyle(Color.red)
     }
 }

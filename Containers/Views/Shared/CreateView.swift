@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct CreateView<Content: View, Actions: View, Progress: View>: View {
+struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>: View {
     let title: String
     let errorMessage: Binding<String?>
     let isProcessing: Bool
@@ -19,7 +19,9 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
     let scrollsContent: Bool
     let contentID: AnyHashable?
     let contentTransition: AnyTransition
+    let contentPadding: CGFloat
     let onCancel: () -> Void
+    let tabBar: TabBar
     let content: Content
     let actions: Actions
     let progress: Progress
@@ -34,9 +36,11 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
         showsHeader: Bool = true,
         contentAlignment: Alignment = .topLeading,
         scrollsContent: Bool = false,
+        contentPadding: CGFloat = 20,
         contentID: AnyHashable? = nil,
         contentTransition: AnyTransition = .identity,
         onCancel: @escaping () -> Void,
+        @ViewBuilder tabBar: () -> TabBar = { EmptyView() },
         @ViewBuilder content: () -> Content,
         @ViewBuilder actions: () -> Actions,
         @ViewBuilder progress: () -> Progress = { EmptyView() }
@@ -50,9 +54,11 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
         self.showsHeader = showsHeader
         self.contentAlignment = contentAlignment
         self.scrollsContent = scrollsContent
+        self.contentPadding = contentPadding
         self.contentID = contentID
         self.contentTransition = contentTransition
         self.onCancel = onCancel
+        self.tabBar = tabBar()
         self.content = content()
         self.actions = actions()
         self.progress = progress()
@@ -61,7 +67,24 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             if showsHeader {
-                header
+                Text(title)
+                    .font(.headline)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor))
+            }
+
+            if TabBar.self != EmptyView.self {
+                Divider()
+
+                tabBar
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(nsColor: .controlBackgroundColor))
+
+                Divider()
             }
 
             contentArea
@@ -114,29 +137,20 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
         if scrollsContent {
             ScrollView {
                 content
-                    .padding(20)
+                    .padding(contentPadding)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             content
-                .padding(20)
+                .padding(contentPadding)
                 .frame(
                     maxWidth: .infinity,
                     maxHeight: .infinity,
                     alignment: contentAlignment
                 )
         }
-    }
-
-    private var header: some View {
-        Text(title)
-            .font(.title2)
-            .fontWeight(.semibold)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var progressStatus: some View {
@@ -158,18 +172,71 @@ struct CreateView<Content: View, Actions: View, Progress: View>: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 8) {
             Spacer()
 
             Button("Cancel") {
                 onCancel()
             }
             .buttonStyle(.bordered)
-            .controlSize(.large)
 
             actions
         }
-        .padding(16)
+        .controlSize(.regular)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 }
+struct CreateViewTabBar<Tab: Hashable & CaseIterable & RawRepresentable>: View
+where Tab.AllCases: RandomAccessCollection, Tab.RawValue == String {
+    @Binding var selection: Tab
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(Tab.allCases), id: \.self) { tab in
+                tabButton(for: tab)
+            }
+        }
+    }
+
+    private func tabButton(for tab: Tab) -> some View {
+        TabButton(tab: tab, selection: $selection)
+    }
+}
+
+private struct TabButton<Tab: Hashable & RawRepresentable>: View
+where Tab.RawValue == String {
+    let tab: Tab
+    @Binding var selection: Tab
+    @State private var isHovered = false
+
+    var body: some View {
+        Button {
+            selection = tab
+        } label: {
+            Text(tab.rawValue)
+                .foregroundStyle(tab == selection ? Color.accentColor : .primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(background)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+
+    private var background: Color {
+        if tab == selection {
+            return Color.accentColor.opacity(0.12)
+        } else if isHovered {
+            return Color(nsColor: .quaternaryLabelColor)
+        } else {
+            return .clear
+        }
+    }
+}
+

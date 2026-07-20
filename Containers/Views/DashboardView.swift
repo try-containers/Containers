@@ -29,7 +29,7 @@ enum NavigationTab: String, Identifiable, Equatable {
     var icon: String {
         switch self {
         case .containers:
-            "cube.fill"
+            "cube.transparent.fill"
         case .images:
             "cloud.fill"
         case .volumes:
@@ -87,19 +87,19 @@ struct DashboardView: View {
                                 runningContainersOnly: $runningContainersOnly,
                                 refreshTrigger: refreshTrigger
                             )
-                            .padding(.vertical)
+                            .padding(.top)
                         case .images:
                             ImagesView(
                                 searchText: $searchText,
                                 refreshTrigger: refreshTrigger
                             )
-                            .padding(.vertical)
+                            .padding(.top)
                         case .volumes:
                             VolumesView(
                                 searchText: $searchText,
                                 refreshTrigger: refreshTrigger
                             )
-                            .padding(.vertical)
+                            .padding(.top)
                         }
                     }
                     .frame(
@@ -229,6 +229,7 @@ struct DashboardView: View {
             statusBar
         }
         .frame(minWidth: 800, minHeight: 520)
+        .background(DashboardToolbarConfigurator())
     }
 
     private var statusBar: some View {
@@ -249,18 +250,15 @@ struct DashboardView: View {
             HStack(spacing: 8) {
                 Button(
                     action: {
-                        Task { @MainActor in
-                            if system.systemStatus == .running {
-                                do {
+                        Task {
+                            do {
+                                if system.systemStatus == .running {
                                     try await system.stop()
-                                } catch (let error) {
-                                    self.error = error
-                                    self.showError = true
-                                }
-                            } else {
-                                do {
+                                } else {
                                     try await startSystem()
-                                } catch (let error) {
+                                }
+                            } catch (let error) {
+                                await MainActor.run {
                                     self.error = error
                                     self.showError = true
                                 }
@@ -285,13 +283,15 @@ struct DashboardView: View {
                 if system.systemStatus == .running {
                     Button(
                         action: {
-                            Task { @MainActor in
+                            Task {
                                 do {
                                     try await system.stop()
                                     try await startSystem()
                                 } catch (let error) {
-                                    self.error = error
-                                    self.showError = true
+                                    await MainActor.run {
+                                        self.error = error
+                                        self.showError = true
+                                    }
                                 }
                             }
                         },
@@ -423,5 +423,28 @@ struct DashboardView: View {
             diskUsage: Double(runningContainers.count) * 2.5,  // 2.5GB per container estimate
             diskLimit: 50,
         )
+    }
+}
+
+private struct DashboardToolbarConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { [weak view] in
+            configure(view?.window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { [weak nsView] in
+            configure(nsView?.window)
+        }
+    }
+
+    private func configure(_ window: NSWindow?) {
+        guard let toolbar = window?.toolbar else { return }
+        toolbar.allowsUserCustomization = false
+        toolbar.allowsDisplayModeCustomization = false
+        toolbar.autosavesConfiguration = false
     }
 }

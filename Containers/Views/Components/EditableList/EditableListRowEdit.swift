@@ -37,9 +37,12 @@ struct EditableListRowEdit: View {
 
     var fields: [Field]
 
+    @Environment(\.editableListCellPadding) private var cellPadding
+    @Environment(\.editableListRowIsSelected) private var isRowSelected
+
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(fields) { field in
+        HStack(spacing: 0) {
+            ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
                 TextField(field.placeholder, text: field.text)
                     .textFieldStyle(.plain)
                     .font(
@@ -47,7 +50,13 @@ struct EditableListRowEdit: View {
                             ? .system(.body, design: .monospaced)
                             : .body
                     )
+                    .foregroundStyle(isRowSelected ? Color.white : Color.primary)
+                    .padding(.horizontal, cellPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                if index < fields.count - 1 {
+                    Divider()
+                }
             }
         }
     }

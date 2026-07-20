@@ -48,6 +48,9 @@ struct ContainersApp: App {
 
     static let dashboardWindowId = "dashboard"
     static let settingsWindowId = "settings"
+    static let containerDetailWindowId = "container-detail"
+    static let imageDetailWindowId = "image-detail"
+    static let volumeDetailWindowId = "volume-detail"
 
     var body: some Scene {
         Window(
@@ -89,6 +92,47 @@ struct ContainersApp: App {
         .defaultSize(width: 600, height: 400)
         .defaultPosition(.center)
         .commands { PreferencesCommands() }
+
+        WindowGroup(
+            "Container Details",
+            id: Self.containerDetailWindowId,
+            for: String.self
+        ) { $id in
+            if let id {
+                ContainerDetailWindow(containerID: id)
+                    .environment(containerManager)
+                    .environment(volumeManager)
+            }
+        }
+        .windowResizability(.contentSize)
+        .commandsRemoved()
+
+        WindowGroup(
+            "Image Details",
+            id: Self.imageDetailWindowId,
+            for: String.self
+        ) { $reference in
+            if let reference {
+                ImageDetailWindow(imageReference: reference)
+                    .environment(imageManager)
+                    .environment(containerManager)
+            }
+        }
+        .windowResizability(.contentSize)
+        .commandsRemoved()
+
+        WindowGroup(
+            "Volume Details",
+            id: Self.volumeDetailWindowId,
+            for: String.self
+        ) { $volumeID in
+            if let volumeID {
+                VolumeDetailWindow(volumeID: volumeID)
+                    .environment(volumeManager)
+            }
+        }
+        .windowResizability(.contentSize)
+        .commandsRemoved()
 
     }
 

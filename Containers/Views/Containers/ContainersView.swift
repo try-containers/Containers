@@ -12,6 +12,7 @@ struct ContainersView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(SystemManager.self) private var system
     @Environment(VolumeManager.self) private var volumeManager
+    @Environment(\.openWindow) private var openWindow
 
     @Binding var searchText: String
     @Binding var runningContainersOnly: Bool
@@ -20,7 +21,6 @@ struct ContainersView: View {
 
     @State private var containers: [ContainerViewModel] = []
     @State private var selectedContainer: ContainerViewModel? = nil
-    @State private var detailPresentation: ContainerDetailPresentation? = nil
     @State private var lastUpdated: Date? = nil
     @State private var error: Error?
     @State private var showError = false
@@ -53,9 +53,6 @@ struct ContainersView: View {
             rows: filteredContainers,
             refreshTrigger: refreshTrigger,
             lastUpdated: lastUpdated,
-            emptyTitle: "No Containers Found",
-            matchingEmptyTitle: "No Matching Containers",
-            emptySystemImage: NavigationTab.containers.icon,
             isFiltering: !trimmedText.isEmpty || runningContainersOnly,
             tableStyle: .automatic,
             onClear: {
@@ -67,9 +64,10 @@ struct ContainersView: View {
             TableColumn("Name") { container in
                 Button(
                     action: {
-                        Task {
-                            await openDetail(for: container)
-                        }
+                        openWindow(
+                            id: ContainersApp.containerDetailWindowId,
+                            value: container.id
+                        )
                     },
                     label: {
                         Text(container.name)
@@ -79,7 +77,6 @@ struct ContainersView: View {
                 )
                 .buttonStyle(.link)
                 .pointerStyle(.link)
-                .frame(height: 32)  // to set minimum row height
             }
             .width(min: 100, ideal: 150, max: 250)
 
@@ -90,7 +87,9 @@ struct ContainersView: View {
             .width(min: 120, ideal: 180, max: 300)
 
             TableColumn("State") { container in
-                StatusBadge(status: container.status)
+                Text(container.status.rawValue.localizedCapitalized)
+                    .foregroundStyle(stateColor(for: container.status))
+                    .lineLimit(1)
             }
             .width(min: 64, ideal: 80, max: 100)
 
@@ -205,14 +204,6 @@ struct ContainersView: View {
                 CreateContainerView(imageReference: "")
             }
         )
-        .sheet(item: $detailPresentation) { presentation in
-            ContainerDetailView(
-                container: presentation.container,
-                initialSnapshot: presentation.snapshot
-            )
-            .environment(containerManager)
-            .environment(volumeManager)
-        }
         .alert(
             "Error",
             isPresented: $showError,
@@ -263,16 +254,12 @@ struct ContainersView: View {
         }
     }
 
-    private func openDetail(for container: ContainerViewModel) async {
-        do {
-            let snapshot = try await containerManager.get(id: container.id)
-            detailPresentation = ContainerDetailPresentation(
-                container: container,
-                snapshot: snapshot
-            )
-        } catch (let err) {
-            self.error = err
-            self.showError = true
+    private func stateColor(for status: RuntimeStatus) -> Color {
+        switch status {
+        case .running: return .green
+        case .stopping: return .orange
+        case .stopped: return .red
+        case .unknown: return .secondary
         }
     }
 
@@ -287,13 +274,6 @@ struct ContainersView: View {
             self.showError = true
         }
     }
-}
-
-private struct ContainerDetailPresentation: Identifiable {
-    var id: String { container.id }
-
-    let container: ContainerViewModel
-    let snapshot: ContainerSnapshot
 }
 
 #Preview {

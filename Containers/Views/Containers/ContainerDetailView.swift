@@ -10,10 +10,62 @@ import Containerization
 import ContainerizationOCI
 import SwiftUI
 
+struct ContainerDetailWindow: View {
+    @Environment(ContainerManager.self) private var containerManager
+
+    let containerID: String
+
+    @SwiftUI.State private var snapshot: ContainerSnapshot?
+    @SwiftUI.State private var isLoading: Bool = true
+    @SwiftUI.State private var loadError: Error?
+
+    var body: some View {
+        Group {
+            if let snapshot {
+                ContainerDetailView(
+                    container: ContainerViewModel(snapshot),
+                    initialSnapshot: snapshot
+                )
+            } else if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 550, height: 320)
+            } else {
+                ContentUnavailableView(
+                    "Container Not Found",
+                    systemImage: "shippingbox",
+                    description: Text(
+                        loadError?.localizedDescription
+                            ?? "The container '\(containerID)' no longer exists."
+                    )
+                )
+                .frame(width: 550, height: 320)
+            }
+        }
+        .navigationTitle(containerID)
+        .task(id: containerID) {
+            await load()
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            snapshot = try await containerManager.get(id: containerID)
+            loadError = nil
+        } catch {
+            snapshot = nil
+            loadError = error
+        }
+    }
+}
+
 struct ContainerDetailView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(VolumeManager.self) private var volumeManager
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismissWindow) private var dismissWindow
 
     @SwiftUI.State private var container: ContainerViewModel
     @SwiftUI.State private var snapshot: ContainerSnapshot?
@@ -47,22 +99,16 @@ struct ContainerDetailView: View {
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
-            onClose: { dismiss() },
-            header: {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(container.id)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                }
-            },
-            actionButtons: {
-                actionButtons
-            },
+            actions: actions,
             tabTitle: { tab in
                 tab.rawValue.localizedCapitalized
             },
-            fixedHeightTab: { tab in
-                tab != .overview
+            tabIcon: { tab in
+                switch tab {
+                case .overview: "info.circle"
+                case .logs: "list.bullet.rectangle"
+                case .inspect: "curlybraces"
+                }
             },
             tabContent: { tab in
                 switch tab {
@@ -128,7 +174,10 @@ struct ContainerDetailView: View {
                         )
 
                         error = nil
-                        dismiss()
+                        dismissWindow(
+                            id: ContainersApp.containerDetailWindowId,
+                            value: container.id
+                        )
                     } catch {
                         self.error = error
                         showError = true
@@ -170,60 +219,64 @@ struct ContainerDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var actionButtons: some View {
-        if isOperationInProgress {
-            ProgressView()
-                .controlSize(.small)
+    private var actions: [DetailAction] {
+        var result: [DetailAction] = []
+        let busy = isOperationInProgress
 
-        } else {
-            switch status {
-            case .running:
-                ActionButton(
-                    label: "Stop",
+        switch status {
+        case .running:
+            result.append(
+                DetailAction(
+                    id: "stop",
+                    title: "Stop",
                     icon: "stop.fill",
-                    help: "Stop container"
+                    help: "Stop container",
+                    isEnabled: !busy
                 ) {
                     stopContainer()
                 }
-
-            case .stopped:
-                ActionButton(
-                    label: "Start",
+            )
+        case .stopped:
+            result.append(
+                DetailAction(
+                    id: "start",
+                    title: "Start",
                     icon: "play.fill",
-                    help: "Start container"
+                    help: "Start container",
+                    isEnabled: !busy
                 ) {
                     startContainer()
                 }
-
-                ActionButton(
-                    label: "Add Volume",
+            )
+            result.append(
+                DetailAction(
+                    id: "add-volume",
+                    title: "Add Volume",
                     icon: "externaldrive.badge.plus",
-                    help: "Mount volume"
+                    help: "Mount volume",
+                    isEnabled: !busy && snapshot != nil
                 ) {
                     showAddVolumeMount = true
                 }
-                .disabled(snapshot == nil)
+            )
+        case .stopping, .unknown:
+            break
+        }
 
-            case .stopping:
-                ProgressView()
-                    .controlSize(.small)
-
-            case .unknown:
-                EmptyView()
-            }
-
-            ActionButton(
-                label: "Delete",
+        result.append(
+            DetailAction(
+                id: "delete",
+                title: "Delete",
                 icon: "trash",
                 help: "Delete container",
-                role: .destructive
+                isEnabled: !busy,
+                isDestructive: true
             ) {
                 showDeleteConfirmation = true
             }
-            .foregroundStyle(Color.red)
-            .disabled(isOperationInProgress)
-        }
+        )
+
+        return result
     }
 
     private func refreshSnapshot() async {

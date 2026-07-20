@@ -16,6 +16,9 @@ struct EditableListRow: View {
     var onSelect: (() -> Void)? = nil
     var onEdit: (() -> Void)? = nil
 
+    @Environment(\.editableListCellPadding) private var cellPadding
+    @Environment(\.editableListRowIsSelected) private var isRowSelected
+
     init(
         values: [String],
         isSelected: Bool = false,
@@ -69,15 +72,20 @@ struct EditableListRow: View {
     }
 
     private var rowContent: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             ForEach(Array(values.enumerated()), id: \.offset) { index, value in
                 let isEmpty = value.isEmpty
 
                 Text(isEmpty && index == 0 ? "New Item" : value)
-                    .foregroundStyle(isEmpty ? .tertiary : .primary)
+                    .foregroundStyle(isRowSelected ? AnyShapeStyle(.white) : AnyShapeStyle(isEmpty ? .tertiary : .primary))
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .padding(.horizontal, cellPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                if index < values.count - 1 {
+                    Divider()
+                }
             }
         }
     }

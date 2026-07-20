@@ -4,8 +4,9 @@
 //
 //  Created by Axel Martinez on 30/05/2026.
 //
-
 import SwiftUI
+
+private let editableFieldActionSentinel = "§__editablefield_action__§"
 
 enum EditableFormLayout {
     static let labelWidth: CGFloat = 150
@@ -31,6 +32,8 @@ where Format.FormatOutput == String {
     let selection: Binding<Option>?
     let actionLabel: (() -> Label)?
     let action: (() -> Void)?
+    let selectionActionTitle: String?
+    let onSelectionAction: (() -> Void)?
 
     init(
         title: String? = nil,
@@ -43,7 +46,9 @@ where Format.FormatOutput == String {
         options: [Option] = [],
         selection: Binding<Option>? = nil,
         actionLabel: (() -> Label)? = nil,
-        action: (() -> Void)? = nil
+        action: (() -> Void)? = nil,
+        selectionActionTitle: String? = nil,
+        onSelectionAction: (() -> Void)? = nil
     ) {
         precondition(
             value != nil || selection != nil,
@@ -61,6 +66,8 @@ where Format.FormatOutput == String {
         self.selection = selection
         self.actionLabel = actionLabel
         self.action = action
+        self.selectionActionTitle = selectionActionTitle
+        self.onSelectionAction = onSelectionAction
     }
 
     @ViewBuilder
@@ -90,16 +97,19 @@ where Format.FormatOutput == String {
                         alignment: .trailing
                     )
                     .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-            } else {
-                Spacer()
-                    .frame(width: EditableFormLayout.labelWidth)
-                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center) {
                     if let value {
                         title(for: value)
+                            .overlay(alignment: .trailing) {
+                                if let action, let actionLabel {
+                                    Button(action: action, label: actionLabel)
+                                        .buttonStyle(.borderless)
+                                        .padding(.trailing, 4)
+                                }
+                            }
                     }
 
                     if let selection {
@@ -111,12 +121,25 @@ where Format.FormatOutput == String {
                                     Text(option.description).tag(option)
                                 }
                             }
+                            if let actionTitle = selectionActionTitle,
+                                let sentinel = editableFieldActionSentinel
+                                    as? Option
+                            {
+                                Divider()
+                                Text(actionTitle).tag(sentinel)
+                            }
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        .onChange(of: selection.wrappedValue) { old, new in
+                            if (new as? String) == editableFieldActionSentinel {
+                                selection.wrappedValue = old
+                                onSelectionAction?()
+                            }
+                        }
                     }
 
-                    if let action, let actionLabel {
+                    if value == nil, let action, let actionLabel {
                         Button(action: action, label: actionLabel)
                             .buttonStyle(.plain)
                     }
@@ -129,7 +152,7 @@ where Format.FormatOutput == String {
                 }
             }
             .frame(
-                width: fieldWidth ?? EditableFormLayout.controlWidth,
+                maxWidth: fieldWidth ?? EditableFormLayout.controlWidth,
                 alignment: .leading
             )
         }
@@ -194,7 +217,9 @@ extension EditableField where Label == EmptyView {
         placeholder: String,
         fieldWidth: CGFloat? = nil,
         options: [Option],
-        selection: Binding<Option>
+        selection: Binding<Option>,
+        selectionActionTitle: String? = nil,
+        onSelectionAction: (() -> Void)? = nil
     ) where Format == StringFormatStyle, Format.FormatInput == String {
         self.init(
             title: title,
@@ -207,7 +232,9 @@ extension EditableField where Label == EmptyView {
             options: options,
             selection: selection,
             actionLabel: nil,
-            action: nil
+            action: nil,
+            selectionActionTitle: selectionActionTitle,
+            onSelectionAction: onSelectionAction
         )
     }
 

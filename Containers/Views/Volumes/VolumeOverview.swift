@@ -12,28 +12,26 @@ struct VolumeOverview: View {
     let volume: VolumeViewModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                InfoSection(rows: detailRows)
+        VStack(alignment: .leading, spacing: 20) {
+            InfoSection(rows: detailRows)
 
-                if !labelRows.isEmpty {
-                    InfoSection(
-                        title: "Labels",
-                        emptyMessage: "No labels",
-                        rows: labelRows
-                    )
-                }
-
-                if !optionRows.isEmpty {
-                    InfoSection(
-                        title: "Options",
-                        emptyMessage: "No options",
-                        rows: optionRows
-                    )
-                }
+            if !labelRows.isEmpty {
+                InfoSection(
+                    title: "Labels",
+                    emptyMessage: "No labels",
+                    rows: labelRows
+                )
             }
-            .padding(20)
+
+            if !optionRows.isEmpty {
+                InfoSection(
+                    title: "Options",
+                    emptyMessage: "No options",
+                    rows: optionRows
+                )
+            }
         }
+        .padding(20)
     }
 
     private var detailRows: [InfoRow] {

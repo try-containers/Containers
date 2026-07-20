@@ -7,6 +7,26 @@
 
 import SwiftUI
 
+private struct EditableListCellPaddingKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 8
+}
+
+private struct EditableListRowIsSelectedKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
+extension EnvironmentValues {
+    var editableListCellPadding: CGFloat {
+        get { self[EditableListCellPaddingKey.self] }
+        set { self[EditableListCellPaddingKey.self] = newValue }
+    }
+
+    var editableListRowIsSelected: Bool {
+        get { self[EditableListRowIsSelectedKey.self] }
+        set { self[EditableListRowIsSelectedKey.self] = newValue }
+    }
+}
+
 private enum EditableListEditorTarget<ID: Hashable, Item> {
     case existing(ID)
     case new(Item)
@@ -17,12 +37,14 @@ struct EditableList<Item: Identifiable, RowContent: View, EditorContent: View>:
 where Item.ID: Hashable {
     @Binding var items: [Item]
 
-    var title: String
+    var title: String?
     var description: String? = nil
     var editorDescription: String? = nil
     var columnTitles: [String] = ["Value"]
     var fieldWidth: CGFloat? = nil
     var addLabel: String
+    var emptyMessage: String
+    var hasContentBelow: Bool
     var newItem: () -> Item
     var rowSummary: (Item) -> String
     var rowValues: ((Item) -> [String])?
@@ -33,12 +55,14 @@ where Item.ID: Hashable {
 
     init(
         items: Binding<[Item]>,
-        title: String,
+        title: String? = nil,
         description: String? = nil,
         editorDescription: String? = nil,
         columnTitles: [String] = ["Value"],
         fieldWidth: CGFloat? = nil,
         addLabel: String,
+        emptyMessage: String,
+        hasContentBelow: Bool = false,
         newItem: @escaping () -> Item,
         rowSummary: @escaping (Item) -> String,
         rowValues: ((Item) -> [String])? = nil,
@@ -53,6 +77,8 @@ where Item.ID: Hashable {
         self.columnTitles = columnTitles
         self.fieldWidth = fieldWidth
         self.addLabel = addLabel
+        self.emptyMessage = emptyMessage
+        self.hasContentBelow = hasContentBelow
         self.newItem = newItem
         self.rowSummary = rowSummary
         self.rowValues = rowValues
@@ -63,6 +89,7 @@ where Item.ID: Hashable {
 
     @State private var selectedItemID: Item.ID?
     @State private var editorTarget: EditableListEditorTarget<Item.ID, Item>?
+    @State private var isExpanded: Bool = true
 
     private var usesModalEditor: Bool {
         rowContent == nil
@@ -70,6 +97,7 @@ where Item.ID: Hashable {
 
     var body: some View {
         content
+            .environment(\.editableListCellPadding, 8)
             .sheet(isPresented: editorPresentation) {
                 editor
             }
@@ -79,15 +107,30 @@ where Item.ID: Hashable {
     }
 
     private var content: some View {
-        HStack(alignment: .top) {
-            Text("\(title):")
-                .frame(
-                    width: EditableFormLayout.labelWidth,
-                    alignment: .trailing
-                )
+        VStack(alignment: .leading, spacing: 0) {
+            if let title {
+                disclosureHeader(title: title)
+                    .padding(.vertical, 8)
+            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                table
+            if isExpanded || title == nil {
+                VStack(spacing: 0) {
+                    table
+
+                    if title != nil {
+                        Divider()
+                    }
+
+                    EditableListToolbar(
+                        addLabel: addLabel,
+                        isRemoveDisabled: items.isEmpty,
+                        add: addItem,
+                        remove: removeSelectedItem
+                    )
+                    .padding(.leading, title == nil ? 4 : 0)
+                }
+                .frame(maxHeight: title == nil ? .infinity : nil)
+                .padding(.leading, title != nil ? 18 : 0)
 
                 if let description {
                     Text(description)
@@ -95,55 +138,93 @@ where Item.ID: Hashable {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(
-                width: fieldWidth ?? EditableFormLayout.controlWidth,
-                alignment: .leading
-            )
+
+            if (title != nil && !isExpanded) || hasContentBelow {
+                Divider()
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: title == nil ? .infinity : nil, alignment: .leading)
+    }
+
+    private func disclosureHeader(title: String) -> some View {
+        Button {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(
+                    systemName: isExpanded ? "chevron.down" : "chevron.right"
+                )
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 12)
+
+                Text(title)
+                    .font(.headline)
+
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var table: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: 0) {
                 ForEach(Array(columnTitles.enumerated()), id: \.offset) {
-                    _,
+                    index,
                     columnTitle in
                     Text(columnTitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
+                        .padding(.leading, title == nil ? 12 : 8)
+                        .padding(.trailing, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if index < columnTitles.count - 1 {
+                        Divider()
+                            .padding(.vertical, 4)
+                    }
                 }
             }
-            .padding(.horizontal, 8)
-            .frame(height: 24)
+            .frame(height: 22)
             .background(Color(nsColor: .controlBackgroundColor))
 
-            List($items, selection: $selectedItemID) { $item in
-                row(for: $item)
-                    .tag(item.id)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            selectedItemID = item.id
-                        }
-                    )
-                    .onTapGesture(count: 2) {
-                        if usesModalEditor {
-                            openEditor(for: item.id)
-                        }
-                    }
-            }
-            .listStyle(.plain)
+            Divider()
 
-            EditableListToolbar(
-                addLabel: addLabel,
-                isRemoveDisabled: items.isEmpty,
-                showBorder: true,
-                add: addItem,
-                remove: removeSelectedItem
-            )
+            if items.isEmpty {
+                Text(emptyMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List($items, selection: $selectedItemID) { $item in
+                    row(for: $item)
+                        .environment(
+                            \.editableListRowIsSelected,
+                            selectedItemID == item.id
+                        )
+                        .tag(item.id)
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(
+                            TapGesture().onEnded {
+                                selectedItemID = item.id
+                            }
+                        )
+                        .onTapGesture(count: 2) {
+                            if usesModalEditor {
+                                openEditor(for: item.id)
+                            }
+                        }
+                }
+                .listStyle(.plain)
+            }
         }
-        .border(Color(nsColor: .secondarySystemFill))
+        .background(Color(nsColor: .textBackgroundColor))
         .frame(minHeight: 120)
     }
 
@@ -209,7 +290,7 @@ where Item.ID: Hashable {
     }
 
     private var editorTitle: String {
-        isEditingNewItem ? addLabel : title
+        isEditingNewItem ? addLabel : (title ?? addLabel)
     }
 
     private var editorSaveAction: (() -> Void)? {
@@ -326,15 +407,18 @@ where Item.ID: Hashable {
         }
     }
 }
+
 extension EditableList where RowContent == EmptyView {
     init(
         items: Binding<[Item]>,
-        title: String,
+        title: String? = nil,
         description: String? = nil,
         editorDescription: String? = nil,
         columnTitles: [String] = ["Value"],
         fieldWidth: CGFloat? = nil,
         addLabel: String,
+        emptyMessage: String,
+        hasContentBelow: Bool = false,
         newItem: @escaping () -> Item,
         rowSummary: @escaping (Item) -> String,
         rowValues: ((Item) -> [String])? = nil,
@@ -349,6 +433,8 @@ extension EditableList where RowContent == EmptyView {
             columnTitles: columnTitles,
             fieldWidth: fieldWidth,
             addLabel: addLabel,
+            emptyMessage: emptyMessage,
+            hasContentBelow: hasContentBelow,
             newItem: newItem,
             rowSummary: rowSummary,
             rowValues: rowValues,

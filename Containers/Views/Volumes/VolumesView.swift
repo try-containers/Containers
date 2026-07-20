@@ -10,15 +10,14 @@ import SwiftUI
 
 struct VolumesView: View {
     @Environment(VolumeManager.self) private var volumeManager
+    @Environment(\.openWindow) private var openWindow
     @Binding var searchText: String
     var refreshTrigger: Int
 
     @State private var volumes: [VolumeViewModel] = []
     @State private var lastUpdated: Date? = nil
     @State private var showInUseContainerForVolume: VolumeViewModel?
-    @State private var selectedVolume: VolumeViewModel?
     @State private var volumeToDelete: VolumeViewModel?
-    @State private var showVolumeDetail: Bool = false
     @State private var showCreateVolumeView: Bool = false
     @State private var showDeleteConfirmation: Bool = false
     @State private var error: Error?
@@ -44,9 +43,6 @@ struct VolumesView: View {
             rows: filteredVolumes,
             refreshTrigger: refreshTrigger,
             lastUpdated: lastUpdated,
-            emptyTitle: "No Volumes Found",
-            matchingEmptyTitle: "No Matching Volumes",
-            emptySystemImage: NavigationTab.volumes.icon,
             isFiltering: !trimmedText.isEmpty,
             onClear: {
                 volumes = []
@@ -57,19 +53,19 @@ struct VolumesView: View {
             TableColumn("Name") { volume in
                 Button(
                     action: {
-                        selectedVolume = volume
-                        showVolumeDetail = true
+                        openWindow(
+                            id: ContainersApp.volumeDetailWindowId,
+                            value: volume.id
+                        )
                     },
                     label: {
                         Text(volume.name)
-                            .font(.headline)
                             .lineLimit(1)
                             .underline()
                     }
                 )
                 .buttonStyle(.link)
                 .pointerStyle(.link)
-                .frame(height: 32)
             }
             .width(min: 80, ideal: 80)
 
@@ -148,16 +144,6 @@ struct VolumesView: View {
                 CreateVolumeView()
             }
         )
-        .sheet(
-            isPresented: $showVolumeDetail,
-            onDismiss: {
-                selectedVolume = nil
-            }
-        ) {
-            if let volume = selectedVolume {
-                VolumeDetailView(volume: volume)
-            }
-        }
         .sheet(
             item: $showInUseContainerForVolume,
             content: { volume in

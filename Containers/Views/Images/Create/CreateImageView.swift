@@ -62,6 +62,7 @@ struct CreateImageView: View {
     @SwiftUI.State private var isCreating: Bool = false
     @SwiftUI.State private var creationTask: Task<Void, Never>?
     @SwiftUI.State private var tarFile: URL?
+    @SwiftUI.State private var forceLoad: Bool = false
     @SwiftUI.State private var contextDirectory: URL?
     @SwiftUI.State private var imageName: String = ""
     @SwiftUI.State private var tag: String = "latest"
@@ -106,7 +107,6 @@ struct CreateImageView: View {
                         }
                     )
                     .buttonStyle(.bordered)
-                    .controlSize(.large)
                 }
 
                 if !isCreating {
@@ -120,7 +120,6 @@ struct CreateImageView: View {
                             }
                         )
                         .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
                         .tint(.blue)
                         .disabled(!canProceedToNextStep)
                     case .configuration:
@@ -132,7 +131,6 @@ struct CreateImageView: View {
                             }
                         )
                         .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
                         .tint(.blue)
                         .disabled(!canProceedToNextStep)
                     }
@@ -168,7 +166,8 @@ struct CreateImageView: View {
                 buildPlatform: $buildPlatform,
                 buildArguments: $buildArguments,
                 targetStage: $targetStage,
-                tarFile: $tarFile
+                tarFile: $tarFile,
+                forceLoad: $forceLoad
             )
         }
     }
@@ -379,6 +378,6 @@ struct CreateImageView: View {
             )
         }
 
-        try await imageManager.load(tar: tarFile)
+        try await imageManager.load(tar: tarFile, force: forceLoad)
     }
 }

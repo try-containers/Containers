@@ -5,241 +5,134 @@
 //  Created by Axel Martinez on 23/5/26.
 //
 
+import AppKit
 import SwiftUI
+
+struct DetailAction: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+    let help: String
+    let isEnabled: Bool
+    let isDestructive: Bool
+    let action: () -> Void
+
+    init(
+        id: String,
+        title: String,
+        icon: String,
+        help: String? = nil,
+        isEnabled: Bool = true,
+        isDestructive: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.id = id
+        self.title = title
+        self.icon = icon
+        self.help = help ?? title
+        self.isEnabled = isEnabled
+        self.isDestructive = isDestructive
+        self.action = action
+    }
+}
 
 struct DetailView<
     Tab: Hashable & CaseIterable,
-    Header: View,
-    ActionButtons: View,
     Content: View
 >: View where Tab.AllCases: RandomAccessCollection {
-    private static var width: CGFloat { 550 }
-    private static var maximumContentHeight: CGFloat { 480 }
-    private static var tabTransitionAnimation: Animation {
-        .easeInOut(duration: 0.22)
-    }
+    private var minimumWidth: CGFloat { 550 }
+    private var maximumWidth: CGFloat { 900 }
+    private var minimumHeight: CGFloat { 300 }
+    private var maximumHeight: CGFloat { 480 }
 
-    let onClose: () -> Void
     let showTabs: Bool
-    let usesFixedMaximumHeight: Bool
-    let header: Header
-    let actionButtons: ActionButtons
+    let actions: [DetailAction]
 
     @Binding var selectedTab: Tab
 
-    @State private var displayedTab: Tab
-    @State private var contentHeight: CGFloat = 0
-    @State private var isTabContentVisible = true
-    @State private var tabSwitchGeneration = 0
-    @State private var pendingResizeCompletion: (@MainActor () -> Void)?
-
     let tabTitle: (Tab) -> String
-    let fixedHeightTab: (Tab) -> Bool
+    let tabIcon: (Tab) -> String
+    let tabWidth: (Tab) -> CGFloat?
     let tabContent: (Tab) -> Content
 
     init(
         selectedTab: Binding<Tab>,
         showTabs: Bool = true,
-        usesFixedMaximumHeight: Bool = true,
-        onClose: @escaping () -> Void,
-        @ViewBuilder header: () -> Header,
-        @ViewBuilder actionButtons: () -> ActionButtons,
+        actions: [DetailAction] = [],
         tabTitle: @escaping (Tab) -> String,
-        fixedHeightTab: @escaping (Tab) -> Bool = { _ in false },
+        tabIcon: @escaping (Tab) -> String,
+        tabWidth: @escaping (Tab) -> CGFloat? = { _ in nil },
         @ViewBuilder tabContent: @escaping (Tab) -> Content
     ) {
         self._selectedTab = selectedTab
-        self._displayedTab = State(initialValue: selectedTab.wrappedValue)
-        self.onClose = onClose
         self.showTabs = showTabs
-        self.usesFixedMaximumHeight = usesFixedMaximumHeight
-        self.header = header()
-        self.actionButtons = actionButtons()
+        self.actions = actions
         self.tabTitle = tabTitle
-        self.fixedHeightTab = fixedHeightTab
+        self.tabIcon = tabIcon
+        self.tabWidth = tabWidth
         self.tabContent = tabContent
     }
 
+    private var effectiveMinimumWidth: CGFloat {
+        tabWidth(selectedTab) ?? minimumWidth
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            headerBar
+        tabContent(selectedTab)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .frame(
+                minWidth: effectiveMinimumWidth,
+                maxWidth: maximumWidth,
+                minHeight: minimumHeight,
+                maxHeight: maximumHeight
+            )
+            .toolbar {
+                if showTabs {
+                    ToolbarItem(placement: .primaryAction) {
+                        Picker("", selection: $selectedTab) {
+                            ForEach(Array(Tab.allCases), id: \.self) { tab in
+                                Label(
+                                    tabTitle(tab),
+                                    systemImage: tabIcon(tab)
+                                )
+                                .tag(tab)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
 
-            Divider()
+                    ToolbarSpacer(.fixed, placement: .primaryAction)
+                }
 
-            if showTabs {
-                tabBar
-                Divider()
-            }
-
-            contentArea
-
-            Divider()
-
-            footer
-        }
-        .frame(width: Self.width)
-        .background(alignment: .top) {
-            tabContent(displayedTab)
-                .frame(maxWidth: 600)
-                .frame(width: Self.width, alignment: .top)
-                .fixedSize(horizontal: false, vertical: true)
-                .hidden()
-                .allowsHitTesting(false)
-                .background {
-                    GeometryReader { proxy in
-                        Color.clear
-                            .preference(
-                                key: DetailViewHeightPreferenceKey.self,
-                                value: proxy.size.height
-                            )
+                ToolbarItemGroup(placement: .primaryAction) {
+                    ForEach(actions) { action in
+                        Button(role: action.isDestructive ? .destructive : nil) {
+                            action.action()
+                        } label: {
+                            Label(action.title, systemImage: action.icon)
+                        }
+                        .disabled(!action.isEnabled)
+                        .help(action.help)
                     }
                 }
-        }
-        .onPreferenceChange(DetailViewHeightPreferenceKey.self) { height in
-            let newHeight =
-                if fixedHeightTab(displayedTab) {
-                    Self.maximumContentHeight
-                } else if usesFixedMaximumHeight {
-                    min(height, Self.maximumContentHeight)
-                } else {
-                    height
-                }
-
-            let completion = pendingResizeCompletion
-            pendingResizeCompletion = nil
-
-            guard newHeight.isFinite, newHeight > 0 else {
-                completion?()
-                return
             }
-
-            if contentHeight == 0 || newHeight == contentHeight {
-                contentHeight = newHeight
-                completion?()
-            } else {
-                withAnimation(Self.tabTransitionAnimation) {
-                    contentHeight = newHeight
-                } completion: {
-                    completion?()
-                }
-            }
-        }
-        .onChange(of: selectedTab) { _, newValue in
-            switchDisplayedTab(to: newValue)
-        }
-    }
-
-    // MARK: - Subviews
-
-    private var headerBar: some View {
-        HStack(alignment: .top, spacing: 16) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                header
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 8) {
-                actionButtons
-            }
-        }
-        .padding(20)
-        .background(Color(nsColor: .controlBackgroundColor))
-    }
-
-    private var tabSelection: Binding<Tab> {
-        Binding(
-            get: { selectedTab },
-            set: { switchDisplayedTab(to: $0) }
-        )
-    }
-
-    private var tabBar: some View {
-        Picker(
-            selection: tabSelection,
-            content: {
-                ForEach(Array(Tab.allCases), id: \.self) { tab in
-                    Text(tabTitle(tab))
-                        .tag(tab)
-                }
-            },
-            label: {}
-        )
-        .labelsHidden()
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private var contentArea: some View {
-        ZStack(alignment: .top) {
-            tabContent(displayedTab)
-                .frame(maxWidth: 600)
-                .frame(maxWidth: .infinity, alignment: .top)
-                .opacity(isTabContentVisible ? 1 : 0)
-        }
-        .frame(
-            height: contentHeight == 0 ? nil : contentHeight,
-            alignment: .top
-        )
-        .clipped()
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private var footer: some View {
-        HStack {
-            Spacer()
-
-            Button {
-                onClose()
-            } label: {
-                Text("Close")
-                    .frame(minWidth: 80)
-            }
-            .buttonStyle(.bordered)
-            .keyboardShortcut(.cancelAction)
-        }
-        .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor))
-    }
-
-    // MARK: - Tab switching
-
-    private func switchDisplayedTab(to tab: Tab) {
-        guard tab != displayedTab || tab != selectedTab else { return }
-
-        tabSwitchGeneration += 1
-        let generation = tabSwitchGeneration
-        selectedTab = tab
-
-        withAnimation(Self.tabTransitionAnimation) {
-            isTabContentVisible = false
-        } completion: {
-            guard generation == tabSwitchGeneration else { return }
-
-            pendingResizeCompletion = {
-                guard generation == tabSwitchGeneration else { return }
-                fadeIn(generation: generation)
-            }
-            displayedTab = tab
-        }
-    }
-
-    private func fadeIn(generation: Int) {
-        guard generation == tabSwitchGeneration else { return }
-        withAnimation(Self.tabTransitionAnimation) {
-            isTabContentVisible = true
-        }
+            .background(DetailWindowConfigurator())
     }
 }
 
-// MARK: - Preference Key
+private struct DetailWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        WindowConfiguratorView()
+    }
 
-private struct DetailViewHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+private final class WindowConfiguratorView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        window.tabbingMode = .disallowed
     }
 }

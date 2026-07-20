@@ -502,27 +502,41 @@ public final class ImageManager {
     public func save(
         images: [ImageDescription],
         platform: Platform = .current,
-        outputDirectory: URL
+        outputURL: URL
     ) async throws {
         let service = try await runtime.getImagesService()
 
         logger.info("Saving \(images.count) image(s)")
 
         let references: [String] = images.map(\.reference)
-        let outputPath = outputDirectory.appending(
-            path: "\(Date().ISO8601Format()).tar"
+        let stagingDirectory = FileManager.default.temporaryDirectory
+            .appending(path: "oci-layout-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: stagingDirectory,
+            withIntermediateDirectories: true
         )
+        defer {
+            try? FileManager.default.removeItem(at: stagingDirectory)
+        }
 
         try await service.save(
             references: references,
-            out: outputPath,
+            out: stagingDirectory,
             platform: platform
         )
+
+        let writer = try ArchiveWriter(
+            format: .pax,
+            filter: .none,
+            file: outputURL
+        )
+        try writer.archiveDirectory(stagingDirectory)
+        try writer.finishEncoding()
 
         logger.info("Saved \(images.count) image(s)")
     }
 
-    public func load(tar: URL) async throws {
+    public func load(tar: URL, force: Bool = false) async throws {
         let service = try await runtime.getImagesService()
         let didAccessTar = tar.startAccessingSecurityScopedResource()
         defer {
@@ -531,7 +545,13 @@ public final class ImageManager {
             }
         }
 
-        guard FileManager.default.fileExists(atPath: tar.path) else {
+        var isDirectory: ObjCBool = false
+        guard
+            FileManager.default.fileExists(
+                atPath: tar.path,
+                isDirectory: &isDirectory
+            )
+        else {
             throw ContainerizationError(
                 .invalidArgument,
                 message: "File does not exist"
@@ -540,7 +560,46 @@ public final class ImageManager {
 
         logger.info("Loading image from: \(tar.lastPathComponent)")
 
-        let loaded = try await service.load(from: tar, force: false)
+        let source: URL
+        let stagingDirectory: URL?
+
+        if isDirectory.boolValue {
+            source = tar
+            stagingDirectory = nil
+        } else {
+            let extractedDirectory = FileManager.default.temporaryDirectory
+                .appending(path: "oci-layout-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(
+                at: extractedDirectory,
+                withIntermediateDirectories: true
+            )
+
+            let reader = try ArchiveReader(file: tar)
+            let rejectedMembers = try reader.extractContents(
+                to: extractedDirectory
+            )
+
+            if !rejectedMembers.isEmpty && !force {
+                try? FileManager.default.removeItem(at: extractedDirectory)
+                let rejectedList = rejectedMembers.joined(separator: ", ")
+                throw ContainerizationError(
+                    .invalidArgument,
+                    message:
+                        "Cannot load tar image with rejected paths: \(rejectedList)"
+                )
+            }
+
+            source = extractedDirectory
+            stagingDirectory = extractedDirectory
+        }
+
+        defer {
+            if let stagingDirectory {
+                try? FileManager.default.removeItem(at: stagingDirectory)
+            }
+        }
+
+        let loaded = try await service.load(from: source, force: force)
 
         logger.info("Unpacking images")
 

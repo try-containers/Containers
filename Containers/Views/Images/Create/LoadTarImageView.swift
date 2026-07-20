@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct LoadTarImageView: View {
     @Binding var tarFile: URL?
+    @Binding var force: Bool
 
     let tarContentTypes: [UTType]
     let defaultDirectory: URL?
@@ -26,6 +27,18 @@ struct LoadTarImageView: View {
                 defaultDirectory: defaultDirectory,
                 onSelection: onSelection
             )
+
+            Toggle(isOn: $force) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Force load")
+                    Text(
+                        "Load images even when the archive contains invalid or rejected paths."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
         }
         .frame(maxWidth: .infinity, minHeight: 320, alignment: .center)
     }

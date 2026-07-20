@@ -12,6 +12,7 @@ import SwiftUI
 
 struct ImagesView: View {
     @Environment(ImageManager.self) private var imageManager
+    @Environment(\.openWindow) private var openWindow
     @Binding var searchText: String
     var refreshTrigger: Int
 
@@ -20,14 +21,11 @@ struct ImagesView: View {
     @SwiftUI.State private var images: [ImageViewModel] = []
     @SwiftUI.State private var lastUpdated: Date? = nil
     @SwiftUI.State private var createContainerForImage: ImageViewModel? = nil
-    @SwiftUI.State private var imagesToSave: String = ""
     @SwiftUI.State private var imageToDelete: ImageViewModel?
     @SwiftUI.State private var error: Error?
     @SwiftUI.State private var showError: Bool = false
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
     @SwiftUI.State private var showInUseContainerForImage: ImageViewModel?
-    @SwiftUI.State private var showSaveImage: Bool = false
-    @SwiftUI.State private var showImageDetails: ImageViewModel?
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,9 +48,6 @@ struct ImagesView: View {
             rows: filteredImages,
             refreshTrigger: refreshTrigger,
             lastUpdated: lastUpdated,
-            emptyTitle: "No Images Found",
-            matchingEmptyTitle: "No Matching Images",
-            emptySystemImage: NavigationTab.images.icon,
             isFiltering: !trimmedText.isEmpty,
             onClear: {
                 images = []
@@ -62,7 +57,10 @@ struct ImagesView: View {
         ) {
             TableColumn("Name") { image in
                 Button(action: {
-                    self.showImageDetails = image
+                    openWindow(
+                        id: ContainersApp.imageDetailWindowId,
+                        value: image.imageDescription.reference
+                    )
                 }) {
                     Text(image.name)
                         .lineLimit(1)
@@ -70,15 +68,14 @@ struct ImagesView: View {
                 .buttonStyle(.link)
                 .pointerStyle(.link)
                 .underline()
-                .frame(height: 36)  // to set minimum row height
             }
-            .width(min: 150, ideal: 80)
+            .width(min: 150, ideal: 180)
 
             TableColumn("Tag") { image in
                 Text(image.tag)
                     .lineLimit(1)
             }
-            .width(min: 50, ideal: 60)
+            .width(min: 50, ideal: 70)
 
             TableColumn("Digest") { image in
                 Text(image.formattedDigest)
@@ -163,31 +160,6 @@ struct ImagesView: View {
             item: $showInUseContainerForImage,
             content: { image in
                 ImageContainersView(image: image)
-            }
-        )
-        .sheet(
-            item: $showImageDetails,
-            content: { image in
-                ImageDetailView(
-                    image: image,
-                    createContainer: {
-                        self.createContainerForImage = image
-                    },
-                    showSaveImage: $showSaveImage,
-                    showDeleteConfirmation: $showDeleteConfirmation
-                )
-            }
-        )
-        .sheet(
-            isPresented: $showSaveImage,
-            onDismiss: {
-                self.imagesToSave = ""
-            },
-            content: {
-                SaveImageView(
-                    images: self.images.map(\.imageDescription),
-                    imageReferences: $imagesToSave
-                )
             }
         )
         .alert(
