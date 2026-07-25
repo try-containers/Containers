@@ -38,7 +38,6 @@ struct CreateVolumeView: View {
             width: 550,
             height: 450,
             scrollsContent: true,
-            onCancel: { dismiss() },
             tabBar: {
                 CreateViewTabBar(selection: $selectedTab)
             },
@@ -46,6 +45,9 @@ struct CreateVolumeView: View {
                 tabContent
             },
             actions: {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
                 Button("Create") {
                     createVolume()
                 }
@@ -92,7 +94,6 @@ struct CreateVolumeView: View {
                 selection: $sizeUnit
             )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var optionsTab: some View {
@@ -124,7 +125,7 @@ struct CreateVolumeView: View {
                     EmptyView()
                 }
             )
-            
+
             EditableList(
                 items: $options,
                 title: "Driver Specific Options",
@@ -195,14 +196,18 @@ struct CreateVolumeView: View {
                 let validLabels = self.labels.filter({
                     !$0.key.trimmingCharacters(in: .whitespacesAndNewlines)
                         .isEmpty
-                        && !$0.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                            .isEmpty
+                        && !$0.value.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        )
+                        .isEmpty
                 })
                 let validOptions = self.options.filter({
                     !$0.key.trimmingCharacters(in: .whitespacesAndNewlines)
                         .isEmpty
-                        && !$0.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                            .isEmpty
+                        && !$0.value.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        )
+                        .isEmpty
                 })
 
                 // Convert to bytes for API

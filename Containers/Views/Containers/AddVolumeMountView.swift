@@ -19,9 +19,8 @@ struct AddVolumeMountView: View {
     @SwiftUI.State private var volumeName: String = ""
     @SwiftUI.State private var mountPath: String = ""
     @SwiftUI.State private var availableVolumes: [Volume] = []
-    @SwiftUI.State private var showVolumePicker = false
-    @SwiftUI.State private var isLoadingVolumes = false
-    @SwiftUI.State private var isMounting = false
+    @SwiftUI.State private var isAnonymous: Bool = false
+    @SwiftUI.State private var isMounting: Bool = false
     @SwiftUI.State private var errorMessage: String?
 
     var body: some View {
@@ -58,36 +57,31 @@ struct AddVolumeMountView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Volume")
-                        .font(.headline)
-                    Text(
-                        "Choose an existing volume, enter a new volume name, or leave empty to create an anonymous volume. Mounts and tmpfs are configured when creating a container."
-                    )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        TextField("my-volume", text: $volumeName)
-                            .textFieldStyle(.roundedBorder)
-                        Button {
-                            loadVolumesAndShowPicker()
-                        } label: {
-                            Label("Choose", systemImage: "ellipsis.circle")
-                                .labelStyle(.iconOnly)
+                Toggle("Anonymous volume", isOn: $isAnonymous)
+                    .toggleStyle(.checkbox)
+                    .onChange(of: isAnonymous) { _, anonymous in
+                        if anonymous { volumeName = "" }
+                    }
+
+                if !isAnonymous {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Volume").font(.caption).foregroundStyle(.secondary)
+                        Picker("Volume", selection: $volumeName) {
+                            if volumeName.isEmpty {
+                                Text("Select a volume...").tag("")
+                            }
+                            ForEach(availableVolumes, id: \.name) { volume in
+                                Text(volume.name).tag(volume.name)
+                            }
                         }
-                        .buttonStyle(.borderless)
-                        .help("Choose from existing volumes")
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Target")
-                        .font(.headline)
-                    Text(
-                        "The absolute path where the volume will be mounted inside the container."
-                    )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Target").font(.caption).foregroundStyle(.secondary)
                     TextField("/data", text: $mountPath)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -99,14 +93,12 @@ struct AddVolumeMountView: View {
             Divider()
 
             HStack {
-                if isLoadingVolumes || isMounting {
+                if isMounting {
                     ProgressView()
                         .controlSize(.small)
-                    Text(
-                        isMounting ? "Mounting volume..." : "Loading volumes..."
-                    )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    Text("Mounting volume...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -132,27 +124,11 @@ struct AddVolumeMountView: View {
             .background(Color(nsColor: .controlBackgroundColor))
         }
         .frame(width: 520, height: 420)
-        .sheet(isPresented: $showVolumePicker) {
-            ItemPicker(
-                title: "Choose Volume",
-                actionTitle: "Choose",
-                items: availableVolumes.map { Item(id: $0.name, label: $0.name) },
-                onSelect: { volumeName = $0.label }
-            )
-        }
-    }
-
-    private func loadVolumesAndShowPicker() {
-        Task {
-            isLoadingVolumes = true
-            errorMessage = nil
-            do {
-                availableVolumes = try await volumeManager.list()
-                showVolumePicker = true
-            } catch {
-                errorMessage = "\(error)"
+        .task {
+            availableVolumes = (try? await volumeManager.list()) ?? []
+            if let last = availableVolumes.last {
+                volumeName = last.name
             }
-            isLoadingVolumes = false
         }
     }
 
@@ -182,9 +158,7 @@ struct AddVolumeMountView: View {
                 let volumes = try await volumeManager.list()
                 let volume: Volume
 
-                if let existing = volumes.first(where: {
-                    $0.name == trimmedName
-                }) {
+                if let existing = volumes.first(where: { $0.name == trimmedName }) {
                     volume = existing
                 } else {
                     var name = trimmedName

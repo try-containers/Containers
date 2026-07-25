@@ -2,13 +2,13 @@
 //  SystemManager.swift
 //  Containers
 //
-//  Public API for system lifecycle management
-//  UI layer uses this to start/stop the container system
+//  System lifecycle management
 //
 //  Created by Axel Martinez on 2026/02/08.
 //
 
 import Foundation
+import Logging
 import Observation
 
 /// Public system manager for controlling container system lifecycle
@@ -17,13 +17,10 @@ import Observation
 @MainActor
 public final class SystemManager {
 
-    internal let runtime: ContainerRuntime
+    let runtime: ContainerRuntime
+    private let logger: Logger
 
-    /// Public observable state
-    public var isRunning: Bool { runtime.isRunning }
-    public var isStarting: Bool { runtime.isStarting }
-    public var isStopping: Bool { runtime.isStopping }
-    public var startupError: Error? { runtime.startupError }
+    public var startupError: (any Error)? { runtime.startupError }
 
     /// System status for UI
     public enum SystemStatus: Equatable {
@@ -34,25 +31,25 @@ public final class SystemManager {
         case failed
     }
 
-    public var systemStatus: SystemStatus {
-        switch runtime.systemStatus {
-        case .notStarted: return .notStarted
-        case .starting: return .starting
-        case .running: return .running
-        case .stopping: return .stopping
-        case .failed: return .failed
-        }
+    public var status: SystemStatus {
+        if runtime.isStopping { return .stopping }
+        if runtime.isStarting { return .starting }
+        if runtime.isRunning { return .running }
+        if runtime.startupError != nil { return .failed }
+        return .notStarted
     }
 
     /// Public initializer - creates instance referencing shared runtime
     public init() {
         self.runtime = ContainerRuntime.shared
+        self.logger = Logger(label: "app.containers.manager.system")
     }
 
     #if DEBUG
     /// Internal initializer for testing - allows injection of test runtime
-    internal init(testRuntime: ContainerRuntime) {
+    init(testRuntime: ContainerRuntime) {
         self.runtime = testRuntime
+        self.logger = Logger(label: "app.containers.manager.system.test")
     }
     #endif
 
@@ -62,11 +59,13 @@ public final class SystemManager {
     /// - Parameter appRoot: Root directory for container data.
     /// - Throws: An error if the runtime cannot initialize prerequisites, storage, services, or networking.
     public func start(appRoot: URL) async throws {
+        logger.info("Starting system", metadata: ["appRoot": "\(appRoot.path)"])
         try await runtime.start(appRoot: appRoot)
     }
 
     /// Stop the container system
     public func stop() async throws {
+        logger.info("Stopping system")
         try await runtime.stop()
     }
 }

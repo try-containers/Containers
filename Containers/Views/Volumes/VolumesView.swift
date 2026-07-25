@@ -54,7 +54,7 @@ struct VolumesView: View {
                 Button(
                     action: {
                         openWindow(
-                            id: ContainersApp.volumeDetailWindowId,
+                            id: ContainersApp.volumeDetailWindowID,
                             value: volume.id
                         )
                     },
@@ -89,6 +89,15 @@ struct VolumesView: View {
                         )
                         .buttonStyle(.link)
                         .pointerStyle(.link)
+                        .popover(
+                            isPresented: Binding(
+                                get: { showInUseContainerForVolume?.id == volume.id },
+                                set: { if !$0 { showInUseContainerForVolume = nil } }
+                            ),
+                            arrowEdge: .bottom
+                        ) {
+                            ImageContainersView(volume: volume)
+                        }
                     } else {
                         Text("Unused")
                     }
@@ -142,12 +151,6 @@ struct VolumesView: View {
             },
             content: {
                 CreateVolumeView()
-            }
-        )
-        .sheet(
-            item: $showInUseContainerForVolume,
-            content: { volume in
-                ImageContainersView(volume: volume)
             }
         )
         .alert(

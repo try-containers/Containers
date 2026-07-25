@@ -36,7 +36,10 @@ struct ImageDetailWindow: View {
                 .frame(width: 550, height: 320)
             }
         }
-        .navigationTitle(image?.name ?? "Image")
+        .navigationTitle(
+            image.map { Text("\($0.name):\($0.tag)") }
+                ?? Text("Image")
+        )
         .task(id: imageReference) {
             await load()
         }
@@ -97,6 +100,13 @@ struct ImageDetailView: View {
             },
             tabWidth: { category in
                 category == .inspect ? 750 : 650
+            },
+            tabMaxHeight: { category in
+                switch category {
+                case .overview: nil
+                case .history: 430
+                case .inspect: 500
+                }
             },
             tabContent: { category in
                 switch category {
@@ -191,7 +201,7 @@ struct ImageDetailView: View {
             do {
                 try await imageManager.delete(images: [image.imageDescription])
                 dismissWindow(
-                    id: ContainersApp.imageDetailWindowId,
+                    id: ContainersApp.imageDetailWindowID,
                     value: image.imageDescription.reference
                 )
             } catch {

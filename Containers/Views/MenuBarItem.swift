@@ -17,8 +17,12 @@ struct MenuBarItem: View {
     @State private var isTogglingSystem: Bool = false
     @State private var isReloading: Bool = false
 
+    private var isSystemRunning: Bool {
+        system.status == .running
+    }
+
     var body: some View {
-        StatusButton(isRunning: system.isRunning)
+        StatusButton(isRunning: isSystemRunning)
 
         Divider()
 
@@ -28,7 +32,7 @@ struct MenuBarItem: View {
             keyEquivalent: "d"
         ) {
             NSApplication.shared.activate(ignoringOtherApps: true)
-            openWindow(id: ContainersApp.dashboardWindowId)
+            openWindow(id: ContainersApp.dashboardWindowID)
         }
 
         MenuButton(
@@ -43,8 +47,8 @@ struct MenuBarItem: View {
         Divider()
 
         MenuButton(
-            title: system.isRunning ? "Stop" : "Start",
-            icon: system.isRunning ? "stop.fill" : "play.fill",
+            title: isSystemRunning ? "Stop" : "Start",
+            icon: isSystemRunning ? "stop.fill" : "play.fill",
             isLoading: isTogglingSystem,
             isDisabled: isTogglingSystem || isReloading
         ) {
@@ -54,7 +58,7 @@ struct MenuBarItem: View {
                 defer { isTogglingSystem = false }
 
                 do {
-                    if system.isRunning {
+                    if isSystemRunning {
                         try await system.stop()
                     } else {
                         try await system.start(
@@ -62,7 +66,7 @@ struct MenuBarItem: View {
                         )
                     }
                 } catch {
-                    openWindow(id: ContainersApp.dashboardWindowId)
+                    openWindow(id: ContainersApp.dashboardWindowID)
                 }
             }
         }
@@ -71,7 +75,7 @@ struct MenuBarItem: View {
             title: "Reload",
             icon: "arrow.clockwise",
             isLoading: isReloading,
-            isDisabled: isTogglingSystem || isReloading || !system.isRunning
+            isDisabled: isTogglingSystem || isReloading || !isSystemRunning
         ) {
             Task { @MainActor in
                 isReloading = true
@@ -84,7 +88,7 @@ struct MenuBarItem: View {
                         appRoot: UserDefaults.applicationDataRoot
                     )
                 } catch {
-                    openWindow(id: ContainersApp.dashboardWindowId)
+                    openWindow(id: ContainersApp.dashboardWindowID)
                 }
             }
         }

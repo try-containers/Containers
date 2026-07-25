@@ -15,7 +15,7 @@ struct ContainerViewModel: Identifiable, Hashable, Equatable {
     var id: String
     var name: String { id }
     var imageName: String
-    var status: RuntimeStatus
+    var status: ContainerStatus
     var ports: String
     var ipAddress: String?
     var os: String

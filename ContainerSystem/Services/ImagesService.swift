@@ -16,14 +16,13 @@ import Foundation
 import Logging
 
 /// A service that manages container images, wrapping ImageStore and EXT4Unpacker.
-internal actor ImagesService {
-
+actor ImagesService {
     private let imageStore: ImageStore
     private let contentStore: ContentStore
     private let snapshotsPath: URL
     private let log: Logger
 
-    internal init(
+    init(
         contentStore: ContentStore,
         imageStore: ImageStore,
         snapshotsPath: URL,
@@ -43,13 +42,13 @@ internal actor ImagesService {
     // MARK: - Internal API
 
     /// List all images in the store.
-    internal func list() async throws -> [ImageDescription] {
+    func list() async throws -> [ImageDescription] {
         let images = try await imageStore.list()
         return images.map { $0.description }
     }
 
     /// Pull an image from a remote registry.
-    internal func pull(
+    func pull(
         reference: String,
         platform: Platform?,
         insecure: Bool,
@@ -70,7 +69,7 @@ internal actor ImagesService {
     }
 
     /// Unpack an image to an EXT4 block device for use as a container rootfs.
-    internal func unpack(
+    func unpack(
         description: ImageDescription,
         platform: Platform?,
         progressUpdate: ProgressHandler?
@@ -99,7 +98,7 @@ internal actor ImagesService {
     }
 
     /// Get a Filesystem representing the unpacked image snapshot.
-    internal func getImageSnapshot(
+    func getImageSnapshot(
         description: ImageDescription,
         platform: Platform
     ) async throws -> Filesystem {
@@ -122,7 +121,7 @@ internal actor ImagesService {
     }
 
     /// Load images from an OCI layout directory on disk.
-    internal func load(
+    func load(
         from directory: URL,
         force: Bool = false
     ) async throws -> ([ImageDescription], [String]) {
@@ -133,7 +132,7 @@ internal actor ImagesService {
     }
 
     /// Tag an image with a new reference.
-    internal func tag(existing: String, new: String) async throws
+    func tag(existing: String, new: String) async throws
         -> ImageDescription
     {
         let image = try await imageStore.tag(existing: existing, new: new)
@@ -141,7 +140,7 @@ internal actor ImagesService {
     }
 
     /// Save images to an OCI layout directory.
-    internal func save(references: [String], out: URL, platform: Platform?)
+    func save(references: [String], out: URL, platform: Platform?)
         async throws
     {
         try await imageStore.save(
@@ -152,7 +151,7 @@ internal actor ImagesService {
     }
 
     /// Push an image to a remote registry.
-    internal func push(
+    func push(
         reference: String,
         platform: Platform?,
         insecure: Bool,
@@ -171,7 +170,7 @@ internal actor ImagesService {
     }
 
     /// Delete an image by reference.
-    internal func delete(reference: String, garbageCollect: Bool = false)
+    func delete(reference: String, garbageCollect: Bool = false)
         async throws
     {
         try await imageStore.delete(

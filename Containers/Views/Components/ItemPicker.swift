@@ -20,12 +20,14 @@ struct ItemPicker: View {
 
     @State private var searchText = ""
     @State private var selectedID: String?
-    
+
     @Environment(\.dismiss) private var dismiss
 
     private var filteredItems: [Item] {
         let sorted = items.sorted { $0.label < $1.label }
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard
+            !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
             return sorted
         }
         return sorted.filter {

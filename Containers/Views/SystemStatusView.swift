@@ -12,7 +12,7 @@ struct SystemStatusView: View {
     @Environment(SystemManager.self) private var system
 
     var body: some View {
-        switch system.systemStatus {
+        switch system.status {
         case .starting:
             startingView
         case .stopping:

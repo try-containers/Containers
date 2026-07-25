@@ -7,7 +7,9 @@
 
 import SwiftUI
 
-struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>: View {
+struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
+    View
+{
     let title: String
     let errorMessage: Binding<String?>
     let isProcessing: Bool
@@ -20,7 +22,6 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>: V
     let contentID: AnyHashable?
     let contentTransition: AnyTransition
     let contentPadding: CGFloat
-    let onCancel: () -> Void
     let tabBar: TabBar
     let content: Content
     let actions: Actions
@@ -39,7 +40,6 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>: V
         contentPadding: CGFloat = 20,
         contentID: AnyHashable? = nil,
         contentTransition: AnyTransition = .identity,
-        onCancel: @escaping () -> Void,
         @ViewBuilder tabBar: () -> TabBar = { EmptyView() },
         @ViewBuilder content: () -> Content,
         @ViewBuilder actions: () -> Actions,
@@ -57,7 +57,6 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>: V
         self.contentPadding = contentPadding
         self.contentID = contentID
         self.contentTransition = contentTransition
-        self.onCancel = onCancel
         self.tabBar = tabBar()
         self.content = content()
         self.actions = actions()
@@ -173,13 +172,6 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>: V
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Spacer()
-
-            Button("Cancel") {
-                onCancel()
-            }
-            .buttonStyle(.bordered)
-
             actions
         }
         .controlSize(.regular)
@@ -216,7 +208,9 @@ where Tab.RawValue == String {
             selection = tab
         } label: {
             Text(tab.rawValue)
-                .foregroundStyle(tab == selection ? Color.accentColor : .primary)
+                .foregroundStyle(
+                    tab == selection ? Color.accentColor : .primary
+                )
                 .padding(.horizontal, 10)
                 .padding(.vertical, 3)
                 .background(
@@ -239,4 +233,3 @@ where Tab.RawValue == String {
         }
     }
 }
-

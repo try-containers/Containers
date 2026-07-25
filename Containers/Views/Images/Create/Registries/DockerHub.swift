@@ -153,7 +153,7 @@ enum DockerHubRegistrySuggestions {
         components.host = "hub.docker.com"
         components.path = "/api/content/v1/products/search"
         components.queryItems = [
-            URLQueryItem(name: "page_size", value: "5"),
+            URLQueryItem(name: "page_size", value: "25"),
             URLQueryItem(name: "q", value: ""),
             URLQueryItem(name: "source", value: "community"),
             URLQueryItem(name: "type", value: "image,model"),

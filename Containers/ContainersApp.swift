@@ -46,16 +46,16 @@ struct ContainersApp: App {
     @State private var systemManager = SystemManager()
     @State private var networkManager = NetworkManager()
 
-    static let dashboardWindowId = "dashboard"
-    static let settingsWindowId = "settings"
-    static let containerDetailWindowId = "container-detail"
-    static let imageDetailWindowId = "image-detail"
-    static let volumeDetailWindowId = "volume-detail"
+    static let dashboardWindowID = "dashboard"
+    static let settingsWindowID = "settings"
+    static let containerDetailWindowID = "container-detail"
+    static let imageDetailWindowID = "image-detail"
+    static let volumeDetailWindowID = "volume-detail"
 
     var body: some Scene {
         Window(
             "Containers",
-            id: Self.dashboardWindowId,
+            id: Self.dashboardWindowID,
             content: {
                 DashboardView()
                     .environment(containerManager)
@@ -79,12 +79,12 @@ struct ContainersApp: App {
                     .environment(systemManager)
             },
             label: {
-                Image(systemManager.isRunning ? "server.play" : "server.pause")
+                Image(systemManager.status == .running ? "server.play" : "server.pause")
             }
         )
         .menuBarExtraStyle(.menu)
 
-        Window("Settings", id: Self.settingsWindowId) {
+        Window("Settings", id: Self.settingsWindowID) {
             SettingsView()
                 .environment(networkManager)
                 .environment(systemManager)
@@ -95,21 +95,21 @@ struct ContainersApp: App {
 
         WindowGroup(
             "Container Details",
-            id: Self.containerDetailWindowId,
+            id: Self.containerDetailWindowID,
             for: String.self
         ) { $id in
             if let id {
-                ContainerDetailWindow(containerID: id)
+                ContainerDetailWindow(id: id)
                     .environment(containerManager)
                     .environment(volumeManager)
             }
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .commandsRemoved()
 
         WindowGroup(
             "Image Details",
-            id: Self.imageDetailWindowId,
+            id: Self.imageDetailWindowID,
             for: String.self
         ) { $reference in
             if let reference {
@@ -118,20 +118,20 @@ struct ContainersApp: App {
                     .environment(containerManager)
             }
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .commandsRemoved()
 
         WindowGroup(
             "Volume Details",
-            id: Self.volumeDetailWindowId,
+            id: Self.volumeDetailWindowID,
             for: String.self
         ) { $volumeID in
             if let volumeID {
-                VolumeDetailWindow(volumeID: volumeID)
+                VolumeDetailWindow(id: volumeID)
                     .environment(volumeManager)
             }
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .commandsRemoved()
 
     }
@@ -141,7 +141,7 @@ struct ContainersApp: App {
         var body: some Commands {
             CommandGroup(replacing: .appSettings) {
                 Button {
-                    openWindow(id: ContainersApp.settingsWindowId)
+                    openWindow(id: ContainersApp.settingsWindowID)
                 } label: {
                     Label("Settings...", systemImage: "gearshape")
                 }

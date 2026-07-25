@@ -6,11 +6,9 @@
 //
 import SwiftUI
 
-private let editableFieldActionSentinel = "§__editablefield_action__§"
-
 enum EditableFormLayout {
     static let labelWidth: CGFloat = 150
-    static let controlWidth: CGFloat = 360
+    static let controlWidth: CGFloat = 260
     static let fieldLabelTopPadding: CGFloat = 5
 }
 
@@ -34,6 +32,8 @@ where Format.FormatOutput == String {
     let action: (() -> Void)?
     let selectionActionTitle: String?
     let onSelectionAction: (() -> Void)?
+
+    private let editableFieldActionSentinel = "§__editablefield_action__§"
 
     init(
         title: String? = nil,
@@ -114,6 +114,10 @@ where Format.FormatOutput == String {
 
                     if let selection {
                         Picker(placeholder, selection: selection) {
+                            if !options.contains(selection.wrappedValue) {
+                                Text(placeholder).tag(selection.wrappedValue)
+                                Divider()
+                            }
                             ForEach(options, id: \.self) { option in
                                 if let unit = option as? Unit {
                                     Text(unit.symbol).tag(option)

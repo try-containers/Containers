@@ -13,7 +13,7 @@ import SwiftUI
 struct ContainerDetailWindow: View {
     @Environment(ContainerManager.self) private var containerManager
 
-    let containerID: String
+    let id: String
 
     @SwiftUI.State private var snapshot: ContainerSnapshot?
     @SwiftUI.State private var isLoading: Bool = true
@@ -36,14 +36,14 @@ struct ContainerDetailWindow: View {
                     systemImage: "shippingbox",
                     description: Text(
                         loadError?.localizedDescription
-                            ?? "The container '\(containerID)' no longer exists."
+                            ?? "The container '\(id)' no longer exists."
                     )
                 )
                 .frame(width: 550, height: 320)
             }
         }
-        .navigationTitle(containerID)
-        .task(id: containerID) {
+        .navigationTitle(id)
+        .task(id: id) {
             await load()
         }
     }
@@ -53,7 +53,7 @@ struct ContainerDetailWindow: View {
         defer { isLoading = false }
 
         do {
-            snapshot = try await containerManager.get(id: containerID)
+            snapshot = try await containerManager.get(id: id)
             loadError = nil
         } catch {
             snapshot = nil
@@ -69,7 +69,7 @@ struct ContainerDetailView: View {
 
     @SwiftUI.State private var container: ContainerViewModel
     @SwiftUI.State private var snapshot: ContainerSnapshot?
-    @SwiftUI.State private var status: RuntimeStatus
+    @SwiftUI.State private var status: ContainerStatus
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
     @SwiftUI.State private var error: Error?
     @SwiftUI.State private var showError: Bool = false
@@ -108,6 +108,13 @@ struct ContainerDetailView: View {
                 case .overview: "info.circle"
                 case .logs: "list.bullet.rectangle"
                 case .inspect: "curlybraces"
+                }
+            },
+            tabMaxHeight: { tab in
+                switch tab {
+                case .overview: nil
+                case .logs: 560
+                case .inspect: 500
                 }
             },
             tabContent: { tab in
@@ -151,7 +158,7 @@ struct ContainerDetailView: View {
                 ) ?? [],
                 onMount: { volume, destination in
                     try await containerManager.mountVolume(
-                        containerID: container.id,
+                        id: container.id,
                         volume: volume,
                         destination: destination
                     )
@@ -175,7 +182,7 @@ struct ContainerDetailView: View {
 
                         error = nil
                         dismissWindow(
-                            id: ContainersApp.containerDetailWindowId,
+                            id: ContainersApp.containerDetailWindowID,
                             value: container.id
                         )
                     } catch {
@@ -245,7 +252,7 @@ struct ContainerDetailView: View {
                     help: "Start container",
                     isEnabled: !busy
                 ) {
-                    startContainer()
+                    runContainer()
                 }
             )
             result.append(
@@ -301,7 +308,7 @@ struct ContainerDetailView: View {
         }
     }
 
-    private func startContainer() {
+    private func runContainer() {
         Task {
             isOperationInProgress = true
 
@@ -310,7 +317,7 @@ struct ContainerDetailView: View {
             }
 
             do {
-                try await containerManager.start(
+                try await containerManager.run(
                     id: container.id,
                     attachStdout: false,
                     attachStdin: false

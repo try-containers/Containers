@@ -154,7 +154,7 @@ struct SettingsView: View {
                         Image(systemName: "folder")
                     }
                     .help("Choose")
-                    .disabled(system.isRunning)
+                    .disabled(system.status == .running)
                 }
 
                 Text(
@@ -171,7 +171,7 @@ struct SettingsView: View {
 
                     Button("Use Default", action: resetStorageLocation)
                         .disabled(
-                            system.isRunning
+                            system.status == .running
                                 || UserDefaults.usesDefaultApplicationDataRoot
                         )
                 }

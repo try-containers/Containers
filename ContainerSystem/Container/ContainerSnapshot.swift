@@ -7,7 +7,7 @@ import ContainerizationOCI
 import Foundation
 
 /// Runtime status of a container.
-public enum RuntimeStatus: String, Sendable, Codable, Hashable {
+public enum ContainerStatus: String, Sendable, Codable, Hashable {
     case running
     case stopped
     case stopping
@@ -17,7 +17,7 @@ public enum RuntimeStatus: String, Sendable, Codable, Hashable {
 /// A snapshot of a container's current state.
 public struct ContainerSnapshot: Sendable, Codable {
     public var configuration: ContainerConfiguration
-    public var status: RuntimeStatus
+    public var status: ContainerStatus
     public var networks: [Attachment]
     public var startedDate: Date?
 
@@ -39,7 +39,7 @@ public struct ContainerSnapshot: Sendable, Codable {
 
     public init(
         configuration: ContainerConfiguration,
-        status: RuntimeStatus,
+        status: ContainerStatus,
         networks: [Attachment],
         startedDate: Date? = nil
     ) {

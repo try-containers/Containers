@@ -10,7 +10,8 @@ import SwiftUI
 
 struct VolumeDetailWindow: View {
     @Environment(VolumeManager.self) private var volumeManager
-    let volumeID: String
+
+    let id: String
 
     @SwiftUI.State private var volume: VolumeViewModel?
     @SwiftUI.State private var isLoading: Bool = true
@@ -28,14 +29,17 @@ struct VolumeDetailWindow: View {
                     "Volume Not Found",
                     systemImage: "externaldrive",
                     description: Text(
-                        "The volume '\(volumeID)' no longer exists."
+                        "The volume '\(id)' no longer exists."
                     )
                 )
                 .frame(width: 550, height: 320)
             }
         }
-        .navigationTitle(volume?.name ?? "Volume")
-        .task(id: volumeID) {
+        .navigationTitle(
+            volume.map { Text($0.name) }
+                ?? Text("Volume")
+        )
+        .task(id: id) {
             await load()
         }
     }
@@ -46,7 +50,7 @@ struct VolumeDetailWindow: View {
 
         do {
             let items = try await volumeManager.listWithUsage()
-            if let match = items.first(where: { $0.volume.id == volumeID }) {
+            if let match = items.first(where: { $0.volume.id == id }) {
                 self.volume = VolumeViewModel(match)
             } else {
                 self.volume = nil
@@ -77,6 +81,12 @@ struct VolumeDetailView: View {
                 switch category {
                 case .overview: "info.circle"
                 case .inspect: "curlybraces"
+                }
+            },
+            tabMaxHeight: { category in
+                switch category {
+                case .overview: nil
+                case .inspect: 500
                 }
             },
             tabContent: { category in

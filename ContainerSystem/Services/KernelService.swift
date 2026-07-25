@@ -13,12 +13,11 @@ import Foundation
 import Logging
 
 /// Service for managing Linux kernel binaries used by container VMs.
-internal actor KernelService {
-
+actor KernelService {
     private let log: Logger
     private let kernelsRoot: URL
 
-    internal init(log: Logger, appRoot: URL) throws {
+    init(log: Logger, appRoot: URL) throws {
         self.log = log
         self.kernelsRoot = appRoot.appendingPathComponent("kernels")
 
@@ -29,7 +28,7 @@ internal actor KernelService {
     }
 
     /// Get the default kernel for the given platform.
-    internal func getDefaultKernel(platform: SystemPlatform) async throws
+    func getDefaultKernel(platform: SystemPlatform) async throws
         -> Kernel
     {
         let kernelPath = kernelsRoot.appendingPathComponent(
@@ -48,7 +47,7 @@ internal actor KernelService {
     }
 
     /// Install a kernel binary for the given platform.
-    internal func installKernel(
+    func installKernel(
         kernelFile: URL,
         platform: SystemPlatform,
         force: Bool = false

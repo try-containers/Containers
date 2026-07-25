@@ -59,6 +59,8 @@ struct DashboardView: View {
     @SwiftUI.State private var showError: Bool = false
 
     // Sheet presentation state for creating new items
+    @SwiftUI.State private var showWhatsNew: Bool = false
+    @SwiftUI.State private var isFirstLaunch: Bool = false
     @SwiftUI.State private var showCreateContainerView: Bool = false
     @SwiftUI.State private var showCreateVolumeView: Bool = false
     @SwiftUI.State private var showCreateImageView: Bool = false
@@ -74,6 +76,8 @@ struct DashboardView: View {
 
     // Resource usage state
     @SwiftUI.State private var resources = ResourcesViewModel()
+
+    private var isSystemRunning: Bool { system.status == .running }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -115,9 +119,9 @@ struct DashboardView: View {
                 }
             }
             .tabViewStyle(.automatic)
-            .disabled(!system.isRunning)
+            .disabled(!isSystemRunning)
             .overlay {
-                if !system.isRunning {
+                if !isSystemRunning {
                     SystemStatusView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color(nsColor: .windowBackgroundColor))
@@ -133,7 +137,7 @@ struct DashboardView: View {
                             }
                         )
                         .toggleStyle(.button)
-                        .disabled(!system.isRunning)
+                        .disabled(!isSystemRunning)
                         .help("Running containers only")
                     }
                 }
@@ -147,7 +151,7 @@ struct DashboardView: View {
                             Image(systemName: "plus")
                         }
                     )
-                    .disabled(!system.isRunning)
+                    .disabled(!isSystemRunning)
                     .help("New")
                 }
 
@@ -157,11 +161,17 @@ struct DashboardView: View {
                     TextField("Search", text: $searchText)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 220)
-                        .disabled(!system.isRunning)
+                        .disabled(!isSystemRunning)
+                }
+            }
+            .onAppear {
+                if UserDefaults.shouldShowWhatsNew {
+                    isFirstLaunch = UserDefaults.lastSeenVersion.isEmpty
+                    showWhatsNew = true
                 }
             }
             .task {
-                guard !self.system.isRunning else {
+                guard !self.isSystemRunning else {
                     return
                 }
 
@@ -198,6 +208,12 @@ struct DashboardView: View {
                         .lineLimit(5)
                 }
             )
+            .sheet(isPresented: $showWhatsNew) {
+                WhatsNewView(isFirstLaunch: isFirstLaunch) {
+                    UserDefaults.markCurrentVersionSeen()
+                    showWhatsNew = false
+                }
+            }
             .sheet(
                 isPresented: $showCreateContainerView,
                 onDismiss: {
@@ -228,7 +244,7 @@ struct DashboardView: View {
 
             statusBar
         }
-        .frame(minWidth: 800, minHeight: 520)
+        .frame(minWidth: 800, minHeight: 320)
         .background(DashboardToolbarConfigurator())
     }
 
@@ -252,7 +268,7 @@ struct DashboardView: View {
                     action: {
                         Task {
                             do {
-                                if system.systemStatus == .running {
+                                if isSystemRunning {
                                     try await system.stop()
                                 } else {
                                     try await startSystem()
@@ -267,7 +283,7 @@ struct DashboardView: View {
                     },
                     label: {
                         Image(
-                            systemName: system.systemStatus == .running
+                            systemName: isSystemRunning
                                 ? "stop.fill" : "play.fill"
                         )
                         .font(.caption)
@@ -275,12 +291,11 @@ struct DashboardView: View {
                 )
                 .buttonStyle(.plain)
                 .disabled(
-                    system.systemStatus == .starting
-                        || system.systemStatus == .stopping
+                    system.status == .starting || system.status == .stopping
                 )
 
                 // Restart button (only visible when running)
-                if system.systemStatus == .running {
+                if system.status == .running {
                     Button(
                         action: {
                             Task {
@@ -302,8 +317,7 @@ struct DashboardView: View {
                     )
                     .buttonStyle(.plain)
                     .disabled(
-                        system.systemStatus == .starting
-                            || system.systemStatus == .stopping
+                        system.status == .starting || system.status == .stopping
                     )
                 }
             }
@@ -360,7 +374,7 @@ struct DashboardView: View {
     }
 
     private var statusColor: Color {
-        switch system.systemStatus {
+        switch system.status {
         case .running:
             return Color(nsColor: .systemGreen)
         case .starting, .stopping:
@@ -371,22 +385,22 @@ struct DashboardView: View {
     }
 
     private var statusMessage: String {
-        switch system.systemStatus {
+        switch system.status {
         case .running:
-            return "Container system is running"
+            return "System is running"
         case .starting:
-            return "Starting container system..."
+            return "Starting system..."
         case .stopping:
-            return "Stopping container system..."
+            return "Stopping system..."
         case .notStarted:
-            return "Container system is not started"
+            return "System is not started"
         case .failed:
-            return "Container system failed to start"
+            return "System failed to start"
         }
     }
 
     private func handlePlusButton() {
-        guard system.isRunning else { return }
+        guard system.status == .running else { return }
 
         switch selectedTab {
         case .containers:
@@ -399,7 +413,7 @@ struct DashboardView: View {
     }
 
     private func updateResourceUsage() async {
-        guard system.isRunning else {
+        guard system.status == .running else {
             resources = ResourcesViewModel(
                 memoryUsage: 0,
                 cpuUsage: 0,

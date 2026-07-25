@@ -29,6 +29,7 @@ struct PullImageView: View {
     @SwiftUI.State private var registry: Registry = .dockerHub
     @SwiftUI.State private var registryFeaturedImages: [ImageSuggestion] = []
     @SwiftUI.State private var registryFeaturedImageTask: Task<Void, Never>?
+    @SwiftUI.State private var featuredImagePage: Int = 0
     @SwiftUI.State private var registryImageSuggestions: [String] = []
     @SwiftUI.State private var registryImageSuggestionTask: Task<Void, Never>?
     @SwiftUI.State private var registryTagSuggestions: [String] = []
@@ -94,6 +95,19 @@ struct PullImageView: View {
         }
     }
 
+    private let featuredImagesPerPage = 5
+
+    private var featuredPageCount: Int {
+        max(1, (registryFeaturedImages.count + featuredImagesPerPage - 1) / featuredImagesPerPage)
+    }
+
+    private var currentPageImages: [ImageSuggestion] {
+        let start = featuredImagePage * featuredImagesPerPage
+        let end = min(start + featuredImagesPerPage, registryFeaturedImages.count)
+        guard start < end else { return [] }
+        return Array(registryFeaturedImages[start..<end])
+    }
+
     private var duplicateFeaturedImageURLs: Set<URL> {
         let urls = registryFeaturedImages.compactMap(\.imageURL)
         let groupedURLs = Dictionary(grouping: urls, by: { $0 })
@@ -113,41 +127,67 @@ struct PullImageView: View {
                 .foregroundStyle(.secondary)
 
             if !registryFeaturedImages.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(registryFeaturedImages.prefix(5)) { image in
-                        Button {
-                            selectRegistryImage(image.name)
-                        } label: {
-                            VStack(alignment: .center, spacing: 6) {
-                                registryImageArtwork(for: image)
+                HStack(spacing: 4) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            featuredImagePage -= 1
+                        }
+                    } label: {
+                        Image(systemName: "arrow.left.circle.fill")
+                            .imageScale(.large)
+                            .foregroundStyle(featuredImagePage == 0 ? Color(nsColor: .separatorColor) : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(featuredImagePage == 0)
 
-                                Text(image.name)
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity)
+                    HStack(spacing: 8) {
+                        ForEach(currentPageImages) { image in
+                            Button {
+                                selectRegistryImage(image.name)
+                            } label: {
+                                VStack(alignment: .center, spacing: 6) {
+                                    registryImageArtwork(for: image)
 
-                                if let publisher = image.publisher {
-                                    Text(publisher)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                    Text(image.name)
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
                                         .lineLimit(1)
                                         .frame(maxWidth: .infinity)
+
+                                    if let publisher = image.publisher {
+                                        Text(publisher)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                }
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, minHeight: 92)
+                                .padding(8)
+                                .background(Color(nsColor: .controlBackgroundColor))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color(nsColor: .separatorColor))
                                 }
                             }
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity, minHeight: 92)
-                            .padding(8)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color(nsColor: .separatorColor))
-                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.plain)
-                        .frame(maxWidth: .infinity)
                     }
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            featuredImagePage += 1
+                        }
+                    } label: {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .imageScale(.large)
+                            .foregroundStyle(featuredImagePage >= featuredPageCount - 1 ? Color(nsColor: .separatorColor) : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(featuredImagePage >= featuredPageCount - 1)
                 }
             } else if isLoadingRegistryFeaturedImages {
                 ProgressView()
@@ -345,6 +385,7 @@ struct PullImageView: View {
         registryFeaturedImageTask?.cancel()
         registryFeaturedImageTask = nil
         registryFeaturedImages = []
+        featuredImagePage = 0
         isLoadingRegistryFeaturedImages = false
         clearRegistryImageSuggestions()
         clearRegistryTagSuggestions()

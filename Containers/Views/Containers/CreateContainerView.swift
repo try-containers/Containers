@@ -144,7 +144,6 @@ struct CreateContainerView: View {
             height: 460,
             scrollsContent: selectedTab == .options,
             contentPadding: selectedTab == .info ? 20 : 0,
-            onCancel: { dismiss() },
             tabBar: {
                 CreateViewTabBar(selection: $selectedTab)
             },
@@ -152,6 +151,9 @@ struct CreateContainerView: View {
                 tabContent
             },
             actions: {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
                 Button(mode.buttonTitle) {
                     createContainer()
                 }
@@ -742,7 +744,7 @@ struct CreateContainerView: View {
                 )
 
                 if mode == .run {
-                    try await containerManager.start(id: containerID)
+                    try await containerManager.run(id: containerID)
                 }
 
                 dismiss()
@@ -845,6 +847,9 @@ private struct VolumeRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Picker("Volume", selection: $volumeName) {
+                        if volumeName.isEmpty {
+                            Text("Select a volume...").tag("")
+                        }
                         ForEach(availableVolumes, id: \.name) { volume in
                             Text(volume.name).tag(volume.name)
                         }

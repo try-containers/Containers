@@ -86,28 +86,34 @@ struct CreateImageView: View {
             contentAlignment: .center,
             contentID: currentStep,
             contentTransition: stepTransition,
-            onCancel: {
-                if isCreating {
-                    cancelCreation()
-                } else {
-                    dismiss()
-                }
-            },
             content: {
                 currentStepContent
                     .multilineTextAlignment(.leading)
             },
             actions: {
-                if currentStep.rawValue > 0 && !isCreating {
-                    Button(
-                        action: previousStep,
-                        label: {
-                            Text("Back")
-                                .padding(.horizontal, 2)
-                        }
-                    )
+                if !isCreating {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Button("Cancel") {
+                        cancelCreation()
+                    }
                     .buttonStyle(.bordered)
                 }
+
+                Spacer()
+
+                Button(
+                    action: previousStep,
+                    label: {
+                        Text("Previous")
+                            .padding(.horizontal, 2)
+                    }
+                )
+                .buttonStyle(.bordered)
+                .disabled(currentStep.rawValue == 0 || isCreating)
 
                 if !isCreating {
                     switch currentStep {
@@ -144,12 +150,12 @@ struct CreateImageView: View {
     private var currentStepContent: some View {
         switch currentStep {
         case .method:
-            CreateImageMethodStep(
+            CreateImageMethod(
                 selectedMethod: $selectedMethod,
                 onSelection: selectCreationMethod
             )
         case .configuration:
-            CreateImageConfigurationStep(
+            CreateImageConfiguration(
                 selectedMethod: selectedMethod,
                 defaultFileDialogDirectory:
                     defaultFileDialogDirectory,

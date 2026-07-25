@@ -2,7 +2,7 @@
 //  ContainersService.swift
 //  Containers
 //
-//  A containers service that runs LinuxContainer directly in-process,
+//  A containers service that runs LinuxContainer.
 //
 //  Created by Axel Martinez on 2026/02/04.
 //
@@ -94,7 +94,7 @@ extension Filesystem {
 }
 
 /// A sandbox-compatible containers service that runs LinuxContainer in-process.
-internal actor ContainersService {
+actor ContainersService {
 
     private struct ContainerState {
         var snapshot: ContainerSnapshot
@@ -116,13 +116,13 @@ internal actor ContainersService {
     private var stateChangeCallbacks: [@Sendable @MainActor () -> Void] = []
 
     /// Register a callback to be invoked when container state changes
-    internal func addStateChangeCallback(
+    func addStateChangeCallback(
         _ callback: @escaping @Sendable @MainActor () -> Void
     ) {
         stateChangeCallbacks.append(callback)
     }
 
-    internal init(appRoot: URL, imagesService: ImagesService, log: Logger)
+    init(appRoot: URL, imagesService: ImagesService, log: Logger)
         throws
     {
         let containerRoot = appRoot.appendingPathComponent("containers")
@@ -184,15 +184,15 @@ internal actor ContainersService {
 
     // MARK: - Internal API
 
-    internal func list() async -> [ContainerSnapshot] {
+    func list() async -> [ContainerSnapshot] {
         containers.values.map { $0.snapshot }.sorted {
             $0.configuration.id < $1.configuration.id
         }
     }
 
     /// List containers with optional filters.
-    internal func list(
-        status: RuntimeStatus? = nil,
+    func list(
+        status: ContainerStatus? = nil,
         labelFilter: [String: String]? = nil,
         namePattern: String? = nil
     ) async -> [ContainerSnapshot] {
@@ -219,7 +219,7 @@ internal actor ContainersService {
         return results.sorted { $0.configuration.id < $1.configuration.id }
     }
 
-    internal func create(
+    func create(
         configuration: ContainerConfiguration,
         kernel: Kernel,
         options: ContainerCreateOptions
@@ -276,7 +276,7 @@ internal actor ContainersService {
         }
     }
 
-    internal func bootstrap(id: String, stdio: [FileHandle?]) async throws {
+    func bootstrap(id: String, stdio: [FileHandle?]) async throws {
         try await containerLock.withLock { _ in
             try await self._bootstrap(id: id, stdio: stdio)
         }
@@ -434,7 +434,7 @@ internal actor ContainersService {
         }
     }
 
-    internal func startProcess(id: String, processID: String) async throws {
+    func startProcess(id: String, processID: String) async throws {
         // Starting process in container
 
         guard var state = containers[id] else {
@@ -502,7 +502,7 @@ internal actor ContainersService {
         }
     }
 
-    internal func stop(id: String, options: ContainerStopOptions) async throws {
+    func stop(id: String, options: ContainerStopOptions) async throws {
         try await containerLock.withLock { _ in
             try await self._stop(id: id, options: options)
         }
@@ -548,7 +548,7 @@ internal actor ContainersService {
         notifyStateChange()
     }
 
-    internal func delete(id: String) async throws {
+    func delete(id: String) async throws {
         guard let state = containers[id] else {
             throw ContainerizationError(
                 .notFound,
@@ -572,7 +572,7 @@ internal actor ContainersService {
         notifyStateChange()
     }
 
-    internal func updateMounts(id: String, mounts: [Filesystem]) async throws {
+    func updateMounts(id: String, mounts: [Filesystem]) async throws {
         guard var state = containers[id] else {
             throw ContainerizationError(
                 .notFound,
@@ -602,7 +602,7 @@ internal actor ContainersService {
     }
 
     /// Execute a command in a running container and return its output (uses vsock, no networking needed).
-    internal func exec(id: String, arguments: [String]) async throws -> String {
+    func exec(id: String, arguments: [String]) async throws -> String {
         guard let state = containers[id], let container = state.container else {
             throw ContainerizationError(
                 .invalidState,
@@ -647,7 +647,7 @@ internal actor ContainersService {
         return output
     }
 
-    internal func dial(id: String, port: UInt32) async throws -> FileHandle {
+    func dial(id: String, port: UInt32) async throws -> FileHandle {
         guard let state = containers[id], let container = state.container else {
             throw ContainerizationError(
                 .invalidState,

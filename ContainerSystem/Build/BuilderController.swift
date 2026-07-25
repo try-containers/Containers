@@ -15,14 +15,14 @@ import Logging
 
 /// Coordinates the BuildKit builder container lifecycle.
 @MainActor
-internal final class BuilderController {
+final class BuilderController {
 
     private let runtime: ContainerRuntime
     private let logger: Logger
 
-    internal static let builderContainerId = Builder.builderContainerId
+    static let builderContainerId = Builder.builderContainerId
 
-    internal init() {
+    init() {
         self.runtime = ContainerRuntime.shared
         var logger = Logger(label: "app.containers.builder.controller")
         logger.logLevel = .info
@@ -31,7 +31,7 @@ internal final class BuilderController {
 
     #if DEBUG
     /// Internal initializer for testing - allows injection of test runtime
-    internal init(testRuntime: ContainerRuntime) {
+    init(testRuntime: ContainerRuntime) {
         self.runtime = testRuntime
         var logger = Logger(label: "app.containers.builder.controller.test")
         logger.logLevel = .debug
@@ -43,7 +43,7 @@ internal final class BuilderController {
 
     /// Start the BuildKit builder container
     /// This method is idempotent - if builder is already running, it will restart it to ensure fresh mounts
-    internal func start(cpus: Int64 = 2, memory: UInt64 = 1024.mib())
+    func start(cpus: Int64 = 2, memory: UInt64 = 1024.mib())
         async throws
     {
         logger.info("Starting builder with cpus=\(cpus), memory=\(memory)")
@@ -239,7 +239,7 @@ internal final class BuilderController {
     /// Restart the builder container to pick up fresh virtiofs mounts
     /// This is necessary when new subdirectories have been created in mounted paths
     /// because virtiofs in sandboxed apps doesn't dynamically show new subdirectories
-    internal func restart(cpus: Int64 = 2, memory: UInt64 = 1024.mib())
+    func restart(cpus: Int64 = 2, memory: UInt64 = 1024.mib())
         async throws
     {
         logger.info("Restarting builder to pick up fresh mounts")

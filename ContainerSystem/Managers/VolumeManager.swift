@@ -21,7 +21,7 @@ import SystemPackage
 public final class VolumeManager {
 
     /// Internal runtime reference (hidden from UI)
-    internal let runtime: ContainerRuntime
+    let runtime: ContainerRuntime
 
     private let logger: Logger
 
@@ -40,7 +40,7 @@ public final class VolumeManager {
 
     #if DEBUG
     /// Internal initializer for testing - allows injection of test runtime
-    internal init(testRuntime: ContainerRuntime) {
+    init(testRuntime: ContainerRuntime) {
         self.runtime = testRuntime
 
         var logger = Logger(label: "app.containers.manager.volumes.test")

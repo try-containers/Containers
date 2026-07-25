@@ -19,7 +19,8 @@ import Logging
 public final class ContainerManager {
 
     /// Internal runtime reference (hidden from UI)
-    internal let runtime: ContainerRuntime
+    let runtime: ContainerRuntime
+
     private let logger: Logger
     private static let internalContainerIDs: Set<String> = ["buildkit"]
 
@@ -44,13 +45,13 @@ public final class ContainerManager {
     }
 
     #if DEBUG
-    /// Internal initializer for testing - allows injection of test runtime
-    internal init(testRuntime: ContainerRuntime) {
-        self.runtime = testRuntime
-        var logger = Logger(label: "app.containers.manager.containers.test")
-        logger.logLevel = .debug
-        self.logger = logger
-    }
+        /// Internal initializer for testing - allows injection of test runtime
+        init(testRuntime: ContainerRuntime) {
+            self.runtime = testRuntime
+            var logger = Logger(label: "app.containers.manager.containers.test")
+            logger.logLevel = .debug
+            self.logger = logger
+        }
     #endif
 
     // MARK: - Public API
@@ -67,6 +68,10 @@ public final class ContainerManager {
     ) async throws -> String {
         let service = try await runtime.getContainersService()
         let containerID = try Self.createContainerID(name: container.name)
+        logger.info(
+            "Creating container",
+            metadata: ["id": "\(containerID)", "image": "\(imageReference)"]
+        )
         let existingContainers = await service.list()
         guard
             !existingContainers.contains(where: {
@@ -107,11 +112,12 @@ public final class ContainerManager {
         return configuration.id
     }
 
-    public func start(
+    public func run(
         id: String,
         attachStdout: Bool = false,
         attachStdin: Bool = false
     ) async throws {
+        logger.info("Starting container", metadata: ["id": "\(id)"])
         let service = try await runtime.getContainersService()
 
         do {
@@ -216,21 +222,28 @@ public final class ContainerManager {
     }
 
     public func mountVolume(
-        containerID: String,
+        id: String,
         volume: Volume,
         destination: String
     ) async throws {
+        logger.info(
+            "Mounting volume",
+            metadata: [
+                "container": "\(id)", "volume": "\(volume.name)",
+                "destination": "\(destination)",
+            ]
+        )
         let service = try await runtime.getContainersService()
         let snapshots = await service.list()
 
         guard
             let snapshot = snapshots.first(where: {
-                $0.configuration.id == containerID
+                $0.configuration.id == id
             })
         else {
             throw ContainerizationError(
                 .notFound,
-                message: "Container not found: \(containerID)"
+                message: "Container not found: \(id)"
             )
         }
 
@@ -270,7 +283,7 @@ public final class ContainerManager {
             )
         )
 
-        try await service.updateMounts(id: containerID, mounts: mounts)
+        try await service.updateMounts(id: id, mounts: mounts)
     }
 
     public func delete(ids: [String], force: Bool) async throws {
@@ -673,7 +686,8 @@ public final class ContainerManager {
         let fqdn: String?
         if !containerId.contains(".") {
             // add default domain if it exists, and container ID is unqualified
-            if let dnsDomain = DefaultsStore.getOptional(key: .defaultDNSDomain) {
+            if let dnsDomain = DefaultsStore.getOptional(key: .defaultDNSDomain)
+            {
                 fqdn = "\(containerId).\(dnsDomain)."
             } else {
                 fqdn = nil
@@ -843,5 +857,4 @@ public final class ContainerManager {
         // Fallback to public DNS if /etc/resolv.conf is unavailable or has no nameservers
         return ["8.8.8.8", "1.1.1.1"]
     }
-
 }

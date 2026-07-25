@@ -15,10 +15,13 @@ struct ImageContainersView: View {
     let volume: VolumeViewModel?
 
     @Environment(ContainerManager.self) private var containerManager
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
 
     @SwiftUI.State private var containers: [ContainerViewModel]
     @SwiftUI.State private var isLoading: Bool
+    @SwiftUI.State private var filterText: String = ""
+    @SwiftUI.State private var hoveredID: String?
     @SwiftUI.State private var error: Error?
     @SwiftUI.State private var showError = false
 
@@ -43,48 +46,34 @@ struct ImageContainersView: View {
         self._isLoading = State(initialValue: false)
     }
 
+    private var filteredContainers: [ContainerViewModel] {
+        let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return containers }
+        return containers.filter {
+            $0.id.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-
-                    Text(statusText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(.secondary)
+                TextField("Filter", text: $filterText)
+                    .textFieldStyle(.plain)
             }
-            .padding(20)
-            .background(Color(nsColor: .controlBackgroundColor))
-
-            Divider()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(Color.white)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+            .padding(10)
 
             content
-
-            // Bottom bar
-            Divider()
-
-            HStack {
-                Spacer()
-
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Close")
-                        .frame(minWidth: 80)
-                }
-                .buttonStyle(.bordered)
-                .keyboardShortcut(.cancelAction)
-            }
-            .padding(16)
-            .background(Color(nsColor: .controlBackgroundColor))
         }
-        .frame(width: 600, height: 500)
+        .frame(width: 260)
         .task(id: taskID) {
             guard taskID != nil else { return }
             await loadContainers()
@@ -93,9 +82,7 @@ struct ImageContainersView: View {
             "Error",
             isPresented: $showError,
             actions: {
-                Button("OK") {
-                    self.showError = false
-                }
+                Button("OK") { showError = false }
             },
             message: {
                 if let error {
@@ -110,86 +97,81 @@ struct ImageContainersView: View {
         if isLoading {
             VStack(spacing: 12) {
                 ProgressView()
-                Text("Loading containers...")
+                Text("Loading...")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if containers.isEmpty {
-            ContentUnavailableView {
-                Label("No Containers", systemImage: "cube.fill")
-            } description: {
-                Text("No containers are currently using this image")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 80)
+            .padding(.bottom, 10)
+        } else if filteredContainers.isEmpty {
+            Text("No containers")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 60)
+                .padding(.bottom, 10)
         } else {
-            Table(
-                of: ContainerViewModel.self,
-                columns: {
-                    TableColumn("Name") { container in
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(
-                                    container.status == .running
-                                        ? Color.green : Color.red
-                                )
-                                .frame(width: 6, height: 6)
-
-                            Text(container.id)
-                                .font(.body)
-                                .fontWeight(.medium)
-                                .lineLimit(1)
-                        }
-                        .frame(height: 40)
-                    }
-                    .width(min: 120, ideal: 180, max: 300)
-
-                    TableColumn("Image") { container in
-                        Text(container.imageName)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    .width(min: 120, ideal: 160, max: 250)
-
-                    TableColumn("State") { container in
-                        Text(container.formattedState)
-                            .font(.subheadline)
-                            .foregroundStyle(
-                                container.status == .running
-                                    ? .primary : .secondary
+            ScrollView {
+                VStack(spacing: 2) {
+                    ForEach(filteredContainers) { container in
+                        Button {
+                            dismiss()
+                            openWindow(
+                                id: ContainersApp.containerDetailWindowID,
+                                value: container.id
                             )
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(container.id)
+                                    .font(.body)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .frame(
+                                        maxWidth: .infinity,
+                                        alignment: .leading
+                                    )
+                                    .foregroundStyle(
+                                        hoveredID == container.id
+                                            ? .white : .primary
+                                    )
+
+                                Spacer()
+
+                                Text(
+                                    container.status == .running
+                                        ? "Running" : "Stopped"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(
+                                    hoveredID == container.id
+                                        ? .white
+                                        : (container.status == .running
+                                            ? Color.green : .secondary)
+                                )
+                                .frame(width: 56, alignment: .leading)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .fill(
+                                        hoveredID == container.id
+                                            ? Color.accentColor : Color.clear
+                                    )
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 7))
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { hoveredID = $0 ? container.id : nil }
                     }
-                    .width(min: 64, ideal: 80, max: 100)
-
-                },
-                rows: {
-                    ForEach(containers)
                 }
-            )
-            .tableStyle(.inset)
-            .alternatingRowBackgrounds(.disabled)
+                .padding(.horizontal, 6)
+                .padding(.bottom, 8)
+            }
         }
-    }
-
-    private var title: String {
-        if image != nil {
-            return "Containers Using This Image"
-        }
-        return "Containers Using This Volume"
     }
 
     private var taskID: String? {
         image?.id ?? volume?.id
-    }
-
-    private var statusText: String {
-        guard !isLoading else {
-            return image?.imageDescription.reference ?? volume?.name ?? ""
-        }
-
-        return
-            "\(containers.count) \(containers.count == 1 ? "container" : "containers")"
     }
 
     @MainActor

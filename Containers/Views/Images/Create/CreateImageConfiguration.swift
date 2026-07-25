@@ -1,5 +1,5 @@
 //
-//  CreateImageConfigurationStep.swift
+//  CreateImageConfiguration.swift
 //  Containers
 //
 //  Created by Axel Martinez on 28/06/2026.
@@ -11,7 +11,7 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct CreateImageConfigurationStep: View {
+struct CreateImageConfiguration: View {
     let selectedMethod: CreateImageView.CreationMethod?
     let defaultFileDialogDirectory: URL?
     let tarContentTypes: [UTType]

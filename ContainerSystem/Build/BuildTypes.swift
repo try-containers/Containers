@@ -15,9 +15,9 @@ import Foundation
 extension Builder {
     /// Configuration for a build operation.
     public struct BuildConfig: Sendable {
-        public var buildID: String
+        public var id: String
         public var contentStore: ContentStore
-        public var buildArgs: [String]
+        public var args: [String]
         public var contextDir: String
         public var dockerfile: Data
         public var labels: [String]
@@ -32,9 +32,9 @@ extension Builder {
         public var cacheOut: [String]
 
         public init(
-            buildID: String,
+            id: String,
             contentStore: ContentStore,
-            buildArgs: [String] = [],
+            args: [String] = [],
             contextDir: String,
             dockerfile: Data,
             labels: [String] = [],
@@ -48,9 +48,9 @@ extension Builder {
             cacheIn: [String] = [],
             cacheOut: [String] = []
         ) {
-            self.buildID = buildID
+            self.id = id
             self.contentStore = contentStore
-            self.buildArgs = buildArgs
+            self.args = args
             self.contextDir = contextDir
             self.dockerfile = dockerfile
             self.labels = labels

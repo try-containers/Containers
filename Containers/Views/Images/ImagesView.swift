@@ -58,7 +58,7 @@ struct ImagesView: View {
             TableColumn("Name") { image in
                 Button(action: {
                     openWindow(
-                        id: ContainersApp.imageDetailWindowId,
+                        id: ContainersApp.imageDetailWindowID,
                         value: image.imageDescription.reference
                     )
                 }) {
@@ -100,6 +100,15 @@ struct ImagesView: View {
                         )
                         .buttonStyle(.link)
                         .pointerStyle(.link)
+                        .popover(
+                            isPresented: Binding(
+                                get: { showInUseContainerForImage?.id == image.id },
+                                set: { if !$0 { showInUseContainerForImage = nil } }
+                            ),
+                            arrowEdge: .bottom
+                        ) {
+                            ImageContainersView(image: image)
+                        }
                     } else {
                         Text("Unused")
                     }
@@ -154,12 +163,6 @@ struct ImagesView: View {
                     imageReference: image.imageDescription.reference,
                     mode: .run
                 )
-            }
-        )
-        .sheet(
-            item: $showInUseContainerForImage,
-            content: { image in
-                ImageContainersView(image: image)
             }
         )
         .alert(

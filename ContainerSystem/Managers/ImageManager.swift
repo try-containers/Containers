@@ -24,7 +24,8 @@ import Observation
 public final class ImageManager {
 
     /// Internal runtime reference (hidden from UI)
-    internal let runtime: ContainerRuntime
+    let runtime: ContainerRuntime
+
     private let logger: Logger
 
     /// Public initializer - creates instance referencing shared runtime
@@ -37,7 +38,7 @@ public final class ImageManager {
 
     #if DEBUG
     /// Internal initializer for testing - allows injection of test runtime
-    internal init(testRuntime: ContainerRuntime) {
+    init(testRuntime: ContainerRuntime) {
         self.runtime = testRuntime
         var logger = Logger(label: "app.containers.manager.images.test")
         logger.logLevel = .debug
@@ -211,11 +212,11 @@ public final class ImageManager {
         // STEP 1: Generate buildID and create export directory FIRST
         let dockerFileData = try Data(contentsOf: dockerFile)
         let exportPath = appRoot.appendingPathComponent(".build")
-        let buildID = UUID().uuidString
+        let id = UUID().uuidString
 
         // Create the buildID subdirectory for exports BEFORE starting builder
         // This ensures the directory exists when virtiofs mounts are established
-        let buildIDDir = exportPath.appendingPathComponent(buildID)
+        let buildIDDir = exportPath.appendingPathComponent(id)
         try FileManager.default.createDirectory(
             at: buildIDDir,
             withIntermediateDirectories: true,
@@ -230,7 +231,7 @@ public final class ImageManager {
 
         // Create a session directory for this build's context
         let buildSessionDir = exportPath.appendingPathComponent(
-            "session-\(buildID)"
+            "session-\(id)"
         )
         try FileManager.default.createDirectory(
             at: buildSessionDir,
@@ -387,9 +388,9 @@ public final class ImageManager {
         #endif
 
         let config = Builder.BuildConfig.init(
-            buildID: buildID,
+            id: id,
             contentStore: contentStore,
-            buildArgs: buildArguments.map { "\($0.key)=\($0.value)" },
+            args: buildArguments.map { "\($0.key)=\($0.value)" },
             contextDir: tempContextDir.path,
             dockerfile: dockerFileData,
             labels: labels.map { "\($0.key)=\($0.value)" },
@@ -405,7 +406,7 @@ public final class ImageManager {
         )
 
         logger.info(
-            "Starting sandboxed build with config: buildID=\(buildID), contextDir=\(tempContextDir.path)"
+            "Starting sandboxed build with config: buildID=\(id), contextDir=\(tempContextDir.path)"
         )
 
         // Use sandboxed builder which handles image resolution without XPC

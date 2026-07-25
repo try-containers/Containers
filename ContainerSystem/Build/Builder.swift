@@ -40,7 +40,7 @@ public struct Builder: Sendable {
 
     private let logger: Logger
 
-    internal init(
+    init(
         socket: FileHandle,
         group: EventLoopGroup,
         imagesService: ImagesService,
@@ -102,7 +102,7 @@ public struct Builder: Sendable {
     public func build(_ config: Builder.BuildConfig) async throws {
         let logger = Logger(label: "app.containers.sandboxed-builder.build")
         logger.info(
-            "SandboxedBuilder.build() called with buildID: \(config.buildID)"
+            "SandboxedBuilder.build() called with buildID: \(config.id)"
         )
 
         var continuation: AsyncStream<ClientStream>.Continuation?
@@ -123,7 +123,7 @@ public struct Builder: Sendable {
 
         logger.info("Creating gRPC stream to BuildKit")
         logger.info(
-            "Build config: buildID=\(config.buildID), contextDir=\(config.contextDir)"
+            "Build config: buildID=\(config.id), contextDir=\(config.contextDir)"
         )
         logger.info(
             "Build config: dockerfile size=\(config.dockerfile.count) bytes, tags=\(config.tags)"
@@ -199,7 +199,7 @@ public struct Builder: Sendable {
 
     static func buildMetadata(_ config: Builder.BuildConfig) throws -> Metadata {
         var metadata = Metadata()
-        metadata.addString(config.buildID, forKey: "build-id")
+        metadata.addString(config.id, forKey: "build-id")
         metadata.addString(
             URL(fileURLWithPath: config.contextDir).path(percentEncoded: false),
             forKey: "context"
@@ -223,7 +223,7 @@ public struct Builder: Sendable {
         for label in config.labels {
             metadata.addString(label, forKey: "labels")
         }
-        for buildArg in config.buildArgs {
+        for buildArg in config.args {
             metadata.addString(buildArg, forKey: "build-args")
         }
         for output in config.exports {

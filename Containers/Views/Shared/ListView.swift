@@ -43,14 +43,14 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if system.isRunning {
+            if system.status == .running {
                 styledTable
             } else {
                 SystemStatusView()
             }
         }
-        .onChange(of: system.isRunning, initial: true) {
-            guard system.isRunning else {
+        .onChange(of: system.status, initial: true) {
+            guard system.status == .running else {
                 onClear()
                 return
             }
@@ -67,7 +67,7 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
         }
         .onAppear {
             Task {
-                guard system.isRunning else { return }
+                guard system.status == .running else { return }
                 await onRefresh()
             }
         }

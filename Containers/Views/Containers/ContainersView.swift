@@ -65,7 +65,7 @@ struct ContainersView: View {
                 Button(
                     action: {
                         openWindow(
-                            id: ContainersApp.containerDetailWindowId,
+                            id: ContainersApp.containerDetailWindowID,
                             value: container.id
                         )
                     },
@@ -127,7 +127,8 @@ struct ContainersView: View {
                                         try await containerManager.stop(
                                             ids: [container.id],
                                             timeoutSeconds: Int32(
-                                                UserDefaults.stopContainerTimeoutSeconds
+                                                UserDefaults
+                                                    .stopContainerTimeoutSeconds
                                             )
                                         )
                                     } catch (let err) {
@@ -148,7 +149,7 @@ struct ContainersView: View {
                             action: {
                                 Task {
                                     do {
-                                        try await containerManager.start(
+                                        try await containerManager.run(
                                             id: container.id,
                                             attachStdout: false,
                                             attachStdin: false
@@ -189,7 +190,7 @@ struct ContainersView: View {
         }
         .onChange(of: containerManager.lastContainerChange) {
             Task {
-                guard system.isRunning else { return }
+                guard system.status == .running else { return }
                 await refreshContainers()
             }
         }
@@ -254,7 +255,7 @@ struct ContainersView: View {
         }
     }
 
-    private func stateColor(for status: RuntimeStatus) -> Color {
+    private func stateColor(for status: ContainerStatus) -> Color {
         switch status {
         case .running: return .green
         case .stopping: return .orange

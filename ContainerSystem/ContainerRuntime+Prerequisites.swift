@@ -19,20 +19,20 @@ extension ContainerRuntime {
     // MARK: - Prerequisites Installation
 
     /// Install system prerequisites (init image and kernel)
-    internal func installPrerequisites() async throws {
+    func installPrerequisites() async throws {
         // Check and install init filesystem if needed
         let initExists = await initImageExists()
         if !initExists {
-            Self.logger.info("Installing base container filesystem...")
+            logger.info("Installing base container filesystem...")
             try await installInitialFilesystem()
         }
 
         // Check and install default kernel if needed
         let kernelExistsResult = await kernelExists()
         if !kernelExistsResult {
-            Self.logger.info("Installing default kernel...")
+            logger.info("Installing default kernel...")
             try await installDefaultKernel()
-            Self.logger.info("Kernel installed")
+            logger.info("Kernel installed")
         }
     }
 
@@ -64,10 +64,10 @@ extension ContainerRuntime {
             key: .defaultKernelBinaryPath
         )
 
-        Self.logger.info(
+        logger.info(
             "Starting kernel installation from: \(defaultKernelURL)"
         )
-        Self.logger.info(
+        logger.info(
             "Kernel binary path in archive: \(defaultKernelBinaryPath)"
         )
 
@@ -96,14 +96,14 @@ extension ContainerRuntime {
             sourceURL.lastPathComponent
         )
 
-        Self.logger.info("Downloading from: \(sourceURL) to: \(tarFile.path)")
+        logger.info("Downloading from: \(sourceURL) to: \(tarFile.path)")
 
         let (tempDownloadURL, response) = try await URLSession.shared.download(
             from: sourceURL
         )
 
         if let httpResponse = response as? HTTPURLResponse {
-            Self.logger.info(
+            logger.info(
                 "Download response status: \(httpResponse.statusCode)"
             )
             guard httpResponse.statusCode == 200 else {
@@ -118,7 +118,7 @@ extension ContainerRuntime {
         // Move downloaded file to our temp directory
         try FileManager.default.moveItem(at: tempDownloadURL, to: tarFile)
 
-        Self.logger.info("Downloaded to: \(tarFile.path)")
+        logger.info("Downloaded to: \(tarFile.path)")
 
         // Extract the kernel using ArchiveReader (same as Apple Container CLI)
         let kernelFile = try extractKernelFromArchive(
@@ -135,7 +135,7 @@ extension ContainerRuntime {
             force: true
         )
 
-        Self.logger.info("Kernel installed successfully")
+        logger.info("Kernel installed successfully")
     }
 
     /// Extract kernel file from archive using ArchiveReader (same approach as Apple Container CLI)
@@ -144,8 +144,8 @@ extension ContainerRuntime {
         kernelPath: String,
         tempDir: URL
     ) throws -> URL {
-        Self.logger.info("Extracting kernel from archive: \(tarFile.path)")
-        Self.logger.info("Looking for: \(kernelPath)")
+        logger.info("Extracting kernel from archive: \(tarFile.path)")
+        logger.info("Looking for: \(kernelPath)")
 
         var archiveReader = try ArchiveReader(file: tarFile)
         var (entry, data) = try archiveReader.extractFile(path: kernelPath)
@@ -154,7 +154,7 @@ extension ContainerRuntime {
         if entry.fileType == .symbolicLink,
             let symlinkRelative = entry.symlinkTarget
         {
-            Self.logger.info("Kernel is a symlink to: \(symlinkRelative)")
+            logger.info("Kernel is a symlink to: \(symlinkRelative)")
             // Reopen the archive to traverse from the beginning
             archiveReader = try ArchiveReader(file: tarFile)
 
@@ -162,7 +162,7 @@ extension ContainerRuntime {
                 .deletingLastPathComponent().appending(path: symlinkRelative)
             let resolvedPath = symlinkTarget.standardized.relativePath
 
-            Self.logger.info("Resolved symlink path: \(resolvedPath)")
+            logger.info("Resolved symlink path: \(resolvedPath)")
 
             let (_, targetData) = try archiveReader.extractFile(
                 path: resolvedPath
@@ -177,7 +177,7 @@ extension ContainerRuntime {
 
         try data.write(to: fileURL, options: .atomic)
 
-        Self.logger.info(
+        logger.info(
             "Extracted kernel to: \(fileURL.path), size: \(data.count) bytes"
         )
 
@@ -209,7 +209,7 @@ extension ContainerRuntime {
 
             return true
         } catch {
-            Self.logger.warning("Failed to check kernel: \(error)")
+            logger.warning("Failed to check kernel: \(error)")
 
             return false
         }

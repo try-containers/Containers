@@ -18,7 +18,7 @@ extension ContainerRuntime {
     // MARK: - Plugin Process Management
 
     /// Register and start a plugin as a child process
-    internal func registerPlugin(
+    func registerPlugin(
         plugin: Plugin,
         appRoot: URL,
         installRoot: URL,
@@ -32,15 +32,15 @@ extension ContainerRuntime {
         if let existing = pluginProcesses[processKey],
             existing.process.isRunning
         {
-            Self.logger.info("Plugin already running: \(processKey)")
+            logger.info("Plugin already running: \(processKey)")
             return
         }
 
-        Self.logger.info(
+        logger.info(
             "Starting plugin process: \(plugin.name) with instanceId: \(instanceId)"
         )
-        Self.logger.info("Binary path: \(plugin.binaryURL.path)")
-        Self.logger.info("Arguments: \(args)")
+        logger.info("Binary path: \(plugin.binaryURL.path)")
+        logger.info("Arguments: \(args)")
 
         let process = Process()
         process.executableURL = plugin.binaryURL
@@ -62,7 +62,7 @@ extension ContainerRuntime {
 
         // Log output from the process
         let pluginName = plugin.name
-        let logger = Self.logger
+        let logger = self.logger
 
         stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
@@ -94,7 +94,7 @@ extension ContainerRuntime {
 
         do {
             try process.run()
-            Self.logger.info(
+            logger.info(
                 "Plugin process started with PID: \(process.processIdentifier)"
             )
 
@@ -110,7 +110,7 @@ extension ContainerRuntime {
             try await Task.sleep(for: .milliseconds(500))
 
         } catch {
-            Self.logger.error("Failed to start plugin process: \(error)")
+            logger.error("Failed to start plugin process: \(error)")
             throw ContainerizationError(
                 .internalError,
                 message: "Failed to start plugin \(plugin.name): \(error)"
@@ -119,15 +119,15 @@ extension ContainerRuntime {
     }
 
     /// Deregister and stop a plugin process
-    internal func deregisterPlugin(pluginName: String, instanceId: String) {
+    func deregisterPlugin(pluginName: String, instanceId: String) {
         let processKey = "\(pluginName).\(instanceId)"
 
         guard let info = pluginProcesses[processKey] else {
-            Self.logger.warning("No running process found for: \(processKey)")
+            logger.warning("No running process found for: \(processKey)")
             return
         }
 
-        Self.logger.info("Stopping plugin process: \(processKey)")
+        logger.info("Stopping plugin process: \(processKey)")
 
         if info.process.isRunning {
             info.process.terminate()
@@ -148,7 +148,7 @@ extension ContainerRuntime {
     }
 
     /// Check if a plugin is running
-    internal func isPluginRunning(pluginName: String, instanceId: String)
+    func isPluginRunning(pluginName: String, instanceId: String)
         -> Bool
     {
         let processKey = "\(pluginName).\(instanceId)"
@@ -161,7 +161,7 @@ extension ContainerRuntime {
     }
 
     /// Get the PID of a running plugin
-    internal func getPluginPid(
+    func getPluginPid(
         pluginName: String,
         instanceId: String
     ) -> Int32? {
@@ -176,11 +176,11 @@ extension ContainerRuntime {
     }
 
     /// Stop all running plugin processes
-    internal func stopAllPlugins() {
-        Self.logger.info("Stopping all plugin processes...")
+    func stopAllPlugins() {
+        logger.info("Stopping all plugin processes...")
 
         for (key, info) in pluginProcesses {
-            Self.logger.info("Stopping: \(key)")
+            logger.info("Stopping: \(key)")
             if info.process.isRunning {
                 info.process.terminate()
             }
@@ -192,7 +192,7 @@ extension ContainerRuntime {
     }
 
     private func handlePluginTermination(processKey: String, exitCode: Int32) {
-        Self.logger.info(
+        logger.info(
             "Plugin process terminated: \(processKey) with exit code: \(exitCode)"
         )
 

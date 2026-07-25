@@ -113,6 +113,18 @@ extension UserDefaults {
         }
     }
 
+    @UserDefault(key: "lastSeenVersion", defaultValue: "")
+    static var lastSeenVersion: String
+
+    static var shouldShowWhatsNew: Bool {
+        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return lastSeenVersion != current
+    }
+
+    static func markCurrentVersionSeen() {
+        lastSeenVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    }
+
     @UserDefault(key: "startSystemTimeoutSeconds", defaultValue: 10)
     static var startSystemTimeoutSeconds: Int32
 

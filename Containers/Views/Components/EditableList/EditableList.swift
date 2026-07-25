@@ -158,7 +158,7 @@ where Item.ID: Hashable {
                 Image(
                     systemName: isExpanded ? "chevron.down" : "chevron.right"
                 )
-                .font(.system(size: 10, weight: .semibold))
+                .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
                 .frame(width: 12)
 

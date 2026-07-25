@@ -51,7 +51,7 @@ private struct PrintableContainer: Encodable {
 }
 
 private struct PrintableContainerStatus: Encodable {
-    let state: RuntimeStatus
+    let state: ContainerStatus
     let networks: [Attachment]
     let startedDate: Date?
 }
