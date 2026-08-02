@@ -50,14 +50,8 @@ struct ImageHistory: View {
     var body: some View {
         Group {
             if isLoading {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .controlSize(.large)
-                    Text("Loading image layers...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Hidden by the window until ready, so nothing to draw.
+                Color.clear
             } else if layers.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "square.stack.3d.up.slash")
@@ -86,6 +80,7 @@ struct ImageHistory: View {
                 .frame(maxHeight: 500)
             }
         }
+        .contentReady(!isLoading)
         .task {
             await loadLayers()
         }

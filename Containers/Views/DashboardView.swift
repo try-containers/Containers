@@ -9,6 +9,7 @@ import AppKit
 import ContainerSystem
 import ContainerizationOCI
 import SwiftUI
+import TipKit
 
 enum NavigationTab: String, Identifiable, Equatable {
     case containers
@@ -51,7 +52,8 @@ struct DashboardView: View {
     @Environment(\.openSettings) private var openSettings
 
     // Local navigation state
-    @SwiftUI.State private var selectedTab: NavigationTab = .containers
+    @SwiftUI.State private var selectedTab: NavigationTab =
+        NavigationTab(rawValue: UserDefaults.lastSelectedTab) ?? .images
     @SwiftUI.State private var refreshContainerNeeded: Bool = false
 
     // Local error state
@@ -59,8 +61,8 @@ struct DashboardView: View {
     @SwiftUI.State private var showError: Bool = false
 
     // Sheet presentation state for creating new items
-    @SwiftUI.State private var showWhatsNew: Bool = false
     @SwiftUI.State private var isFirstLaunch: Bool = false
+    @SwiftUI.State private var showWhatsNew: Bool = false
     @SwiftUI.State private var showCreateContainerView: Bool = false
     @SwiftUI.State private var showCreateVolumeView: Bool = false
     @SwiftUI.State private var showCreateImageView: Bool = false
@@ -76,6 +78,8 @@ struct DashboardView: View {
 
     // Resource usage state
     @SwiftUI.State private var resources = ResourcesViewModel()
+
+    private let addFirstImageTip = AddFirstImageTip()
 
     private var isSystemRunning: Bool { system.status == .running }
 
@@ -145,6 +149,7 @@ struct DashboardView: View {
                 ToolbarItem(placement: .automatic) {
                     Button(
                         action: {
+                            addFirstImageTip.invalidate(reason: .actionPerformed)
                             handlePlusButton()
                         },
                         label: {
@@ -153,6 +158,7 @@ struct DashboardView: View {
                     )
                     .disabled(!isSystemRunning)
                     .help("New")
+                    .popoverTip(addFirstImageTip, arrowEdge: .bottom)
                 }
 
                 ToolbarSpacer(.fixed)
@@ -208,6 +214,14 @@ struct DashboardView: View {
                         .lineLimit(5)
                 }
             )
+            .onChange(of: selectedTab) { _, newTab in
+                UserDefaults.lastSelectedTab = newTab.rawValue
+            }
+            .onChange(of: showWhatsNew) { _, isShowing in
+                if !isShowing && isFirstLaunch {
+                    AddFirstImageTip.shouldShow = true
+                }
+            }
             .sheet(isPresented: $showWhatsNew) {
                 WhatsNewView(isFirstLaunch: isFirstLaunch) {
                     UserDefaults.markCurrentVersionSeen()

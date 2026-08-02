@@ -14,12 +14,16 @@ struct ContainerLogs: View {
     @Environment(ContainerManager.self) private var containerManager
 
     @State private var logs: String = ""
+    @State private var hasLoaded: Bool = false
     @State private var error: Error?
     @State private var showError: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
-            if logs.isEmpty {
+            if !hasLoaded {
+                // Hidden by the window until ready, so nothing to draw.
+                Color.clear
+            } else if logs.isEmpty {
                 ContentUnavailableView {
                     Label("No Logs Available", systemImage: "doc.text")
                 } description: {
@@ -48,6 +52,7 @@ struct ContainerLogs: View {
                 .padding(20)
             }
         }
+        .contentReady(hasLoaded)
         .task {
             await streamLogs()
         }
@@ -80,6 +85,8 @@ struct ContainerLogs: View {
         }
 
         guard let fileHandle = try? FileHandle(forReadingFrom: logFile) else {
+            // Nothing to read, but the tab is done waiting.
+            hasLoaded = true
             return
         }
 
@@ -89,6 +96,10 @@ struct ContainerLogs: View {
         {
             logs = initialContent.trimmingCharacters(in: .newlines)
         }
+
+        // The tail arrives live from here, growing the tab rather than
+        // deciding its height.
+        hasLoaded = true
 
         // Seek to end to only get new content
         _ = try? fileHandle.seekToEnd()

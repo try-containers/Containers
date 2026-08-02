@@ -8,6 +8,7 @@
 import AppKit
 import ContainerSystem
 import SwiftUI
+import TipKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -39,6 +40,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct ContainersApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    init() {
+        do {
+            try Tips.configure()
+        } catch {
+            print("TipKit configuration error: \(error)")
+        }
+    }
 
     @State private var containerManager = ContainerManager()
     @State private var imageManager = ImageManager()
@@ -105,6 +114,13 @@ struct ContainersApp: App {
             }
         }
         .windowResizability(.contentMinSize)
+        // Without this the group reuses the last detail window's frame, and a
+        // shorter tab then has to shrink into place instead of growing. It
+        // also carried the placement, hence the centring below.
+        .restorationBehavior(.disabled)
+        .defaultWindowPlacement { _, context in
+            DetailPlaceholder.centred(on: context.defaultDisplay.visibleRect)
+        }
         .commandsRemoved()
 
         WindowGroup(
@@ -119,6 +135,13 @@ struct ContainersApp: App {
             }
         }
         .windowResizability(.contentMinSize)
+        // Without this the group reuses the last detail window's frame, and a
+        // shorter tab then has to shrink into place instead of growing. It
+        // also carried the placement, hence the centring below.
+        .restorationBehavior(.disabled)
+        .defaultWindowPlacement { _, context in
+            DetailPlaceholder.centred(on: context.defaultDisplay.visibleRect)
+        }
         .commandsRemoved()
 
         WindowGroup(
@@ -132,6 +155,13 @@ struct ContainersApp: App {
             }
         }
         .windowResizability(.contentMinSize)
+        // Without this the group reuses the last detail window's frame, and a
+        // shorter tab then has to shrink into place instead of growing. It
+        // also carried the placement, hence the centring below.
+        .restorationBehavior(.disabled)
+        .defaultWindowPlacement { _, context in
+            DetailPlaceholder.centred(on: context.defaultDisplay.visibleRect)
+        }
         .commandsRemoved()
 
     }

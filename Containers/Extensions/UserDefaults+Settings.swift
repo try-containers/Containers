@@ -116,6 +116,9 @@ extension UserDefaults {
     @UserDefault(key: "lastSeenVersion", defaultValue: "")
     static var lastSeenVersion: String
 
+    @UserDefault(key: "lastSelectedTab", defaultValue: "images")
+    static var lastSelectedTab: String
+
     static var shouldShowWhatsNew: Bool {
         let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         return lastSeenVersion != current

@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum DockerHubRegistrySuggestions {
+struct DockerHub: RegistryClient {
     private struct FeaturedResponse: Decodable {
         let summaries: [FeaturedImage]?
         let results: [FeaturedImage]?
@@ -127,27 +127,14 @@ enum DockerHubRegistrySuggestions {
         }
     }
 
-    static func canSuggestImages(for imageName: String) -> Bool {
-        let components =
-            imageName
+    private func pathComponents(of imageName: String) -> [String] {
+        imageName
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: "/", omittingEmptySubsequences: true)
             .map(String.init)
-
-        guard let first = components.first else {
-            return false
-        }
-
-        if RegistryReference.isExplicitRegistry(first) {
-            return RegistryReference.isDockerHubRegistry(first)
-        }
-
-        return components.count <= 2
     }
 
-    static func trendingImages() async throws
-        -> [ImageSuggestion]
-    {
+    func trendingImages() async throws -> [ImageSuggestion] {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "hub.docker.com"
@@ -168,7 +155,8 @@ enum DockerHubRegistrySuggestions {
             let decoded: FeaturedResponse = try await fetch(url: url)
             let products = decoded.summaries ?? decoded.results ?? []
             let suggestions = products.compactMap(\.suggestion)
-            let images = suggestions.isEmpty ? fallbackTrendingImages : suggestions
+            let images =
+                suggestions.isEmpty ? fallbackTrendingImages : suggestions
 
             return await suggestionsWithRepositoryLogos(images)
         } catch {
@@ -176,57 +164,58 @@ enum DockerHubRegistrySuggestions {
         }
     }
 
-    static func repository(from imageName: String) -> RegistryRepository? {
-        var components =
-            imageName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .map(String.init)
-
-        guard !components.isEmpty else {
-            return nil
-        }
-
-        if let host = components.first,
-            RegistryReference.isExplicitRegistry(host)
-        {
-            guard RegistryReference.isDockerHubRegistry(host) else {
-                return nil
-            }
-
-            components.removeFirst()
-        }
-
-        guard !components.isEmpty else {
-            return nil
-        }
+    /// Docker Hub addresses a repository as `namespace/name`, defaulting the
+    /// namespace to `library`. Nothing outside this type needs to know that.
+    private func repository(from imageName: String) -> Repository? {
+        let components = pathComponents(of: imageName)
 
         let namespace: String
         let name: String
-        if components.count == 1 {
+        switch components.count {
+        case 1:
             namespace = "library"
-            name = RegistryReference.repositoryName(from: components[0])
-        } else if components.count == 2 {
+            name = components[0]
+        case 2:
             namespace = components[0]
-            name = RegistryReference.repositoryName(from: components[1])
-        } else {
+            name = components[1]
+        default:
             return nil
         }
 
-        guard !namespace.isEmpty, !name.isEmpty else {
+        // The tag has a field of its own, but a pasted name may carry one.
+        let repositoryName =
+            name
+            .split(
+                separator: ":",
+                maxSplits: 1,
+                omittingEmptySubsequences: false
+            )
+            .first
+            .map(String.init) ?? name
+
+        guard !namespace.isEmpty, !repositoryName.isEmpty else {
             return nil
         }
 
-        return RegistryRepository(namespace: namespace, name: name)
+        return Repository(namespace: namespace, name: repositoryName)
     }
 
-    static func images(matching query: String) async throws -> [String] {
+    func images(matching text: String) async throws -> [String] {
+        // The registry is picked in its own field, so a name is
+        // `[namespace/]name`; anything deeper is not a Docker Hub repository.
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = pathComponents(of: query)
+
+        guard !path.isEmpty, path.count <= 2 else {
+            return []
+        }
+
         var components = URLComponents()
         components.scheme = "https"
         components.host = "hub.docker.com"
         components.path = "/v2/search/repositories/"
         components.queryItems = [
-            URLQueryItem(name: "query", value: normalizedSearchQuery(query)),
+            URLQueryItem(name: "query", value: query),
             URLQueryItem(name: "page_size", value: "10"),
         ]
 
@@ -235,13 +224,18 @@ enum DockerHubRegistrySuggestions {
         }
 
         let decoded: ImageSearchResponse = try await fetch(url: url)
-        return decoded.results.map(\.repoName)
+        return ranked(decoded.results.map(\.repoName), matching: query)
     }
 
-    static func tags(
-        for repository: RegistryRepository,
-        matching prefix: String
-    ) async throws -> [String] {
+    func tags(for imageName: String, matching text: String) async throws
+        -> [String]
+    {
+        guard let repository = repository(from: imageName) else {
+            return []
+        }
+
+        let prefix = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
         var components = URLComponents()
         components.scheme = "https"
         components.host = "hub.docker.com"
@@ -262,17 +256,59 @@ enum DockerHubRegistrySuggestions {
         }
 
         let decoded: TagResponse = try await fetch(url: url)
-        return decoded.results.map(\.name)
+
+        return ranked(
+            decoded.results.map(\.name),
+            matching: prefix,
+            pinning: "latest"
+        )
     }
 
-    private static func suggestionsWithRepositoryLogos(
+    /// Docker Hub returns search hits in its own relevance order and tags by
+    /// last push. Keep that order, but float what the user is most likely
+    /// reaching for, and never list the same thing twice.
+    private func ranked(
+        _ values: [String],
+        matching text: String,
+        pinning pinned: String? = nil
+    ) -> [String] {
+        var seen = Set<String>()
+
+        return
+            values
+            .filter { seen.insert($0).inserted }
+            .enumerated()
+            .sorted { lhs, rhs in
+                let lhsRank = rank(lhs.element, matching: text, pinned: pinned)
+                let rhsRank = rank(rhs.element, matching: text, pinned: pinned)
+
+                return lhsRank == rhsRank
+                    ? lhs.offset < rhs.offset : lhsRank < rhsRank
+            }
+            .map(\.element)
+    }
+
+    private func rank(
+        _ value: String,
+        matching text: String,
+        pinned: String?
+    ) -> Int {
+        if value == pinned { return 0 }
+        if value == text { return 1 }
+        if !text.isEmpty, value.hasPrefix(text) { return 2 }
+        return 3
+    }
+
+    private func suggestionsWithRepositoryLogos(
         _ suggestions: [ImageSuggestion]
     ) async -> [ImageSuggestion] {
         await withTaskGroup(of: (Int, ImageSuggestion).self) { group in
             for (index, suggestion) in suggestions.enumerated() {
                 group.addTask {
                     guard suggestion.imageURL == nil,
-                        let logoURL = await repositoryLogoURL(for: suggestion.name)
+                        let logoURL = await repositoryLogoURL(
+                            for: suggestion.name
+                        )
                     else {
                         return (index, suggestion)
                     }
@@ -297,7 +333,7 @@ enum DockerHubRegistrySuggestions {
         }
     }
 
-    private static func repositoryLogoURL(for imageName: String) async -> URL? {
+    private func repositoryLogoURL(for imageName: String) async -> URL? {
         guard let repository = repository(from: imageName) else {
             return nil
         }
@@ -320,7 +356,7 @@ enum DockerHubRegistrySuggestions {
         }
     }
 
-    private static func firstMarkdownImageURL(in markdown: String?) -> URL? {
+    private func firstMarkdownImageURL(in markdown: String?) -> URL? {
         guard let markdown else { return nil }
 
         let pattern = #"!\[[^\]]*\]\(([^\s)]+)(?:\s+\"[^\"]*\")?\)"#
@@ -328,7 +364,10 @@ enum DockerHubRegistrySuggestions {
             return nil
         }
 
-        let range = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
+        let range = NSRange(
+            markdown.startIndex..<markdown.endIndex,
+            in: markdown
+        )
         guard let match = regex.firstMatch(in: markdown, range: range),
             match.numberOfRanges > 1,
             let urlRange = Range(match.range(at: 1), in: markdown)
@@ -341,23 +380,7 @@ enum DockerHubRegistrySuggestions {
         return URL(string: value)
     }
 
-    private static func normalizedSearchQuery(_ query: String) -> String {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let components =
-            trimmed
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .map(String.init)
-
-        guard let first = components.first,
-            RegistryReference.isDockerHubRegistry(first)
-        else {
-            return trimmed
-        }
-
-        return components.dropFirst().joined(separator: "/")
-    }
-
-    private static func fetch<Response: Decodable>(url: URL) async throws
+    private func fetch<Response: Decodable>(url: URL) async throws
         -> Response
     {
         var request = URLRequest(url: url)
@@ -365,16 +388,19 @@ enum DockerHubRegistrySuggestions {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-            httpResponse.statusCode == 200
-        else {
-            throw URLError(.badServerResponse)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RegistryError.unavailable
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            throw httpResponse.statusCode == 429
+                ? RegistryError.rateLimited : RegistryError.unavailable
         }
 
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
-    private static var fallbackTrendingImages: [ImageSuggestion] {
+    private var fallbackTrendingImages: [ImageSuggestion] {
         [
             .init(
                 name: "ai/qwen3",
@@ -402,34 +428,9 @@ enum DockerHubRegistrySuggestions {
             ),
         ]
     }
-}
 
-enum RegistryReference {
-    static func isExplicitRegistry(_ component: String) -> Bool {
-        component.contains(".")
-            || component.contains(":")
-            || component == "localhost"
+    private struct Repository {
+        let namespace: String
+        let name: String
     }
-
-    static func isDockerHubRegistry(_ host: String) -> Bool {
-        host == "docker.io"
-            || host == "index.docker.io"
-            || host == "registry-1.docker.io"
-    }
-
-    static func repositoryName(from value: String) -> String {
-        value
-            .split(
-                separator: ":",
-                maxSplits: 1,
-                omittingEmptySubsequences: false
-            )
-            .first
-            .map(String.init) ?? value
-    }
-}
-
-struct RegistryRepository: Sendable {
-    let namespace: String
-    let name: String
 }

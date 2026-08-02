@@ -21,9 +21,12 @@ struct VolumeDetailWindow: View {
             if let volume {
                 VolumeDetailView(volume: volume)
             } else if isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 550, height: 320)
+                // Empty until the detail arrives; the window grows into it.
+                Color.clear
+                    .frame(
+                        width: DetailPlaceholder.width,
+                        height: DetailPlaceholder.height
+                    )
             } else {
                 ContentUnavailableView(
                     "Volume Not Found",

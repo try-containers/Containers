@@ -12,9 +12,10 @@ struct WhatsNewView: View {
     let isFirstLaunch: Bool
     let onContinue: () -> Void
 
+    let foregroundColor: Color = .secondary
+
     private struct Feature {
         let icon: String
-        let color: Color
         let title: String
         let description: String
     }
@@ -22,43 +23,41 @@ struct WhatsNewView: View {
     private let features: [Feature] = [
         Feature(
             icon: "cube.transparent.fill",
-            color: .blue,
-            title: "Container Management",
+            title: "Run Linux containers",
             description:
-                "Create, run, and monitor Linux containers natively on Apple Silicon."
+                "Create and run Linux containers as lightweight virtual machines on your Mac."
         ),
         Feature(
             icon: "shippingbox.circle.fill",
-            color: .orange,
-            title: "Image Library",
+            title: "OCI-compatible images support",
             description:
-                "Pull from registries, build from Dockerfiles, or load from tar archives."
+                "Pull and run images from container registries, build from a Dockerfile, or load from a local archive."
         ),
         Feature(
-            icon: "internaldrive.fill",
-            color: .purple,
-            title: "Volumes & Mounts",
+            icon: "cpu",
+            title: "Optimized for Apple Silicon",
             description:
-                "Attach persistent volumes and share host directories with your containers."
+                "Written in Swift and designed to get the most out of Apple Silicon."
         ),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 32) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 72, height: 72)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 16)
 
-            VStack(alignment: .leading, spacing: 0) {
-                Text(isFirstLaunch ? "Welcome to" : "What's New in")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
-                Text("Containers")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .padding(.bottom, 28)
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(isFirstLaunch ? "Welcome to" : "What's New in")
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .foregroundStyle(foregroundColor)
+                    Text("Containers")
+                        .font(.title)
+                        .fontWeight(.bold)
+                }
 
                 VStack(alignment: .leading, spacing: 20) {
                     ForEach(features, id: \.title) { feature in
@@ -66,28 +65,32 @@ struct WhatsNewView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
 
             Spacer()
 
-            Button("Continue") {
+            Button {
                 onContinue()
+            } label: {
+                Text("Continue")
+                    .foregroundStyle(.white)
             }
             .buttonStyle(.borderedProminent)
+            .tint(foregroundColor)
             .controlSize(.large)
             .keyboardShortcut(.defaultAction)
             .frame(maxWidth: .infinity)
-            .padding(.top, 28)
         }
-        .padding(36)
-        .frame(width: 500, height: 460)
+        .padding(.horizontal, 48)
+        .padding(.top, 68)
+        .padding(.bottom, 38)
+        .frame(width: 494, height: 540)
     }
 
     private func featureRow(_ feature: Feature) -> some View {
         HStack(alignment: .top, spacing: 16) {
             Image(systemName: feature.icon)
                 .font(.system(size: 28))
-                .foregroundStyle(feature.color)
+                .foregroundStyle(foregroundColor)
                 .frame(width: 36)
 
             VStack(alignment: .leading, spacing: 2) {

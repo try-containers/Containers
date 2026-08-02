@@ -22,9 +22,12 @@ struct ImageDetailWindow: View {
             if let image {
                 ImageDetailView(image: image)
             } else if isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 550, height: 320)
+                // Empty until the detail arrives; the window grows into it.
+                Color.clear
+                    .frame(
+                        width: DetailPlaceholder.width,
+                        height: DetailPlaceholder.height
+                    )
             } else {
                 ContentUnavailableView(
                     "Image Not Found",

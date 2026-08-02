@@ -27,14 +27,19 @@ struct ImageInspect: View {
                     description: Text(errorMessage)
                 )
             } else {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Hidden by the window until ready, so nothing to draw.
+                Color.clear
             }
         }
+        .contentReady(isLoaded)
         .task(id: image.id) {
             await loadInspectDetail()
         }
+    }
+
+    /// An error is as much a result to be sized to as the detail itself.
+    private var isLoaded: Bool {
+        printable != nil || errorMessage != nil
     }
 
     private func loadInspectDetail() async {

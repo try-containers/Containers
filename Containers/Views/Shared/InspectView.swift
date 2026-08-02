@@ -12,6 +12,8 @@ import WebKit
 struct InspectView: View {
     let json: String
 
+    @State private var isLoaded = false
+
     init(json: String) {
         self.json = json
     }
@@ -21,8 +23,17 @@ struct InspectView: View {
     }
 
     var body: some View {
-        JSONInspectWebView(html: JSONInspectDocument.html(for: json))
-            .background(Color(nsColor: .textBackgroundColor))
+        JSONInspectWebView(
+            html: JSONInspectDocument.html(for: json),
+            onLoad: { isLoaded = true }
+        )
+        .background(Color(nsColor: .textBackgroundColor))
+        // The JSON runs to any length and the web view has no height of its
+        // own, so the tab's bound is what it gets.
+        .contentUnbounded()
+        // Holds the window until the page has painted; resizing over a web
+        // view that is still loading lays it out mid-render.
+        .contentReady(isLoaded)
     }
 }
 
@@ -51,6 +62,7 @@ enum InspectJSONEncoder {
 
 private struct JSONInspectWebView: NSViewRepresentable {
     let html: String
+    let onLoad: @MainActor () -> Void
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -58,6 +70,7 @@ private struct JSONInspectWebView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
+        webView.navigationDelegate = context.coordinator
         webView.loadHTMLString(html, baseURL: nil)
         return webView
     }
@@ -72,14 +85,37 @@ private struct JSONInspectWebView: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(currentHTML: html)
+        Coordinator(currentHTML: html, onLoad: onLoad)
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, WKNavigationDelegate {
         var currentHTML: String
+        let onLoad: @MainActor () -> Void
 
-        init(currentHTML: String) {
+        init(currentHTML: String, onLoad: @escaping @MainActor () -> Void) {
             self.currentHTML = currentHTML
+            self.onLoad = onLoad
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            onLoad()
+        }
+
+        /// A page that failed is still a result to be sized to.
+        func webView(
+            _ webView: WKWebView,
+            didFail navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            onLoad()
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            onLoad()
         }
     }
 }

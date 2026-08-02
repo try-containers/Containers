@@ -9,14 +9,18 @@ import ContainerSystem
 import Containerization
 import ContainerizationOCI
 import SwiftUI
+import TipKit
 
 struct ImagesView: View {
     @Environment(ImageManager.self) private var imageManager
     @Environment(\.openWindow) private var openWindow
-    @Binding var searchText: String
-    var refreshTrigger: Int
 
+    @Binding var searchText: String
+
+    var refreshTrigger: Int
     var onRefresh: (() async -> Void)? = nil
+
+    private let runContainerTip = RunContainerTip()
 
     @SwiftUI.State private var images: [ImageViewModel] = []
     @SwiftUI.State private var lastUpdated: Date? = nil
@@ -102,8 +106,12 @@ struct ImagesView: View {
                         .pointerStyle(.link)
                         .popover(
                             isPresented: Binding(
-                                get: { showInUseContainerForImage?.id == image.id },
-                                set: { if !$0 { showInUseContainerForImage = nil } }
+                                get: {
+                                    showInUseContainerForImage?.id == image.id
+                                },
+                                set: {
+                                    if !$0 { showInUseContainerForImage = nil }
+                                }
                             ),
                             arrowEdge: .bottom
                         ) {
@@ -121,6 +129,7 @@ struct ImagesView: View {
                 HStack(spacing: 12) {
                     Button(
                         action: {
+                            runContainerTip.invalidate(reason: .actionPerformed)
                             self.createContainerForImage = image
                         },
                         label: {
@@ -130,6 +139,10 @@ struct ImagesView: View {
                     )
                     .buttonStyle(.plain)
                     .help("Run container from image")
+                    .popoverTip(
+                        runContainerTip,
+                        when: image.id == filteredImages.first?.id
+                    )
 
                     Button(
                         action: {

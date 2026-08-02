@@ -27,9 +27,12 @@ struct ContainerDetailWindow: View {
                     initialSnapshot: snapshot
                 )
             } else if isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 550, height: 320)
+                // Empty until the detail arrives; the window grows into it.
+                Color.clear
+                    .frame(
+                        width: DetailPlaceholder.width,
+                        height: DetailPlaceholder.height
+                    )
             } else {
                 ContentUnavailableView(
                     "Container Not Found",
@@ -205,25 +208,28 @@ struct ContainerDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func snapshotContent<Content: View>(
         @ViewBuilder content: (ContainerSnapshot) -> Content
     ) -> some View {
-        if let snapshot {
-            content(snapshot)
-        } else if isLoadingSnapshot {
-            ProgressView()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ContentUnavailableView(
-                "Container Details Unavailable",
-                systemImage: "shippingbox",
-                description: Text(
-                    "The full container snapshot could not be loaded."
+        Group {
+            if let snapshot {
+                content(snapshot)
+            } else if isLoadingSnapshot {
+                // Hidden by the window until ready, so nothing to draw.
+                Color.clear
+            } else {
+                ContentUnavailableView(
+                    "Container Details Unavailable",
+                    systemImage: "shippingbox",
+                    description: Text(
+                        "The full container snapshot could not be loaded."
+                    )
                 )
-            )
+            }
         }
+        // Outermost, or the window cannot read it. A failed load is still a
+        // result to be sized to, so only the fetch itself counts as unready.
+        .contentReady(!isLoadingSnapshot || snapshot != nil)
     }
 
     private var actions: [DetailAction] {

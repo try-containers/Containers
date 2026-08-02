@@ -7,6 +7,7 @@
 
 import AppKit
 import SwiftUI
+import TipKit
 
 struct DetailAction: Identifiable {
     let id: String
@@ -15,6 +16,7 @@ struct DetailAction: Identifiable {
     let help: String
     let isEnabled: Bool
     let isDestructive: Bool
+    let tip: AnyTip?
     let action: () -> Void
 
     init(
@@ -24,6 +26,7 @@ struct DetailAction: Identifiable {
         help: String? = nil,
         isEnabled: Bool = true,
         isDestructive: Bool = false,
+        tip: AnyTip? = nil,
         action: @escaping () -> Void
     ) {
         self.id = id
@@ -32,25 +35,67 @@ struct DetailAction: Identifiable {
         self.help = help ?? title
         self.isEnabled = isEnabled
         self.isDestructive = isDestructive
+        self.tip = tip
         self.action = action
     }
 }
 
-/// Sizes the window to each tab's natural content height. Switching tabs runs
-/// four steps in order: hide the content, load the new tab, resize the window,
-/// show the content.
+/// The size a detail window opens at, and the smallest it ever gets.
+enum DetailPlaceholder {
+    static let width: CGFloat = 550
+    static let height: CGFloat = 140
+
+    /// Opens the window over the middle of whichever window the user opened it
+    /// from. Restoration used to carry that placement, and disabling it — so a
+    /// new window does not inherit the last one's height — took the placement
+    /// with it.
+    ///
+    /// The parent is measured in AppKit's screen coordinates, which run upward
+    /// from the bottom, and applied as an offset from the middle of `display`,
+    /// which runs downward.
+    static func centred(on display: CGRect) -> WindowPlacement {
+        let size = CGSize(width: width, height: height)
+
+        guard
+            let parent = NSApp.keyWindow,
+            let screen = parent.screen
+        else {
+            return WindowPlacement(.center, size: size)
+        }
+
+        let offsetX = parent.frame.midX - screen.frame.midX
+        let offsetY = screen.frame.midY - parent.frame.midY
+
+        return WindowPlacement(
+            CGPoint(
+                x: display.midX + offsetX - size.width / 2,
+                y: display.midY + offsetY - size.height / 2
+            ),
+            size: size
+        )
+    }
+}
+
+/// Sizes the window to each tab's content height: hide, load, resize, show.
+/// The load step waits on `contentReady`, so a tab that fetches its own
+/// data holds the window where it is until there is something to size to.
 ///
-/// Use `.windowResizability(.contentMinSize)` on the enclosing scene: this view
-/// owns the window height, and `.contentSize` would clamp the intermediate
-/// frames of the resize animation and flatten it back to a snap.
+/// Requires `.windowResizability(.contentMinSize)` on the enclosing scene:
+/// `.contentSize` clamps the resize animation's intermediate frames.
 struct DetailView<
     Tab: Hashable & CaseIterable,
     Content: View
 >: View where Tab.AllCases: RandomAccessCollection {
-    private var defaultMinWidth: CGFloat { 550 }
+    private var defaultMinWidth: CGFloat { DetailPlaceholder.width }
     private var maximumWidth: CGFloat { 900 }
+    private var minimumHeight: CGFloat { DetailPlaceholder.height }
+    private var maximumHeight: CGFloat {
+        guard let visible = resizer.visibleScreenHeight else { return 720 }
+        return max(minimumHeight, visible - 160)
+    }
     private let fadeDuration: TimeInterval = 0.1
     private let resizeDuration: TimeInterval = 0.18
+    private let readyTimeout: Duration = .seconds(2)
 
     let showTabs: Bool
     let actions: [DetailAction]
@@ -60,23 +105,21 @@ struct DetailView<
     let tabTitle: (Tab) -> String
     let tabIcon: (Tab) -> String
     let tabWidth: (Tab) -> CGFloat?
-    /// An upper bound on a tab's height. nil lets the tab grow as tall as its
-    /// content. A tab whose content can exceed its bound should provide its own
-    /// ScrollView — the bound clips, it does not scroll.
+    /// Bounds the fit only; content always fills the window, so a tab that can
+    /// outgrow its bound needs its own ScrollView.
     let tabMaxHeight: (Tab) -> CGFloat?
     let tabContent: (Tab) -> Content
 
-    /// The tab whose content is currently rendered (lags selectedTab during transition).
     @State private var displayedTab: Tab
-    @State private var contentOpacity: Double = 1
+    @State private var contentOpacity: Double = 0
     @State private var measuredHeight: CGFloat = 0
-    /// The most recently requested tab, consumed by the running transition.
-    /// Rapid switches overwrite it, so only the last one is ever shown.
+    @State private var contentOverflows = false
     @State private var pendingTab: Tab?
     @State private var isTransitioning = false
     @State private var hasSized = false
+    @State private var needsRefit = false
+    @State private var hasMeasured = false
     @State private var resizer = WindowResizer()
-    @State private var transition: Task<Void, Never>?
 
     init(
         selectedTab: Binding<Tab>,
@@ -99,55 +142,59 @@ struct DetailView<
         self.tabContent = tabContent
     }
 
-    /// Read from displayedTab, not selectedTab, so width and height change at
-    /// the same moment.
     private var effectiveMinWidth: CGFloat {
         tabWidth(displayedTab) ?? defaultMinWidth
     }
 
-    /// `fixedSize` makes the content report its ideal height instead of taking
-    /// the height it is offered, so the measurement below is a property of the
-    /// content alone and cannot be affected by the window height derived from
-    /// it. The original `(min, max)` tab height broke exactly this: a flexible
-    /// frame reports whatever it was given, so every resize changed the next
-    /// reading.
+    private var heightCap: CGFloat {
+        min(tabMaxHeight(displayedTab) ?? maximumHeight, maximumHeight)
+    }
+
     private var sizedContent: some View {
-        tabContent(displayedTab)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxHeight: tabMaxHeight(displayedTab))
-            .clipped()
-            // After the frame, so the reading is already clamped by the bound.
-            .background {
-                GeometryReader { geo in
-                    Color.clear
-                        .onChange(of: geo.size.height, initial: true) { _, h in
-                            guard h > 0 else { return }
-                            measuredHeight = h
-                        }
-                }
-            }
+        FillingContent(onIdealHeight: fitTo) {
+            tabContent(displayedTab)
+        }
+    }
+
+    private func fitTo(idealHeight: CGFloat) {
+        // Zero from a tab that declares a bound is unbounded content, not empty
+        // content, so it opens at the bound and is resizable from there.
+        let unbounded = idealHeight <= 0 && tabMaxHeight(displayedTab) != nil
+        let ideal = unbounded ? heightCap : idealHeight
+        guard ideal > 0 else { return }
+
+        let height = min(max(ideal, minimumHeight), heightCap)
+        let overflows = unbounded || ideal > height + 0.5
+
+        // `awaitMeasurement` waits on the first report after a swap, so it
+        // gets through even when it matches the outgoing height.
+        guard
+            !hasMeasured
+                || abs(measuredHeight - height) > 0.5
+                || overflows != contentOverflows
+        else { return }
+
+        // This runs from layout, so the writes are deferred.
+        Task { @MainActor in
+            measuredHeight = height
+            contentOverflows = overflows
+            hasMeasured = true
+        }
     }
 
     var body: some View {
-        // The window sizes itself from this spacer, not from the content. An
-        // overlay does not report its height to its parent, so the content's
-        // ideal height never reaches the window — which is the whole point.
-        // A plain `frame(maxHeight:)` around the content still passes that
-        // ideal up, and SwiftUI then grew the window to fit the new tab the
-        // instant it was installed, leaving the animator nothing to animate:
-        // growing snapped, and only shrinking animated.
-        //
-        // Width is set here rather than on the content for the same reason,
-        // so the window still tracks the width the tab asks for.
+        // The window sizes itself from this spacer: an overlay does not report
+        // its height to its parent. Passing it up instead grew the window the
+        // instant a tab was installed, leaving the animator nothing to do.
         Color.clear
             .frame(minWidth: effectiveMinWidth, maxWidth: maximumWidth)
-            .frame(maxHeight: .infinity)
+            // `.contentMinSize` derives the window's floor from this, and
+            // SwiftUI overwrites a floor set directly on NSWindow.
+            .frame(minHeight: minimumHeight, maxHeight: .infinity)
             .overlay(alignment: .top) {
                 sizedContent
                     .opacity(contentOpacity)
             }
-            // Outermost, so it covers the full window while it is taller than
-            // the content mid-animation, and never fades with the content.
             .background(.windowBackground)
             .clipped()
             .background(WindowBinder(resizer: resizer))
@@ -172,91 +219,113 @@ struct DetailView<
 
                 ToolbarItemGroup(placement: .primaryAction) {
                     ForEach(actions) { action in
-                        Button(role: action.isDestructive ? .destructive : nil) {
+                        Button(
+                            role: action.isDestructive ? .destructive : nil
+                        ) {
                             action.action()
                         } label: {
                             Label(action.title, systemImage: action.icon)
                         }
                         .disabled(!action.isEnabled)
                         .help(action.help)
+                        .popoverTipIfPresent(action.tip)
                     }
                 }
             }
             .toolbarBackground(.visible, for: .windowToolbar)
+            .onChange(of: contentOverflows, initial: true) { _, overflows in
+                resizer.setResizable(overflows)
+            }
             .onChange(of: measuredHeight) { _, height in
-                // The displayed tab changed height on its own — content
-                // finished loading, a row expanded. A transition does its own
-                // resizing in sequence, so stay out of its way.
-                guard !isTransitioning, height > 0 else { return }
+                guard height > 0 else { return }
 
-                // The first measurement is the initial sizing: apply it flat,
-                // so the window opens at the right height instead of growing
-                // into it.
-                let duration = hasSized ? resizeDuration : 0
-                hasSized = true
-                Task { await resizer.fit(height: height, duration: duration) }
+                guard hasSized else {
+                    hasSized = true
+                    requestTransition(to: displayedTab)
+                    return
+                }
+
+                guard !isTransitioning else {
+                    needsRefit = true
+                    return
+                }
+
+                Task {
+                    await resizer.fit(height: height, duration: resizeDuration)
+                }
             }
             .onChange(of: selectedTab) { _, tab in
-                pendingTab = tab
-                // A transition already in flight will pick this up rather than
-                // being torn down. Cancelling mid-animation is what left the
-                // window locked to a stale height.
-                guard !isTransitioning else { return }
-                transition = Task { await runTransitions() }
+                requestTransition(to: tab)
+            }
+            .task {
+                // Show the content anyway if no measurement ever arrives.
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !hasSized else { return }
+                await fade(to: 1)
             }
     }
 
-    /// Drains `pendingTab` until the displayed tab matches what was last
-    /// requested. Switching again mid-transition queues rather than restarts,
-    /// so each step still runs to completion in order.
+    private func requestTransition(to tab: Tab) {
+        pendingTab = tab
+        // Cancelling a transition mid-animation leaves a stale height.
+        guard !isTransitioning else { return }
+        Task { await runTransitions() }
+    }
+
+    /// Drains `pendingTab`, so switching again queues rather than restarts.
     private func runTransitions() async {
         isTransitioning = true
         defer { isTransitioning = false }
 
-        while pendingTab != nil {
-            // 1. Hide the current content.
+        while pendingTab != nil || needsRefit {
+            guard pendingTab != nil else {
+                needsRefit = false
+                await resizer.fit(
+                    height: measuredHeight,
+                    duration: resizeDuration
+                )
+                continue
+            }
+
             await fade(to: 0)
 
-            // Re-read after the fade so a tab picked during it is honoured
-            // here, instead of being shown and then immediately replaced.
             guard let tab = pendingTab else { break }
             pendingTab = nil
 
-            // 2. Load the new tab.
             if tab != displayedTab {
+                hasMeasured = false
                 displayedTab = tab
-                await settleLayout()
+                await awaitMeasurement()
             }
 
-            // Yet another tab was picked. Animating to a size that will never
-            // be revealed is what makes rapid switching lurch, so drop this
-            // step and the reveal below and go straight to the newer tab.
             guard pendingTab == nil else { continue }
 
-            // 3. Resize the window, under hidden content.
+            needsRefit = false
             await resizer.fit(height: measuredHeight, duration: resizeDuration)
             guard pendingTab == nil else { continue }
 
-            // 4. Show the new content, at the new size.
             await fade(to: 1)
         }
 
-        // Never leave the content invisible, whichever branch ended the loop.
         await fade(to: 1)
     }
 
-    /// Waits for SwiftUI to install the new tab and for the GeometryReader to
-    /// report its height, so the resize that follows targets the incoming
-    /// content rather than the outgoing tab's height.
-    private func settleLayout() async {
-        await Task.yield()
-        try? await Task.sleep(for: .milliseconds(16))
+    /// Waits for the newly displayed tab to report a height — for a tab that
+    /// fetches its own data, the whole of the load. On timeout it carries on.
+    private func awaitMeasurement() async {
+        let deadline = ContinuousClock.now.advanced(by: readyTimeout)
+
+        while !hasMeasured, ContinuousClock.now < deadline {
+            guard pendingTab == nil else { return }
+
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(16))
+        }
     }
 
     private func fade(to opacity: Double) async {
-        // withAnimation sets the state immediately and only the rendered value
-        // interpolates, so an unguarded call to the value it already holds
-        // would report completion while the pixels are still moving.
+        // withAnimation only interpolates the rendered value, so calling it
+        // with the value already held completes while pixels are still moving.
         guard contentOpacity != opacity else { return }
 
         await withCheckedContinuation { continuation in
@@ -269,73 +338,131 @@ struct DetailView<
     }
 }
 
-/// Animates the window to a given content height — the one step SwiftUI has no
-/// hook for.
+/// Hands the content the height it is offered, and separately reports the
+/// height it would take on its own — both from one pass over one instance, so
+/// a tab's data is not loaded twice.
+private struct FillingContent: Layout {
+    let onIdealHeight: @MainActor @Sendable (CGFloat) -> Void
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+
+        let ideal =
+            subview.isContentUnbounded
+            ? CGSize(width: proposal.width ?? 0, height: 0)
+            : subview.sizeThatFits(
+                ProposedViewSize(width: proposal.width, height: nil)
+            )
+
+        // A nil width is SwiftUI probing for extremes; an unready tab measures
+        // whatever it draws while empty.
+        if proposal.width != nil, subview.isContentReady {
+            MainActor.assumeIsolated { onIdealHeight(ideal.height) }
+        }
+
+        return proposal.replacingUnspecifiedDimensions(by: ideal)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        subviews.first?.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(bounds.size)
+        )
+    }
+}
+
+/// Animates the window height — the one step SwiftUI has no hook for.
 @MainActor
 private final class WindowResizer {
     private weak var window: NSWindow?
-    /// Height of the most recent request, applied or not. Also identifies which
-    /// request owns the height lock.
     private var requestedHeight: CGFloat?
+    private var requestedResizable = false
 
-    /// The first measurement can land before the view has a window, so a
-    /// request made that early is replayed here rather than dropped — that gap
-    /// is what left the window opening at SwiftUI's default height.
+    /// Replays a request made before the view had a window. Deferred a turn:
+    /// this runs inside the render pass mutating the window would reenter.
     func bind(to window: NSWindow?) {
         guard let window, window !== self.window else { return }
         self.window = window
 
-        if let height = requestedHeight {
-            Task { await fit(height: height, duration: 0) }
+        Task { @MainActor in
+            guard self.window === window else { return }
+
+            apply(resizable: requestedResizable, to: window)
+
+            if let height = requestedHeight {
+                await fit(height: height, duration: 0)
+            }
         }
     }
 
-    /// Returns once the window has settled at `height`. A zero duration applies
-    /// the frame without animating.
+    var visibleScreenHeight: CGFloat? {
+        (window?.screen ?? NSScreen.main)?.visibleFrame.height
+    }
+
+    /// Deferred a turn: the caller is an `onChange`, run as part of a view
+    /// update, and the style mask rebuilds the title bar.
+    func setResizable(_ resizable: Bool) {
+        requestedResizable = resizable
+
+        Task { @MainActor in
+            guard let window, requestedResizable == resizable else { return }
+            apply(resizable: resizable, to: window)
+        }
+    }
+
+    private func apply(resizable: Bool, to window: NSWindow) {
+        if resizable {
+            window.styleMask.insert(.resizable)
+        } else {
+            window.styleMask.remove(.resizable)
+        }
+    }
+
+    /// Returns once the window has settled. Zero duration skips the animation.
     func fit(height: CGFloat, duration: TimeInterval) async {
         guard height > 0 else { return }
         requestedHeight = height
 
-        guard let window, let contentView = window.contentView else { return }
+        guard let window else { return }
 
-        // Force a layout pass so a measurement scheduled for the content that
-        // was just installed has landed before the frame is derived from it.
-        contentView.layoutSubtreeIfNeeded()
-
-        // Convert through the window rather than subtracting contentView from
-        // frame: those disagree while an earlier resize is still animating.
+        // Convert through the window: contentView and frame disagree while an
+        // earlier resize is still animating.
         var contentRect = window.contentRect(forFrameRect: window.frame)
 
-        // The content rect spans the whole frame, including the strip the
-        // toolbar draws over; only contentLayoutRect is left for the view. The
-        // measured height is the view's, so it has to be grown by that chrome —
-        // targeting it directly clipped every tab by the toolbar's height.
+        // Only contentLayoutRect is left for the view, so grow the measured
+        // height by the strip the toolbar draws over.
         let chrome = contentRect.height - window.contentLayoutRect.height
         let target = height + chrome
 
-        guard abs(contentRect.height - target) > 0.5 else {
-            // Already the right size, but the lock may still be a stale tab's.
-            lockHeight(target, on: window)
-            return
-        }
+        guard abs(contentRect.height - target) > 0.5 else { return }
 
         contentRect.size.height = target
-        var frame = window.frameRect(forContentRect: contentRect)
         // Keep the title bar where it is; grow and shrink downward.
+        var frame = window.frameRect(forContentRect: contentRect)
         frame.origin.y = window.frame.maxY - frame.height
-
-        // Vertical resizing is locked to the content height between
-        // transitions, so unlock before animating or the clamp fights every
-        // intermediate frame.
-        window.contentMinSize.height = 0
-        window.contentMaxSize.height = .greatestFiniteMagnitude
 
         guard window.isVisible, duration > 0 else {
             window.setFrame(frame, display: false)
-            lockHeight(target, on: window)
             return
         }
 
+        // TODO: A web-view tab logs "NSHostingView is being laid out
+        // reentrantly" once per tick of this animation: the tick lays the
+        // hosting view out, a WKWebView renders continuously, so the layout
+        // lands inside a render and AppKit skips that pass. Harmless — the
+        // next tick redoes it — but worth an alternative. Passing duration 0
+        // for tabs declaring `contentUnbounded()` silences it, at the cost of
+        // the animation there.
         await withCheckedContinuation { continuation in
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = duration
@@ -344,22 +471,9 @@ private final class WindowResizer {
                 )
                 window.animator().setFrame(frame, display: true)
             } completionHandler: {
-                MainActor.assumeIsolated {
-                    // Starting a newer frame animation aborts this one and
-                    // fires this handler early. Locking here would clamp the
-                    // window to a height that request is animating away from.
-                    if self.requestedHeight == height {
-                        self.lockHeight(target, on: window)
-                    }
-                    continuation.resume()
-                }
+                continuation.resume()
             }
         }
-    }
-
-    private func lockHeight(_ height: CGFloat, on window: NSWindow) {
-        window.contentMinSize.height = height
-        window.contentMaxSize.height = height
     }
 }
 

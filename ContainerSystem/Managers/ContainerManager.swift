@@ -17,7 +17,6 @@ import Logging
 @Observable
 @MainActor
 public final class ContainerManager {
-
     /// Internal runtime reference (hidden from UI)
     let runtime: ContainerRuntime
 
@@ -45,13 +44,13 @@ public final class ContainerManager {
     }
 
     #if DEBUG
-        /// Internal initializer for testing - allows injection of test runtime
-        init(testRuntime: ContainerRuntime) {
-            self.runtime = testRuntime
-            var logger = Logger(label: "app.containers.manager.containers.test")
-            logger.logLevel = .debug
-            self.logger = logger
-        }
+    /// Internal initializer for testing - allows injection of test runtime
+    init(testRuntime: ContainerRuntime) {
+        self.runtime = testRuntime
+        var logger = Logger(label: "app.containers.manager.containers.test")
+        logger.logLevel = .debug
+        self.logger = logger
+    }
     #endif
 
     // MARK: - Public API
@@ -686,8 +685,7 @@ public final class ContainerManager {
         let fqdn: String?
         if !containerId.contains(".") {
             // add default domain if it exists, and container ID is unqualified
-            if let dnsDomain = DefaultsStore.getOptional(key: .defaultDNSDomain)
-            {
+            if let dnsDomain = DefaultsStore.getOptional(key: .defaultDNSDomain) {
                 fqdn = "\(containerId).\(dnsDomain)."
             } else {
                 fqdn = nil
