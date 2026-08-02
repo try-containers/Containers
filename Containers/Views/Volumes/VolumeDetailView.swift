@@ -92,6 +92,12 @@ struct VolumeDetailView: View {
                 case .inspect: 500
                 }
             },
+            tabContentWidth: { category in
+                switch category {
+                case .overview: DetailPlaceholder.width
+                case .inspect: nil
+                }
+            },
             tabContent: { category in
                 switch category {
                 case .overview:

@@ -79,97 +79,53 @@ struct DashboardView: View {
     // Resource usage state
     @SwiftUI.State private var resources = ResourcesViewModel()
 
+    @SwiftUI.State private var toolbarController = DashboardToolbarController()
+    @SwiftUI.State private var showAddFirstImageTip: Bool = false
+
     private let addFirstImageTip = AddFirstImageTip()
 
     private var isSystemRunning: Bool { system.status == .running }
 
+    @ViewBuilder private var tabContent: some View {
+        switch selectedTab {
+        case .containers:
+            ContainersView(
+                searchText: $searchText,
+                runningContainersOnly: $runningContainersOnly,
+                refreshTrigger: refreshTrigger
+            )
+            .padding(.top)
+        case .images:
+            ImagesView(
+                searchText: $searchText,
+                refreshTrigger: refreshTrigger
+            )
+            .padding(.top)
+        case .volumes:
+            VolumesView(
+                searchText: $searchText,
+                refreshTrigger: refreshTrigger
+            )
+            .padding(.top)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            TabView(selection: $selectedTab) {
-                ForEach(NavigationTab.allCases) { tab in
-                    NavigationStack {
-                        switch tab {
-                        case .containers:
-                            ContainersView(
-                                searchText: $searchText,
-                                runningContainersOnly: $runningContainersOnly,
-                                refreshTrigger: refreshTrigger
-                            )
-                            .padding(.top)
-                        case .images:
-                            ImagesView(
-                                searchText: $searchText,
-                                refreshTrigger: refreshTrigger
-                            )
-                            .padding(.top)
-                        case .volumes:
-                            VolumesView(
-                                searchText: $searchText,
-                                refreshTrigger: refreshTrigger
-                            )
-                            .padding(.top)
-                        }
-                    }
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity,
-                        alignment: .topLeading
-                    )
-                    .toolbarBackground(.hidden, for: .automatic)
-                    .tabItem {
-                        Label(tab.displayTitle, systemImage: tab.icon)
-                    }
-                    .tag(tab)
-                }
-            }
-            .tabViewStyle(.automatic)
-            .disabled(!isSystemRunning)
-            .overlay {
-                if !isSystemRunning {
-                    SystemStatusView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color(nsColor: .windowBackgroundColor))
-                }
-            }
-            .toolbar {
-                if selectedTab == .containers {
-                    ToolbarItem(placement: .automatic) {
-                        Toggle(
-                            isOn: $runningContainersOnly,
-                            label: {
-                                Image(systemName: "line.3.horizontal.decrease")
-                            }
-                        )
-                        .toggleStyle(.button)
-                        .disabled(!isSystemRunning)
-                        .help("Running containers only")
+            tabContent
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
+                .disabled(!isSystemRunning)
+                .overlay {
+                    if !isSystemRunning {
+                        SystemStatusView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color(nsColor: .windowBackgroundColor))
                     }
                 }
-
-                ToolbarItem(placement: .automatic) {
-                    Button(
-                        action: {
-                            addFirstImageTip.invalidate(reason: .actionPerformed)
-                            handlePlusButton()
-                        },
-                        label: {
-                            Image(systemName: "plus")
-                        }
-                    )
-                    .disabled(!isSystemRunning)
-                    .help("New")
-                    .popoverTip(addFirstImageTip, arrowEdge: .bottom)
-                }
-
-                ToolbarSpacer(.fixed)
-
-                ToolbarItem(placement: .automatic) {
-                    TextField("Search", text: $searchText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 220)
-                        .disabled(!isSystemRunning)
-                }
-            }
             .onAppear {
                 if UserDefaults.shouldShowWhatsNew {
                     isFirstLaunch = UserDefaults.lastSeenVersion.isEmpty
@@ -258,8 +214,43 @@ struct DashboardView: View {
 
             statusBar
         }
-        .frame(minWidth: 800, minHeight: 320)
-        .background(DashboardToolbarConfigurator())
+        // The floor the toolbar needs to keep every item out of the overflow
+        // menu: below ~540 the buttons go first and the tabs follow at ~470.
+        // The search field collapsing to a magnifier is the one thing meant to
+        // happen on the way down, and it starts at ~620.
+        .frame(minWidth: 560, minHeight: 320)
+        .background(
+            DashboardToolbarBinder(
+                controller: toolbarController,
+                tabs: NavigationTab.allCases.map(\.displayTitle),
+                selectedIndex: NavigationTab.allCases
+                    .firstIndex(of: selectedTab) ?? 0,
+                isEnabled: isSystemRunning,
+                showsFilter: selectedTab == .containers,
+                isFilterOn: runningContainersOnly,
+                searchText: searchText,
+                onSelectTab: { index in
+                    let all = NavigationTab.allCases
+                    guard all.indices.contains(index) else { return }
+                    selectedTab = all[index]
+                },
+                onToggleFilter: { runningContainersOnly = $0 },
+                onAdd: {
+                    addFirstImageTip.invalidate(reason: .actionPerformed)
+                    handlePlusButton()
+                },
+                onSearch: { searchText = $0 },
+                addTip: showAddFirstImageTip
+                    ? AnyView(TipView(addFirstImageTip)) : nil
+            )
+        )
+        .task {
+            // The toolbar item is AppKit's, so nothing can carry `.popoverTip`
+            // for it. Watching the tip here is what stands in for that.
+            for await shouldDisplay in addFirstImageTip.shouldDisplayUpdates {
+                showAddFirstImageTip = shouldDisplay
+            }
+        }
     }
 
     private var statusBar: some View {
@@ -454,25 +445,3 @@ struct DashboardView: View {
     }
 }
 
-private struct DashboardToolbarConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async { [weak view] in
-            configure(view?.window)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { [weak nsView] in
-            configure(nsView?.window)
-        }
-    }
-
-    private func configure(_ window: NSWindow?) {
-        guard let toolbar = window?.toolbar else { return }
-        toolbar.allowsUserCustomization = false
-        toolbar.allowsDisplayModeCustomization = false
-        toolbar.autosavesConfiguration = false
-    }
-}

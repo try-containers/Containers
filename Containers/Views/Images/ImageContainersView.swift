@@ -56,20 +56,14 @@ struct ImageContainersView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .foregroundStyle(.secondary)
-                TextField("Filter", text: $filterText)
-                    .textFieldStyle(.plain)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(Color.white)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            FilterField(
+                text: $filterText,
+                cornerRadius: 15,
+                horizontalPadding: 8,
+                verticalPadding: 7,
+                highlightsActiveFilter: false
             )
-            .padding(10)
+            .padding(8)
 
             content
         }
@@ -134,8 +128,6 @@ struct ImageContainersView: View {
                                             ? .white : .primary
                                     )
 
-                                Spacer()
-
                                 Text(
                                     container.status == .running
                                         ? "Running" : "Stopped"
@@ -147,24 +139,24 @@ struct ImageContainersView: View {
                                         : (container.status == .running
                                             ? Color.green : .secondary)
                                 )
-                                .frame(width: 56, alignment: .leading)
+                                .frame(width: 56, alignment: .trailing)
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .background(
-                                RoundedRectangle(cornerRadius: 7)
+                                RoundedRectangle(cornerRadius: 6)
                                     .fill(
                                         hoveredID == container.id
                                             ? Color.accentColor : Color.clear
                                     )
                             )
-                            .contentShape(RoundedRectangle(cornerRadius: 7))
+                            .contentShape(RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
                         .onHover { hoveredID = $0 ? container.id : nil }
                     }
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 8)
                 .padding(.bottom, 8)
             }
         }

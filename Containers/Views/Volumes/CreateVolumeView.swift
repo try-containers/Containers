@@ -89,7 +89,6 @@ struct CreateVolumeView: View {
                 placeholder: "Size",
                 value: $sizeValue,
                 format: .number,
-                fieldWidth: 240,
                 options: [.megabytes, .gigabytes, .terabytes],
                 selection: $sizeUnit
             )

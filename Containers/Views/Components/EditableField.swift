@@ -4,12 +4,102 @@
 //
 //  Created by Axel Martinez on 30/05/2026.
 //
+
 import SwiftUI
 
 enum EditableFormLayout {
     static let labelWidth: CGFloat = 150
     static let controlWidth: CGFloat = 260
     static let fieldLabelTopPadding: CGFloat = 5
+    static let rowSpacing: CGFloat = 8
+
+    /// Share of the width left over by the control that goes to the label side.
+    /// Measured off Xcode's scheme sheet, which gives the label a little more
+    /// than the trailing margin and so sits the control just right of centre.
+    static let labelShare: CGFloat = 0.57
+}
+
+/// A form row laid out the way AppKit does it: the control keeps a fixed width
+/// and the label hangs off its leading edge, rather than the label and control
+/// centring together as one block.
+///
+/// This is a `Layout` rather than an `HStack` because the leftover width is
+/// split unevenly. Flexible frames can only divide it equally — and a `Spacer`
+/// cannot even do that, since it yields to a `maxWidth: .infinity` sibling.
+struct EditableFormRow<Label: View, Control: View>: View {
+    var controlWidth: CGFloat = EditableFormLayout.controlWidth
+    @ViewBuilder var label: Label
+    @ViewBuilder var control: Control
+
+    var body: some View {
+        EditableFormRowLayout(
+            controlWidth: controlWidth,
+            spacing: EditableFormLayout.rowSpacing,
+            labelShare: EditableFormLayout.labelShare
+        ) {
+            label
+                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+
+            control
+                .frame(width: controlWidth, alignment: .leading)
+        }
+    }
+}
+
+private struct EditableFormRowLayout: Layout {
+    let controlWidth: CGFloat
+    let spacing: CGFloat
+    let labelShare: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard let label = subviews.first, let control = subviews.last,
+            subviews.count == 2
+        else { return .zero }
+
+        let width =
+            proposal.width
+            ?? label.sizeThatFits(.unspecified).width + spacing + controlWidth
+        let labelWidth = labelWidth(for: width)
+
+        let height = max(
+            label.sizeThatFits(.init(width: labelWidth, height: nil)).height,
+            control.sizeThatFits(.init(width: controlWidth, height: nil)).height
+        )
+
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        guard let label = subviews.first, let control = subviews.last,
+            subviews.count == 2
+        else { return }
+
+        let labelWidth = labelWidth(for: bounds.width)
+
+        label.place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            proposal: .init(width: labelWidth, height: nil)
+        )
+
+        control.place(
+            at: CGPoint(x: bounds.minX + labelWidth + spacing, y: bounds.minY),
+            proposal: .init(width: controlWidth, height: nil)
+        )
+    }
+
+    private func labelWidth(for width: CGFloat) -> CGFloat {
+        max(0, (width - controlWidth - spacing) * labelShare)
+    }
 }
 
 struct EditableField<
@@ -32,8 +122,6 @@ where Format.FormatOutput == String {
     let action: (() -> Void)?
     let selectionActionTitle: String?
     let onSelectionAction: (() -> Void)?
-
-    private let editableFieldActionSentinel = "§__editablefield_action__§"
 
     init(
         title: String? = nil,
@@ -82,84 +170,91 @@ where Format.FormatOutput == String {
     }
 
     var body: some View {
-        HStack(alignment: .top) {
-            if let title, let titleIcon {
-                SwiftUI.Label("\(title):", systemImage: titleIcon)
-                    .frame(
-                        width: EditableFormLayout.labelWidth,
-                        alignment: .trailing
-                    )
-                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-            } else if let title {
-                Text("\(title):")
-                    .frame(
-                        width: EditableFormLayout.labelWidth,
-                        alignment: .trailing
-                    )
-                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .center) {
-                    if let value {
-                        title(for: value)
-                            .overlay(alignment: .trailing) {
-                                if let action, let actionLabel {
-                                    Button(action: action, label: actionLabel)
-                                        .buttonStyle(.borderless)
-                                        .padding(.trailing, 4)
-                                }
-                            }
-                    }
-
-                    if let selection {
-                        Picker(placeholder, selection: selection) {
-                            if !options.contains(selection.wrappedValue) {
-                                Text(placeholder).tag(selection.wrappedValue)
-                                Divider()
-                            }
-                            ForEach(options, id: \.self) { option in
-                                if let unit = option as? Unit {
-                                    Text(unit.symbol).tag(option)
-                                } else {
-                                    Text(option.description).tag(option)
-                                }
-                            }
-                            if let actionTitle = selectionActionTitle,
-                                let sentinel = editableFieldActionSentinel
-                                    as? Option
-                            {
-                                Divider()
-                                Text(actionTitle).tag(sentinel)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .onChange(of: selection.wrappedValue) { old, new in
-                            if (new as? String) == editableFieldActionSentinel {
-                                selection.wrappedValue = old
-                                onSelectionAction?()
-                            }
-                        }
-                    }
-
-                    if value == nil, let action, let actionLabel {
-                        Button(action: action, label: actionLabel)
-                            .buttonStyle(.plain)
-                    }
-                }
-
-                if let description {
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(
-                maxWidth: fieldWidth ?? EditableFormLayout.controlWidth,
-                alignment: .leading
+        if title != nil {
+            EditableFormRow(
+                controlWidth: fieldWidth ?? EditableFormLayout.controlWidth,
+                label: { titleLabel },
+                control: { controlColumn }
             )
+        } else {
+            controlColumn
+                .frame(
+                    maxWidth: fieldWidth ?? EditableFormLayout.controlWidth,
+                    alignment: .leading
+                )
         }
+    }
+
+    @ViewBuilder
+    private var titleLabel: some View {
+        if let title, let titleIcon {
+            SwiftUI.Label("\(title):", systemImage: titleIcon)
+        } else if let title {
+            Text("\(title):")
+        }
+    }
+
+    private var controlColumn: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center) {
+                if let value {
+                    title(for: value)
+                        .overlay(alignment: .trailing) {
+                            if let action, let actionLabel {
+                                Button(action: action, label: actionLabel)
+                                    .buttonStyle(.borderless)
+                                    .padding(.trailing, 4)
+                            }
+                        }
+                }
+
+                if let selection {
+                    FormPopUpButton(
+                        items: selectionItems(for: selection.wrappedValue),
+                        selection: selection,
+                        // Sharing the column with a value field, the pop-up
+                        // takes only what its content needs.
+                        fillsAvailableWidth: value == nil,
+                        onAction: onSelectionAction
+                    )
+                }
+
+                if value == nil, let action, let actionLabel {
+                    Button(action: action, label: actionLabel)
+                        .buttonStyle(.plain)
+                }
+            }
+
+            if let description {
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func selectionItems(
+        for selected: Option
+    ) -> [FormPopUpButton<Option>.Item] {
+        var items: [FormPopUpButton<Option>.Item] = []
+
+        // A selection that is not one of the options — no image picked yet, say
+        // — still needs an entry to sit on, so show the placeholder.
+        if !options.contains(selected) {
+            items.append(.option(selected, title: placeholder))
+            items.append(.separator)
+        }
+
+        items += options.map { option in
+            .option(option, title: (option as? Unit)?.symbol ?? option.description)
+        }
+
+        if let selectionActionTitle {
+            items.append(.separator)
+            items.append(.action(selectionActionTitle))
+        }
+
+        return items
     }
 }
 

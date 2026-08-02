@@ -1,0 +1,381 @@
+//
+//  DashboardToolbar.swift
+//  Containers
+//
+//  Created by Axel Martinez on 02/08/2026.
+//
+
+import AppKit
+import SwiftUI
+
+/// Builds the dashboard window's toolbar in AppKit, for one reason: the search
+/// field has to be an `NSSearchToolbarItem`. Collapsing to a magnifier when the
+/// toolbar runs out of room is that item's behaviour, and SwiftUI never makes
+/// one — `.searchable` hosts its own field inside a plain item, which cannot
+/// collapse. It is also why `SearchToolbarBehavior.minimize` is unavailable on
+/// macOS.
+@MainActor
+final class DashboardToolbarController: NSObject, NSToolbarDelegate {
+    var tabs: [String] = []
+    var selectedIndex = 0
+    var isEnabled = true
+    var showsFilter = false
+    var isFilterOn = false
+    var searchText = ""
+    var onSelectTab: (Int) -> Void = { _ in }
+    var onToggleFilter: (Bool) -> Void = { _ in }
+    var onAdd: () -> Void = {}
+    var onSearch: (String) -> Void = { _ in }
+    /// The tip to hang off the add button, or nil when it should not show.
+    /// TipKit's `.popoverTip` needs a SwiftUI view to attach to and a toolbar
+    /// item is not one, so the popover is presented here instead.
+    var addTip: AnyView?
+
+    private static let tabsIdentifier = NSToolbarItem.Identifier("tabs")
+    private static let filterIdentifier = NSToolbarItem.Identifier("filter")
+    private static let addIdentifier = NSToolbarItem.Identifier("add")
+    private static let searchIdentifier = NSToolbarItem.Identifier("search")
+
+    private weak var window: NSWindow?
+    /// What the toolbar was last built from; a change means new items rather
+    /// than new state on the existing ones.
+    private var builtFrom: [String] = []
+    private var tipPopover: NSPopover?
+
+    func attach(to window: NSWindow) {
+        guard self.window !== window else { return }
+        self.window = window
+
+        let toolbar = NSToolbar(identifier: "dashboard")
+        toolbar.delegate = self
+        toolbar.allowsUserCustomization = false
+        toolbar.allowsDisplayModeCustomization = false
+        toolbar.autosavesConfiguration = false
+        toolbar.displayMode = .iconOnly
+        builtFrom = shape
+
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
+        applyChrome()
+    }
+
+    /// Reapplied on every update, not just on `attach`: something puts the
+    /// divider under the toolbar back after the items are installed.
+    /// `titlebarSeparatorStyle` does nothing here, reapplied or not — a
+    /// transparent titlebar is what drops the divider.
+    /// Called from `update()` as well as `attach`, because the window setup
+    /// puts the divider back once after the toolbar is installed — setting
+    /// this only in `attach` does not survive. Both writes are guarded, so
+    /// after those first two it is a comparison and nothing more.
+    /// `titlebarSeparatorStyle` does nothing here, reapplied or not; a
+    /// transparent titlebar is what drops the divider.
+    private func applyChrome() {
+        guard let window else { return }
+
+        // The tabs say where you are; the window title only repeated the app
+        // name and cost the toolbar the width it needs to stay uncollapsed.
+        if window.titleVisibility != .hidden {
+            window.titleVisibility = .hidden
+        }
+
+        if !window.titlebarAppearsTransparent {
+            window.titlebarAppearsTransparent = true
+        }
+    }
+
+    /// The identifiers the toolbar is made of. State that only changes an
+    /// item — enabled, selected — is applied in place instead.
+    private var shape: [String] {
+        tabs + (showsFilter ? ["filter"] : []) + ["add", "search"]
+    }
+
+    private var identifiers: [NSToolbarItem.Identifier] {
+        var result: [NSToolbarItem.Identifier] = []
+
+        // Ahead of the tabs, so they sit beside the buttons rather than out on
+        // the left next to the traffic lights.
+        result.append(.flexibleSpace)
+
+        if !tabs.isEmpty {
+            result.append(Self.tabsIdentifier)
+        }
+
+        if showsFilter {
+            result.append(Self.filterIdentifier)
+        }
+
+        result.append(Self.addIdentifier)
+        // Keeps the search field out of the glass group the neighbouring
+        // buttons form.
+        result.append(.space)
+        result.append(Self.searchIdentifier)
+
+        return result
+    }
+
+    func update() {
+        guard let toolbar = window?.toolbar else { return }
+
+        applyChrome()
+
+        guard builtFrom == shape else {
+            builtFrom = shape
+            rebuild(toolbar)
+            return
+        }
+
+        for item in toolbar.items {
+            switch item.itemIdentifier {
+            case Self.tabsIdentifier:
+                guard let group = item as? NSToolbarItemGroup else { break }
+                if group.selectedIndex != selectedIndex {
+                    group.selectedIndex = selectedIndex
+                }
+            case Self.filterIdentifier:
+                guard let group = item as? NSToolbarItemGroup else { break }
+                if group.isSelected(at: 0) != isFilterOn {
+                    group.setSelected(isFilterOn, at: 0)
+                }
+            case Self.searchIdentifier:
+                guard let search = item as? NSSearchToolbarItem else { break }
+                if search.searchField.stringValue != searchText {
+                    search.searchField.stringValue = searchText
+                }
+            default:
+                break
+            }
+
+            item.isEnabled = isEnabled
+        }
+
+        syncTipPopover()
+    }
+
+    private func syncTipPopover() {
+        guard let addTip else {
+            tipPopover?.close()
+            tipPopover = nil
+            return
+        }
+
+        guard tipPopover == nil, let anchor = addButtonView else { return }
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(
+            rootView: addTip.frame(width: 260)
+        )
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        tipPopover = popover
+    }
+
+    /// The add button's item viewer, found by the label AppKit publishes for
+    /// it — a standard `NSToolbarItem` builds its own view and does not hand it
+    /// back through `view`.
+    private var addButtonView: NSView? {
+        guard let root = window?.contentView?.superview else { return nil }
+
+        func walk(_ view: NSView) -> NSView? {
+            if view.accessibilityRole() == .button,
+                view.accessibilityLabel() == "New"
+            {
+                return view
+            }
+
+            for subview in view.subviews {
+                if let found = walk(subview) { return found }
+            }
+
+            return nil
+        }
+
+        return walk(root)
+    }
+
+    private func rebuild(_ toolbar: NSToolbar) {
+        while !toolbar.items.isEmpty {
+            toolbar.removeItem(at: toolbar.items.count - 1)
+        }
+
+        for (index, identifier) in identifiers.enumerated() {
+            toolbar.insertItem(withItemIdentifier: identifier, at: index)
+        }
+    }
+
+    // MARK: - NSToolbarDelegate
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        identifiers
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        identifiers
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        switch itemIdentifier {
+        case Self.tabsIdentifier: tabGroup(itemIdentifier)
+        case Self.filterIdentifier: filterItem(itemIdentifier)
+        case Self.addIdentifier: addItem(itemIdentifier)
+        case Self.searchIdentifier: searchItem(itemIdentifier)
+        default: nil
+        }
+    }
+
+    private func tabGroup(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItemGroup {
+        let group = NSToolbarItemGroup(
+            itemIdentifier: identifier,
+            titles: tabs,
+            selectionMode: .selectOne,
+            labels: tabs,
+            target: self,
+            action: #selector(tabSelected)
+        )
+        group.selectedIndex = selectedIndex
+        group.isEnabled = isEnabled
+        // The tabs are how the window is navigated, so they outrank everything
+        // else when the toolbar runs out of room — the search field is meant to
+        // be what collapses first.
+        group.visibilityPriority = .high
+        group.controlRepresentation = .expanded
+        return group
+    }
+
+    /// A one-entry group rather than a plain item: `.selectAny` is what draws
+    /// the on state, which a bordered `NSToolbarItem` has no way to show.
+    private func filterItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItemGroup {
+        let title = "Running containers only"
+        let image =
+            NSImage(
+                systemSymbolName: "line.3.horizontal.decrease",
+                accessibilityDescription: title
+            ) ?? NSImage()
+
+        let group = NSToolbarItemGroup(
+            itemIdentifier: identifier,
+            images: [image],
+            selectionMode: .selectAny,
+            labels: [title],
+            target: self,
+            action: #selector(filterToggled)
+        )
+        group.setSelected(isFilterOn, at: 0)
+        group.isEnabled = isEnabled
+        group.toolTip = title
+        return group
+    }
+
+    private func addItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = "New"
+        item.paletteLabel = "New"
+        item.toolTip = "New"
+        item.image = NSImage(
+            systemSymbolName: "plus",
+            accessibilityDescription: "New"
+        )
+        item.isBordered = true
+        // Managed from SwiftUI's state, so keep AppKit from overriding it with
+        // a responder-chain check that would always fail here.
+        item.autovalidates = false
+        item.isEnabled = isEnabled
+        item.target = self
+        item.action = #selector(addInvoked)
+        return item
+    }
+
+    private func searchItem(_ identifier: NSToolbarItem.Identifier) -> NSSearchToolbarItem {
+        let item = NSSearchToolbarItem(itemIdentifier: identifier)
+        item.searchField.placeholderString = "Search"
+        item.searchField.delegate = self
+        item.searchField.stringValue = searchText
+        item.preferredWidthForSearchField = 220
+        item.resignsFirstResponderWithCancel = true
+        item.isEnabled = isEnabled
+        return item
+    }
+
+    @objc private func tabSelected(_ sender: NSToolbarItemGroup) {
+        onSelectTab(sender.selectedIndex)
+    }
+
+    @objc private func filterToggled(_ sender: NSToolbarItemGroup) {
+        onToggleFilter(sender.isSelected(at: 0))
+    }
+
+    @objc private func addInvoked(_ sender: NSToolbarItem) {
+        onAdd()
+    }
+}
+
+extension DashboardToolbarController: NSSearchFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSSearchField else { return }
+        searchText = field.stringValue
+        onSearch(field.stringValue)
+    }
+}
+
+/// Hands the controller its window, and the current state on every update.
+struct DashboardToolbarBinder: NSViewRepresentable {
+    let controller: DashboardToolbarController
+    let tabs: [String]
+    let selectedIndex: Int
+    let isEnabled: Bool
+    let showsFilter: Bool
+    let isFilterOn: Bool
+    let searchText: String
+    let onSelectTab: (Int) -> Void
+    let onToggleFilter: (Bool) -> Void
+    let onAdd: () -> Void
+    let onSearch: (String) -> Void
+    let addTip: AnyView?
+
+    func makeNSView(context: Context) -> NSView {
+        BindingView(controller: controller)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        controller.tabs = tabs
+        controller.selectedIndex = selectedIndex
+        controller.isEnabled = isEnabled
+        controller.showsFilter = showsFilter
+        controller.isFilterOn = isFilterOn
+        controller.searchText = searchText
+        controller.onSelectTab = onSelectTab
+        controller.onToggleFilter = onToggleFilter
+        controller.onAdd = onAdd
+        controller.onSearch = onSearch
+        controller.addTip = addTip
+        controller.update()
+    }
+
+    private final class BindingView: NSView {
+        let controller: DashboardToolbarController
+
+        init(controller: DashboardToolbarController) {
+            self.controller = controller
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) unavailable")
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+
+            // Deferred: this runs inside the render pass that installing a
+            // toolbar would reenter.
+            Task { @MainActor in
+                controller.attach(to: window)
+                controller.update()
+            }
+        }
+    }
+}

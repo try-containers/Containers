@@ -45,52 +45,27 @@ struct FileSelection: View {
         self.isPresented = isPresented
     }
 
-    var body: some View {
-        HStack(alignment: .top) {
-            Text("\(title):")
-                .frame(
-                    width: EditableFormLayout.labelWidth,
-                    alignment: .trailing
-                )
-                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(fileURL.wrappedValue?.path ?? placeholder)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(
-                            fileURL.wrappedValue == nil ? .secondary : .primary
-                        )
-                        .padding(.horizontal, 8)
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: 22,
-                            alignment: .leading
-                        )
-                        .background {
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(Color(nsColor: .textBackgroundColor))
-                                .stroke(
-                                    Color(nsColor: .separatorColor),
-                                    lineWidth: 1
-                                )
-                        }
-
-                    Button("Choose...", action: selectFile)
-                }
-
-                if let description {
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(
-                width: EditableFormLayout.controlWidth,
-                alignment: .leading
-            )
+    private var path: Binding<String> {
+        Binding {
+            fileURL.wrappedValue?.path ?? ""
+        } set: { path in
+            let path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            fileURL.wrappedValue = path.isEmpty ? nil : URL(filePath: path)
+            onSelection?()
         }
+    }
+
+    var body: some View {
+        EditableField(
+            title: title,
+            description: description,
+            placeholder: placeholder,
+            value: path,
+            actionLabel: {
+                Label("Browse", systemImage: "folder").labelStyle(.iconOnly)
+            },
+            action: selectFile
+        )
         .onChange(of: isPresented?.wrappedValue ?? false) { _, isPresented in
             guard isPresented else { return }
             selectFile()

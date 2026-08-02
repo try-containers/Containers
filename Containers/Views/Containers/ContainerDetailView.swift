@@ -120,6 +120,12 @@ struct ContainerDetailView: View {
                 case .inspect: 500
                 }
             },
+            tabContentWidth: { tab in
+                switch tab {
+                case .overview: DetailPlaceholder.width
+                case .logs, .inspect: nil
+                }
+            },
             tabContent: { tab in
                 switch tab {
                 case .overview:

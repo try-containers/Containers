@@ -111,6 +111,14 @@ struct ImageDetailView: View {
                 case .inspect: 500
                 }
             },
+            // The inspect tab opens the window wider than the others need; the
+            // overview holds its own width there rather than stretching to it.
+            tabContentWidth: { category in
+                switch category {
+                case .overview: 650
+                case .history, .inspect: nil
+                }
+            },
             tabContent: { category in
                 switch category {
                 case .overview:

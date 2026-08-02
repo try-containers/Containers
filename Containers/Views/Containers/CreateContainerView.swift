@@ -89,7 +89,7 @@ struct CreateContainerView: View {
         }
     }
 
-    private static let fieldWidth: CGFloat = 420
+    private static let fieldWidth: CGFloat = EditableFormLayout.controlWidth
 
     enum Tab: String, CaseIterable, Identifiable {
         case info = "Info"
@@ -211,20 +211,14 @@ struct CreateContainerView: View {
     @ViewBuilder
     private var imageSelectionField: some View {
         if mode == .run {
-            HStack(alignment: .top) {
+            EditableFormRow(controlWidth: Self.fieldWidth) {
                 Text("Image:")
-                    .frame(
-                        width: EditableFormLayout.labelWidth,
-                        alignment: .trailing
-                    )
-                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-
+            } control: {
                 Text(imageReference)
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-                    .frame(width: Self.fieldWidth, alignment: .leading)
             }
         } else {
             EditableField(

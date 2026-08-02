@@ -108,6 +108,9 @@ struct DetailView<
     /// Bounds the fit only; content always fills the window, so a tab that can
     /// outgrow its bound needs its own ScrollView.
     let tabMaxHeight: (Tab) -> CGFloat?
+    /// Caps the content and centres it, so a tab holds its shape in a window
+    /// left wider by another tab. `nil` runs edge to edge.
+    let tabContentWidth: (Tab) -> CGFloat?
     let tabContent: (Tab) -> Content
 
     @State private var displayedTab: Tab
@@ -120,6 +123,7 @@ struct DetailView<
     @State private var needsRefit = false
     @State private var hasMeasured = false
     @State private var resizer = WindowResizer()
+    @State private var toolbarController = DetailToolbarController()
 
     init(
         selectedTab: Binding<Tab>,
@@ -129,6 +133,7 @@ struct DetailView<
         tabIcon: @escaping (Tab) -> String,
         tabWidth: @escaping (Tab) -> CGFloat? = { _ in nil },
         tabMaxHeight: @escaping (Tab) -> CGFloat? = { _ in nil },
+        tabContentWidth: @escaping (Tab) -> CGFloat? = { _ in nil },
         @ViewBuilder tabContent: @escaping (Tab) -> Content
     ) {
         self._selectedTab = selectedTab
@@ -139,6 +144,7 @@ struct DetailView<
         self.tabIcon = tabIcon
         self.tabWidth = tabWidth
         self.tabMaxHeight = tabMaxHeight
+        self.tabContentWidth = tabContentWidth
         self.tabContent = tabContent
     }
 
@@ -150,9 +156,20 @@ struct DetailView<
         min(tabMaxHeight(displayedTab) ?? maximumHeight, maximumHeight)
     }
 
+    private var toolbarTabs: [DetailToolbarController.Tab] {
+        Array(Tab.allCases).map {
+            .init(title: tabTitle($0), icon: tabIcon($0))
+        }
+    }
+
     private var sizedContent: some View {
         FillingContent(onIdealHeight: fitTo) {
             tabContent(displayedTab)
+                // The cap first, then the full width to centre it in. Measuring
+                // happens through both, so the height reported is the height at
+                // the width the content is actually drawn at.
+                .frame(maxWidth: tabContentWidth(displayedTab) ?? .infinity)
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -198,41 +215,20 @@ struct DetailView<
             .background(.windowBackground)
             .clipped()
             .background(WindowBinder(resizer: resizer))
-            .toolbar {
-                if showTabs {
-                    ToolbarItem(placement: .primaryAction) {
-                        Picker("", selection: $selectedTab) {
-                            ForEach(Array(Tab.allCases), id: \.self) { tab in
-                                Label(
-                                    tabTitle(tab),
-                                    systemImage: tabIcon(tab)
-                                )
-                                .tag(tab)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+            .background(
+                DetailToolbarBinder(
+                    controller: toolbarController,
+                    tabs: showTabs ? toolbarTabs : [],
+                    selectedIndex: Array(Tab.allCases)
+                        .firstIndex(of: displayedTab) ?? 0,
+                    actions: actions,
+                    onSelectTab: { index in
+                        let all = Array(Tab.allCases)
+                        guard all.indices.contains(index) else { return }
+                        selectedTab = all[index]
                     }
-
-                    ToolbarSpacer(.fixed, placement: .primaryAction)
-                }
-
-                ToolbarItemGroup(placement: .primaryAction) {
-                    ForEach(actions) { action in
-                        Button(
-                            role: action.isDestructive ? .destructive : nil
-                        ) {
-                            action.action()
-                        } label: {
-                            Label(action.title, systemImage: action.icon)
-                        }
-                        .disabled(!action.isEnabled)
-                        .help(action.help)
-                        .popoverTipIfPresent(action.tip)
-                    }
-                }
-            }
-            .toolbarBackground(.visible, for: .windowToolbar)
+                )
+            )
             .onChange(of: contentOverflows, initial: true) { _, overflows in
                 resizer.setResizable(overflows)
             }

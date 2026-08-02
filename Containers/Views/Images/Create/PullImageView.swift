@@ -196,25 +196,17 @@ struct PullImageView: View {
             height: 132,
             alignment: .topLeading
         )
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func registryField<Content: View>(
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(alignment: .top) {
+        EditableFormRow {
             Text("\(title):")
-                .frame(
-                    width: EditableFormLayout.labelWidth,
-                    alignment: .trailing
-                )
-                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-
+        } control: {
             content()
-                .frame(
-                    width: EditableFormLayout.controlWidth,
-                    alignment: .leading
-                )
         }
     }
 
