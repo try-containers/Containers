@@ -17,7 +17,7 @@ struct LoadTarImageView: View {
     let onSelection: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        FieldStack {
             FileSelection(
                 title: "Tar Archive",
                 description: "Select a tar archive containing the image",

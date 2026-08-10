@@ -80,10 +80,11 @@ struct CreateImageView: View {
             errorMessage: $errorMessage,
             isProcessing: isCreating,
             progressTitle: progressMessage,
-            width: 600,
+            width: Self.sheetWidth,
             height: 480,
             showsHeader: false,
             contentAlignment: .center,
+            showsFooterDivider: false,
             contentID: currentStep,
             contentTransition: stepTransition,
             content: {
@@ -92,13 +93,19 @@ struct CreateImageView: View {
             },
             actions: {
                 if !isCreating {
-                    Button("Cancel") {
+                    Button {
                         dismiss()
+                    } label: {
+                        Text("Cancel")
+                            .frame(width: .sheetButtonLabelWidth)
                     }
                     .buttonStyle(.bordered)
                 } else {
-                    Button("Cancel") {
+                    Button {
                         cancelCreation()
+                    } label: {
+                        Text("Cancel")
+                            .frame(width: .sheetButtonLabelWidth)
                     }
                     .buttonStyle(.bordered)
                 }
@@ -109,7 +116,7 @@ struct CreateImageView: View {
                     action: previousStep,
                     label: {
                         Text("Previous")
-                            .padding(.horizontal, 2)
+                            .frame(width: .sheetButtonLabelWidth)
                     }
                 )
                 .buttonStyle(.bordered)
@@ -122,23 +129,19 @@ struct CreateImageView: View {
                             action: nextStep,
                             label: {
                                 Text("Next")
-                                    .padding(.horizontal, 2)
+                                    .frame(width: .sheetButtonLabelWidth)
                             }
                         )
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        .disabled(!canProceedToNextStep)
+                        .defaultAction(enabled: canProceedToNextStep)
                     case .configuration:
                         Button(
                             action: createImage,
                             label: {
                                 Text("Create")
-                                    .padding(.horizontal, 2)
+                                    .frame(width: .sheetButtonLabelWidth)
                             }
                         )
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        .disabled(!canProceedToNextStep)
+                        .defaultAction(enabled: canProceedToNextStep)
                     }
                 }
             }
@@ -178,10 +181,21 @@ struct CreateImageView: View {
         }
     }
 
+    private static let sheetWidth: CGFloat = 600
+    private static let stepAnimation: Animation = .easeOut(duration: 0.2)
+
     private var stepTransition: AnyTransition {
-        .asymmetric(
-            insertion: .move(edge: stepTransitionDirection > 0 ? .trailing : .leading),
-            removal: .move(edge: stepTransitionDirection > 0 ? .leading : .trailing)
+        // Measured off the assistant mid-animation: the arriving step starts
+        // about a third of the sheet out, clipped at its edge, and is still
+        // near transparent a quarter of the way in.
+        let distance = Self.sheetWidth / 3
+        let shift = stepTransitionDirection > 0 ? distance : -distance
+
+        // The step being left goes at once; the one arriving slides in from
+        // the side it came from, fading up in step with the slide.
+        return .asymmetric(
+            insertion: .opacity.combined(with: .offset(x: shift)),
+            removal: .identity
         )
     }
 
@@ -272,7 +286,7 @@ struct CreateImageView: View {
 
         prepareStepTransition()
         stepTransitionDirection = 1
-        withAnimation(.default) {
+        withAnimation(Self.stepAnimation) {
             currentStep = nextStep
             errorMessage = nil
         } completion: {
@@ -286,7 +300,7 @@ struct CreateImageView: View {
         }
         prepareStepTransition()
         stepTransitionDirection = -1
-        withAnimation(.default) {
+        withAnimation(Self.stepAnimation) {
             currentStep = previousStep
             errorMessage = nil
         } completion: {

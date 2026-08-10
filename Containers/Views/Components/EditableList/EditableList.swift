@@ -7,67 +7,73 @@
 
 import SwiftUI
 
-private struct EditableListCellPaddingKey: EnvironmentKey {
-    static let defaultValue: CGFloat = 8
-}
+private let cellPadding: CGFloat = 8
 
-private struct EditableListRowIsSelectedKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
+/// Gap above and below a section's heading, and below its list, so the section
+/// sits evenly between its title and the rule that closes it.
+private let sectionSpacing: CGFloat = 8
 
-extension EnvironmentValues {
-    var editableListCellPadding: CGFloat {
-        get { self[EditableListCellPaddingKey.self] }
-        set { self[EditableListCellPaddingKey.self] = newValue }
-    }
-
-    var editableListRowIsSelected: Bool {
-        get { self[EditableListRowIsSelectedKey.self] }
-        set { self[EditableListRowIsSelectedKey.self] = newValue }
-    }
-}
-
-private enum EditableListEditorTarget<ID: Hashable, Item> {
-    case existing(ID)
-    case new(Item)
-}
-
-struct EditableList<Item: Identifiable, RowContent: View, EditorContent: View>:
-    View
+/// A table of items that are either edited in place — pass `rowFields` — or
+/// displayed as text and edited in a sheet — pass `editorContent`.
+struct EditableList<Item: Identifiable, EditorContent: View>: View
 where Item.ID: Hashable {
+
+    // MARK: - Properties
+
+    @Environment(\.editableListStyle) private var style
+
+    @SwiftUI.State var state = State()
+    @SwiftUI.State private var isExpanded: Bool = true
+    @SwiftUI.State private var pendingFocusItemID: Item.ID?
+
     @Binding var items: [Item]
 
     var title: String?
     var description: String? = nil
     var editorDescription: String? = nil
     var columnTitles: [String] = ["Value"]
-    var fieldWidth: CGFloat? = nil
     var addLabel: String
     var emptyMessage: String
     var hasContentBelow: Bool
     var newItem: () -> Item
-    var rowSummary: (Item) -> String
+    var rowFields: ((Binding<Item>) -> [Field])?
+    var rowSummary: ((Item) -> String)?
     var rowValues: ((Item) -> [String])?
-    var rowContent: ((Binding<Item>) -> RowContent)?
     var canSave: (Item) -> Bool = { _ in true }
 
     @ViewBuilder var editorContent: (Binding<Item>) -> EditorContent
 
-    init(
+    private var usesModalEditor: Bool {
+        rowFields == nil
+    }
+
+    // MARK: - Types
+
+    /// One editable cell of a row: where its text lives, and what to call it
+    /// when it is read aloud. Callers build these, so it cannot be private.
+    struct Field: Identifiable {
+        let id = UUID()
+        var placeholder: String
+        var text: Binding<String>
+        var isMonospaced: Bool = false
+    }
+
+    // MARK: - Initializers
+
+    private init(
         items: Binding<[Item]>,
-        title: String? = nil,
-        description: String? = nil,
-        editorDescription: String? = nil,
-        columnTitles: [String] = ["Value"],
-        fieldWidth: CGFloat? = nil,
+        title: String?,
+        description: String?,
+        editorDescription: String?,
+        columnTitles: [String],
         addLabel: String,
         emptyMessage: String,
-        hasContentBelow: Bool = false,
+        hasContentBelow: Bool,
         newItem: @escaping () -> Item,
-        rowSummary: @escaping (Item) -> String,
-        rowValues: ((Item) -> [String])? = nil,
-        rowContent: ((Binding<Item>) -> RowContent)? = nil,
-        canSave: @escaping (Item) -> Bool = { _ in true },
+        rowFields: ((Binding<Item>) -> [Field])?,
+        rowSummary: ((Item) -> String)?,
+        rowValues: ((Item) -> [String])?,
+        canSave: @escaping (Item) -> Bool,
         @ViewBuilder editorContent: @escaping (Binding<Item>) -> EditorContent
     ) {
         self._items = items
@@ -75,29 +81,55 @@ where Item.ID: Hashable {
         self.description = description
         self.editorDescription = editorDescription
         self.columnTitles = columnTitles
-        self.fieldWidth = fieldWidth
         self.addLabel = addLabel
         self.emptyMessage = emptyMessage
         self.hasContentBelow = hasContentBelow
         self.newItem = newItem
+        self.rowFields = rowFields
         self.rowSummary = rowSummary
         self.rowValues = rowValues
-        self.rowContent = rowContent
         self.canSave = canSave
         self.editorContent = editorContent
     }
 
-    @State private var selectedItemID: Item.ID?
-    @State private var editorTarget: EditableListEditorTarget<Item.ID, Item>?
-    @State private var isExpanded: Bool = true
-
-    private var usesModalEditor: Bool {
-        rowContent == nil
+    /// Rows are displayed as text and edited in a sheet built by `editorContent`.
+    init(
+        items: Binding<[Item]>,
+        title: String? = nil,
+        description: String? = nil,
+        editorDescription: String? = nil,
+        columnTitles: [String] = ["Value"],
+        addLabel: String,
+        emptyMessage: String,
+        hasContentBelow: Bool = false,
+        newItem: @escaping () -> Item,
+        rowSummary: @escaping (Item) -> String,
+        rowValues: ((Item) -> [String])? = nil,
+        canSave: @escaping (Item) -> Bool = { _ in true },
+        @ViewBuilder editorContent: @escaping (Binding<Item>) -> EditorContent
+    ) {
+        self.init(
+            items: items,
+            title: title,
+            description: description,
+            editorDescription: editorDescription,
+            columnTitles: columnTitles,
+            addLabel: addLabel,
+            emptyMessage: emptyMessage,
+            hasContentBelow: hasContentBelow,
+            newItem: newItem,
+            rowFields: nil,
+            rowSummary: rowSummary,
+            rowValues: rowValues,
+            canSave: canSave,
+            editorContent: editorContent
+        )
     }
+
+    // MARK: - Body
 
     var body: some View {
         content
-            .environment(\.editableListCellPadding, 8)
             .sheet(isPresented: editorPresentation) {
                 editor
             }
@@ -106,11 +138,56 @@ where Item.ID: Hashable {
             }
     }
 
+    @ViewBuilder
     private var content: some View {
+        switch style {
+        case .table:
+            tableContent
+        case .grouped:
+            groupedContent
+        }
+    }
+
+    // MARK: - Layout
+
+    private var groupedContent: some View {
+        GroupBox {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let title {
+                        Text(title)
+                            .font(.headline)
+                            .fontWeight(.bold)
+                    }
+
+                    if let description {
+                        Text(description)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+
+                Divider()
+
+                rows
+                    .frame(minHeight: 80)
+
+                Divider()
+
+                controls(backgroundColor: Color(nsColor: .quaternarySystemFill))
+            }
+        }
+        .groupBoxStyle(BoxStyle())
+    }
+
+    private var tableContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let title {
                 disclosureHeader(title: title)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, sectionSpacing)
             }
 
             if isExpanded || title == nil {
@@ -121,13 +198,8 @@ where Item.ID: Hashable {
                         Divider()
                     }
 
-                    EditableListToolbar(
-                        addLabel: addLabel,
-                        isRemoveDisabled: items.isEmpty,
-                        add: addItem,
-                        remove: removeSelectedItem
-                    )
-                    .padding(.leading, title == nil ? 4 : 0)
+                    controls()
+                        .padding(.leading, title == nil ? 4 : 0)
                 }
                 .frame(maxHeight: title == nil ? .infinity : nil)
                 .padding(.leading, title != nil ? 18 : 0)
@@ -140,7 +212,12 @@ where Item.ID: Hashable {
             }
 
             if (title != nil && !isExpanded) || hasContentBelow {
+                // Collapsed, the heading's own bottom padding is the gap.
                 Divider()
+                    .padding(
+                        .top,
+                        isExpanded && title != nil ? sectionSpacing : 0
+                    )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: title == nil ? .infinity : nil, alignment: .leading)
@@ -148,11 +225,7 @@ where Item.ID: Hashable {
 
     private func disclosureHeader(title: String) -> some View {
         Button {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         } label: {
             HStack(spacing: 6) {
                 Image(
@@ -196,50 +269,67 @@ where Item.ID: Hashable {
 
             Divider()
 
-            if items.isEmpty {
-                Text(emptyMessage)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List($items, selection: $selectedItemID) { $item in
-                    row(for: $item)
-                        .environment(
-                            \.editableListRowIsSelected,
-                            selectedItemID == item.id
-                        )
-                        .tag(item.id)
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            TapGesture().onEnded {
-                                selectedItemID = item.id
-                            }
-                        )
-                        .onTapGesture(count: 2) {
-                            if usesModalEditor {
-                                openEditor(for: item.id)
-                            }
-                        }
-                }
-                .listStyle(.plain)
-            }
+            rows
         }
         .background(Color(nsColor: .textBackgroundColor))
         .frame(minHeight: 120)
     }
 
-    private func row(for item: Binding<Item>) -> some View {
-        Group {
-            if let rowContent {
-                rowContent(item)
-            } else {
-                EditableListRow(values: rowValues(for: item.wrappedValue))
+    @ViewBuilder
+    private var rows: some View {
+        if items.isEmpty {
+            Text(emptyMessage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List(items, selection: $state.selectedItemID) { item in
+                selectableRow(for: item.id)
+                    .tag(item.id)
+                    .contentShape(Rectangle())
             }
+            .listStyle(.plain)
+        }
+    }
+
+    private func controls(backgroundColor: Color? = nil) -> some View {
+        Controls(
+            addLabel: addLabel,
+            isRemoveDisabled: state.selectedItemID == nil,
+            backgroundColor: backgroundColor,
+            add: addItem,
+            remove: removeSelectedItem
+        )
+    }
+
+    @ViewBuilder
+    private func selectableRow(for id: Item.ID) -> some View {
+        if usesModalEditor {
+            row(for: id)
+                .onTapGesture(count: 2) {
+                    openEditor(for: id)
+                }
+        } else {
+            row(for: id)
+        }
+    }
+
+    @ViewBuilder
+    private func row(for id: Item.ID) -> some View {
+        if let rowFields, let binding = state.binding(for: id, in: $items) {
+            FieldRow(
+                fields: rowFields(binding),
+                isSelected: state.selectedItemID == id,
+                autofocus: pendingFocusItemID == id,
+                focusHandled: { pendingFocusItemID = nil }
+            )
+        } else if let item = items.first(where: { $0.id == id }) {
+            Row(values: rowValues(for: item))
         }
     }
 
     private func rowValues(for item: Item) -> [String] {
-        let values = rowValues?(item) ?? [rowSummary(item)]
+        let values = rowValues?(item) ?? rowSummary.map { [$0(item)] } ?? []
 
         return columnTitles.indices.map { index in
             guard index < values.count else {
@@ -250,197 +340,181 @@ where Item.ID: Hashable {
         }
     }
 
-    private var editorPresentation: Binding<Bool> {
-        Binding(
-            get: { editorTarget != nil },
-            set: { isPresented in
-                if !isPresented {
-                    closeEditor()
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var editor: some View {
-        if let binding = editorItemBinding {
-            EditableListEditor(
-                title: editorTitle,
-                description: editorDescription,
-                primaryButtonTitle: editorPrimaryButtonTitle,
-                showsCancelButton: isEditingNewItem,
-                isPrimaryButtonDisabled: !canSave(binding.wrappedValue),
-                onSave: editorSaveAction
-            ) {
-                editorContent(binding)
-            }
-        }
-    }
-
-    private var isEditingNewItem: Bool {
-        if case .new = editorTarget {
-            return true
-        }
-
-        return false
-    }
-
-    private var editorPrimaryButtonTitle: String {
-        isEditingNewItem ? "Save" : "Done"
-    }
-
-    private var editorTitle: String {
-        isEditingNewItem ? addLabel : (title ?? addLabel)
-    }
-
-    private var editorSaveAction: (() -> Void)? {
-        guard isEditingNewItem else {
-            return nil
-        }
-
-        return saveNewEditingItem
-    }
-
-    private var editorItemBinding: Binding<Item>? {
-        guard let target = editorTarget else {
-            return nil
-        }
-
-        switch target {
-        case .new:
-            return Binding(
-                get: {
-                    guard case .new(let item) = self.editorTarget else {
-                        return newItem()
-                    }
-
-                    return item
-                },
-                set: { editorTarget = .new($0) }
-            )
-        case .existing(let id):
-            guard let index = items.firstIndex(where: { $0.id == id }) else {
-                return nil
-            }
-
-            return Binding(
-                get: { items[index] },
-                set: { items[index] = $0 }
-            )
-        }
-    }
+    // MARK: - Actions
 
     private func addItem() {
         let item = newItem()
+
         if usesModalEditor {
-            editorTarget = .new(item)
+            state.editorTarget = .new(item)
         } else {
-            items.append(item)
-            selectedItemID = item.id
-        }
-    }
-
-    private func openEditor(for id: Item.ID) {
-        selectedItemID = id
-        editorTarget = .existing(id)
-    }
-
-    private func closeEditor() {
-        editorTarget = nil
-    }
-
-    private func saveNewEditingItem() {
-        guard case .new(let item) = editorTarget else {
-            return
-        }
-
-        items.append(item)
-        selectedItemID = item.id
-        closeEditor()
-    }
-
-    private func removeStaleState() {
-        if let selectedItemID,
-            !items.contains(where: { $0.id == selectedItemID })
-        {
-            self.selectedItemID = nil
-        }
-
-        switch editorTarget {
-        case .existing(let id) where !items.contains(where: { $0.id == id }):
-            closeEditor()
-        case .new(let item) where items.contains(where: { $0.id == item.id }):
-            closeEditor()
-        case .existing, .new, nil:
-            break
+            state.append(item, to: &items)
+            pendingFocusItemID = item.id
         }
     }
 
     private func removeSelectedItem() {
-        guard let index = selectedItemIndex ?? items.indices.last else {
+        guard let index = state.selectedIndex(in: items) else {
             return
         }
 
-        removeItem(at: index)
+        state.remove(at: index, from: &items)
     }
 
-    private var selectedItemIndex: [Item].Index? {
-        guard let selectedItemID else {
-            return nil
-        }
-
-        return items.firstIndex { $0.id == selectedItemID }
+    private func removeStaleState() {
+        state.discardStaleState(in: items)
     }
 
-    private func removeItem(at index: [Item].Index) {
-        let removedID = items[index].id
-        items.remove(at: index)
+    // MARK: - Subviews
 
-        if items.isEmpty {
-            selectedItemID = nil
-        } else {
-            selectedItemID = items[min(index, items.endIndex - 1)].id
+    /// The add and remove buttons under the rows.
+    private struct Controls: View {
+        var addLabel: String
+        var removeLabel: String = "Remove selected row"
+        var isRemoveDisabled: Bool
+        var backgroundColor: Color? = nil
+        var add: () -> Void
+        var remove: () -> Void
+
+        var body: some View {
+            HStack(spacing: 0) {
+                Button(action: add) {
+                    icon("plus")
+                }
+                .buttonStyle(.plain)
+                .help(addLabel)
+
+                Button(action: remove) {
+                    icon("minus")
+                }
+                .buttonStyle(.plain)
+                .disabled(isRemoveDisabled)
+                .help(removeLabel)
+
+                Spacer()
+            }
+            .frame(height: 22)
+            .background(backgroundColor ?? Color.clear)
         }
 
-        if case .existing(removedID) = editorTarget {
-            closeEditor()
+        private func icon(_ systemName: String) -> some View {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 20)
+                .contentShape(Rectangle())
+        }
+    }
+
+    // Strips the default GroupBox padding so the rows meet its edges.
+    private struct BoxStyle: GroupBoxStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            VStack(spacing: 0) {
+                configuration.content
+            }
+            .background(Color(nsColor: .quaternarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// Columns of plain text; the values are edited in the editor sheet.
+    private struct Row: View {
+        var values: [String]
+
+        var body: some View {
+            HStack(spacing: 0) {
+                ForEach(Array(values.enumerated()), id: \.offset) {
+                    index,
+                    value in
+                    // An item saved with nothing in it would otherwise leave a
+                    // blank row with no way to tell it is there.
+                    Text(value.isEmpty && index == 0 ? "New Item" : value)
+                        // A hierarchical style turns white on the selected row
+                        // by itself, in step with the highlight the table draws.
+                        .foregroundStyle(value.isEmpty ? .tertiary : .primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .padding(.horizontal, cellPadding)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    /// Columns of text fields, edited in place.
+    private struct FieldRow: View {
+        var fields: [Field]
+        var isSelected: Bool
+        var autofocus: Bool
+        var focusHandled: () -> Void
+
+        @FocusState private var focusedFieldIndex: Int?
+
+        var body: some View {
+            HStack(spacing: 0) {
+                ForEach(Array(fields.enumerated()), id: \.offset) {
+                    index,
+                    field in
+                    // Empty rows stay blank — the column header says what goes
+                    // in them — so the field name is left to VoiceOver.
+                    TextField("", text: field.text)
+                        .textFieldStyle(.plain)
+                        .font(font(for: field))
+                        .accessibilityLabel(field.placeholder)
+                        .focused($focusedFieldIndex, equals: index)
+                        .padding(.horizontal, cellPadding)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            // An unselected row's fields would swallow the mouse down in their
+            // own tracking loop, leaving the table to select only on mouse up.
+            // Letting the click through means the first click selects and the
+            // second edits, which is what an AppKit table does anyway.
+            .allowsHitTesting(isSelected)
+            // Runs both when a freshly inserted row appears and when an existing
+            // row is asked to take focus, once the row is in the hierarchy.
+            .task(id: autofocus) {
+                guard autofocus else { return }
+
+                focusedFieldIndex = 0
+                focusHandled()
+            }
+        }
+
+        private func font(for field: Field) -> Font {
+            field.isMonospaced ? .system(.body, design: .monospaced) : .body
         }
     }
 }
-
-extension EditableList where RowContent == EmptyView {
+extension EditableList where EditorContent == EmptyView {
+    /// Rows are edited in place through the fields `rowFields` describes, so
+    /// there is no editor sheet.
     init(
         items: Binding<[Item]>,
         title: String? = nil,
         description: String? = nil,
-        editorDescription: String? = nil,
         columnTitles: [String] = ["Value"],
-        fieldWidth: CGFloat? = nil,
         addLabel: String,
         emptyMessage: String,
         hasContentBelow: Bool = false,
         newItem: @escaping () -> Item,
-        rowSummary: @escaping (Item) -> String,
-        rowValues: ((Item) -> [String])? = nil,
-        canSave: @escaping (Item) -> Bool = { _ in true },
-        @ViewBuilder editorContent: @escaping (Binding<Item>) -> EditorContent
+        rowFields: @escaping (Binding<Item>) -> [Field]
     ) {
         self.init(
             items: items,
             title: title,
             description: description,
-            editorDescription: editorDescription,
+            editorDescription: nil,
             columnTitles: columnTitles,
-            fieldWidth: fieldWidth,
             addLabel: addLabel,
             emptyMessage: emptyMessage,
             hasContentBelow: hasContentBelow,
             newItem: newItem,
-            rowSummary: rowSummary,
-            rowValues: rowValues,
-            rowContent: nil,
-            canSave: canSave,
-            editorContent: editorContent
+            rowFields: rowFields,
+            rowSummary: nil,
+            rowValues: nil,
+            canSave: { _ in true },
+            editorContent: { _ in EmptyView() }
         )
     }
 }

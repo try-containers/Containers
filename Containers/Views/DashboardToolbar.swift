@@ -8,12 +8,7 @@
 import AppKit
 import SwiftUI
 
-/// Builds the dashboard window's toolbar in AppKit, for one reason: the search
-/// field has to be an `NSSearchToolbarItem`. Collapsing to a magnifier when the
-/// toolbar runs out of room is that item's behaviour, and SwiftUI never makes
-/// one — `.searchable` hosts its own field inside a plain item, which cannot
-/// collapse. It is also why `SearchToolbarBehavior.minimize` is unavailable on
-/// macOS.
+/// Builds the dashboard window's toolbar in AppKit to allow more customization than SwiftUI.
 @MainActor
 final class DashboardToolbarController: NSObject, NSToolbarDelegate {
     var tabs: [String] = []
@@ -52,11 +47,44 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         toolbar.allowsDisplayModeCustomization = false
         toolbar.autosavesConfiguration = false
         toolbar.displayMode = .iconOnly
+        toolbar.centeredItemIdentifiers = [Self.tabsIdentifier]
         builtFrom = shape
 
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         applyChrome()
+
+        if ProcessInfo.processInfo.environment["DEBUG_FLASH"] != nil {
+            @MainActor func searchWidth() -> CGFloat {
+                guard let root = window.contentView?.superview else { return -1 }
+                var found: CGFloat = -1
+
+                @MainActor func walk(_ v: NSView) {
+                    if String(describing: type(of: v)) == "NSSearchToolbarItemView" {
+                        found = v.frame.width
+                    }
+                    for view in v.subviews {
+                        walk(view)
+                    }
+                }
+                walk(root)
+                return found
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                Task { @MainActor in
+                    var samples: [String] = []
+                    for _ in 0..<75 {
+                        samples.append(String(format: "%.0f", searchWidth()))
+                        try? await Task.sleep(for: .milliseconds(16))
+                    }
+                    NSLog("DEBUG widths %@", samples.joined(separator: " "))
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.onSelectTab(1)
+                }
+            }
+        }
     }
 
     /// Reapplied on every update, not just on `attach`: something puts the
@@ -91,10 +119,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
 
     private var identifiers: [NSToolbarItem.Identifier] {
         var result: [NSToolbarItem.Identifier] = []
-
-        // Ahead of the tabs, so they sit beside the buttons rather than out on
-        // the left next to the traffic lights.
-        result.append(.flexibleSpace)
 
         if !tabs.isEmpty {
             result.append(Self.tabsIdentifier)
@@ -192,12 +216,20 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         return walk(root)
     }
 
+    /// Only the items that actually differ. Emptying the toolbar and refilling
+    /// it takes the search field down with it, and the replacement comes back
+    /// collapsed for a frame — a magnifier flickering on every switch to a tab
+    /// whose buttons differ.
     private func rebuild(_ toolbar: NSToolbar) {
-        while !toolbar.items.isEmpty {
-            toolbar.removeItem(at: toolbar.items.count - 1)
+        let wanted = identifiers
+
+        for (index, item) in toolbar.items.enumerated().reversed()
+        where !wanted.contains(item.itemIdentifier) {
+            toolbar.removeItem(at: index)
         }
 
-        for (index, identifier) in identifiers.enumerated() {
+        for (index, identifier) in wanted.enumerated()
+        where !toolbar.items.contains(where: { $0.itemIdentifier == identifier }) {
             toolbar.insertItem(withItemIdentifier: identifier, at: index)
         }
     }

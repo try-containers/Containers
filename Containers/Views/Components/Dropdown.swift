@@ -1,5 +1,5 @@
 //
-//  FormPopUpButton.swift
+//  Dropdown.swift
 //  Containers
 //
 //  Created by Axel Martinez on 02/08/2026.
@@ -8,13 +8,13 @@
 import AppKit
 import SwiftUI
 
-/// A pop-up button that fills the width it is given.
+/// A dropdown that fills the width it is given.
 ///
 /// SwiftUI's menu `Picker` wraps an `NSPopUpButton` but reports its intrinsic
 /// width whatever the layout proposes, so it renders visibly narrower than the
 /// text fields it shares a column with. Driving the button directly lets
 /// `sizeThatFits` accept the proposal instead.
-struct FormPopUpButton<Option: Hashable>: NSViewRepresentable {
+struct Dropdown<Option: Hashable>: NSViewRepresentable {
     enum Item {
         case option(Option, title: String)
         case separator

@@ -7,101 +7,6 @@
 
 import SwiftUI
 
-enum EditableFormLayout {
-    static let labelWidth: CGFloat = 150
-    static let controlWidth: CGFloat = 260
-    static let fieldLabelTopPadding: CGFloat = 5
-    static let rowSpacing: CGFloat = 8
-
-    /// Share of the width left over by the control that goes to the label side.
-    /// Measured off Xcode's scheme sheet, which gives the label a little more
-    /// than the trailing margin and so sits the control just right of centre.
-    static let labelShare: CGFloat = 0.57
-}
-
-/// A form row laid out the way AppKit does it: the control keeps a fixed width
-/// and the label hangs off its leading edge, rather than the label and control
-/// centring together as one block.
-///
-/// This is a `Layout` rather than an `HStack` because the leftover width is
-/// split unevenly. Flexible frames can only divide it equally — and a `Spacer`
-/// cannot even do that, since it yields to a `maxWidth: .infinity` sibling.
-struct EditableFormRow<Label: View, Control: View>: View {
-    var controlWidth: CGFloat = EditableFormLayout.controlWidth
-    @ViewBuilder var label: Label
-    @ViewBuilder var control: Control
-
-    var body: some View {
-        EditableFormRowLayout(
-            controlWidth: controlWidth,
-            spacing: EditableFormLayout.rowSpacing,
-            labelShare: EditableFormLayout.labelShare
-        ) {
-            label
-                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
-            control
-                .frame(width: controlWidth, alignment: .leading)
-        }
-    }
-}
-
-private struct EditableFormRowLayout: Layout {
-    let controlWidth: CGFloat
-    let spacing: CGFloat
-    let labelShare: CGFloat
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        guard let label = subviews.first, let control = subviews.last,
-            subviews.count == 2
-        else { return .zero }
-
-        let width =
-            proposal.width
-            ?? label.sizeThatFits(.unspecified).width + spacing + controlWidth
-        let labelWidth = labelWidth(for: width)
-
-        let height = max(
-            label.sizeThatFits(.init(width: labelWidth, height: nil)).height,
-            control.sizeThatFits(.init(width: controlWidth, height: nil)).height
-        )
-
-        return CGSize(width: width, height: height)
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        guard let label = subviews.first, let control = subviews.last,
-            subviews.count == 2
-        else { return }
-
-        let labelWidth = labelWidth(for: bounds.width)
-
-        label.place(
-            at: CGPoint(x: bounds.minX, y: bounds.minY),
-            proposal: .init(width: labelWidth, height: nil)
-        )
-
-        control.place(
-            at: CGPoint(x: bounds.minX + labelWidth + spacing, y: bounds.minY),
-            proposal: .init(width: controlWidth, height: nil)
-        )
-    }
-
-    private func labelWidth(for width: CGFloat) -> CGFloat {
-        max(0, (width - controlWidth - spacing) * labelShare)
-    }
-}
-
 struct EditableField<
     Label: View,
     Option: Hashable & CustomStringConvertible,
@@ -115,7 +20,6 @@ where Format.FormatOutput == String {
     let placeholder: String
     let value: Binding<Format.FormatInput>?
     let format: Format?
-    let fieldWidth: CGFloat?
     let options: [Option]
     let selection: Binding<Option>?
     let actionLabel: (() -> Label)?
@@ -130,7 +34,6 @@ where Format.FormatOutput == String {
         placeholder: String,
         value: Binding<Format.FormatInput>? = nil,
         format: Format? = nil,
-        fieldWidth: CGFloat? = nil,
         options: [Option] = [],
         selection: Binding<Option>? = nil,
         actionLabel: (() -> Label)? = nil,
@@ -149,7 +52,6 @@ where Format.FormatOutput == String {
         self.placeholder = placeholder
         self.value = value
         self.format = format
-        self.fieldWidth = fieldWidth
         self.options = options
         self.selection = selection
         self.actionLabel = actionLabel
@@ -171,17 +73,14 @@ where Format.FormatOutput == String {
 
     var body: some View {
         if title != nil {
-            EditableFormRow(
-                controlWidth: fieldWidth ?? EditableFormLayout.controlWidth,
-                label: { titleLabel },
-                control: { controlColumn }
-            )
+            HStack(alignment: .firstTextBaseline) {
+                titleLabel
+
+                controlColumn
+                    .fieldControl()
+            }
         } else {
             controlColumn
-                .frame(
-                    maxWidth: fieldWidth ?? EditableFormLayout.controlWidth,
-                    alignment: .leading
-                )
         }
     }
 
@@ -209,10 +108,10 @@ where Format.FormatOutput == String {
                 }
 
                 if let selection {
-                    FormPopUpButton(
+                    Dropdown(
                         items: selectionItems(for: selection.wrappedValue),
                         selection: selection,
-                        // Sharing the column with a value field, the pop-up
+                        // Sharing the column with a value field, the dropdown
                         // takes only what its content needs.
                         fillsAvailableWidth: value == nil,
                         onAction: onSelectionAction
@@ -235,8 +134,8 @@ where Format.FormatOutput == String {
 
     private func selectionItems(
         for selected: Option
-    ) -> [FormPopUpButton<Option>.Item] {
-        var items: [FormPopUpButton<Option>.Item] = []
+    ) -> [Dropdown<Option>.Item] {
+        var items: [Dropdown<Option>.Item] = []
 
         // A selection that is not one of the options — no image picked yet, say
         // — still needs an entry to sit on, so show the placeholder.
@@ -266,8 +165,7 @@ extension EditableField where Label == EmptyView {
         titleIcon: String? = nil,
         description: String? = nil,
         placeholder: String,
-        value: Binding<String>,
-        fieldWidth: CGFloat? = nil
+        value: Binding<String>
     ) where Format == StringFormatStyle, Option == String {
         self.init(
             title: title,
@@ -276,7 +174,6 @@ extension EditableField where Label == EmptyView {
             placeholder: placeholder,
             value: value,
             format: StringFormatStyle(),
-            fieldWidth: fieldWidth,
             options: [],
             selection: nil,
             actionLabel: nil,
@@ -290,7 +187,6 @@ extension EditableField where Label == EmptyView {
         description: String? = nil,
         placeholder: String,
         value: Binding<String>,
-        fieldWidth: CGFloat? = nil,
         options: [Option],
         selection: Binding<Option>
     ) where Format == StringFormatStyle {
@@ -301,7 +197,6 @@ extension EditableField where Label == EmptyView {
             placeholder: placeholder,
             value: value,
             format: StringFormatStyle(),
-            fieldWidth: fieldWidth,
             options: options,
             selection: selection,
             actionLabel: nil,
@@ -314,7 +209,6 @@ extension EditableField where Label == EmptyView {
         titleIcon: String? = nil,
         description: String? = nil,
         placeholder: String,
-        fieldWidth: CGFloat? = nil,
         options: [Option],
         selection: Binding<Option>,
         selectionActionTitle: String? = nil,
@@ -327,7 +221,6 @@ extension EditableField where Label == EmptyView {
             placeholder: placeholder,
             value: nil,
             format: StringFormatStyle(),
-            fieldWidth: fieldWidth,
             options: options,
             selection: selection,
             actionLabel: nil,
@@ -344,7 +237,6 @@ extension EditableField where Label == EmptyView {
         placeholder: String,
         value: Binding<V>,
         format: Format,
-        fieldWidth: CGFloat? = nil,
         options: [Option] = [],
         selection: Binding<Option>? = nil
     ) where Format.FormatInput == V {
@@ -355,7 +247,6 @@ extension EditableField where Label == EmptyView {
             placeholder: placeholder,
             value: value,
             format: format,
-            fieldWidth: fieldWidth,
             options: options,
             selection: selection,
             actionLabel: nil,
@@ -372,7 +263,6 @@ extension EditableField where Option == String {
         description: String? = nil,
         placeholder: String,
         value: Binding<String>,
-        fieldWidth: CGFloat? = nil,
         actionLabel: (() -> Label)? = nil,
         action: (() -> Void)? = nil
     ) where Format == StringFormatStyle {
@@ -383,7 +273,6 @@ extension EditableField where Option == String {
             placeholder: placeholder,
             value: value,
             format: StringFormatStyle(),
-            fieldWidth: fieldWidth,
             options: [],
             selection: nil,
             actionLabel: actionLabel,

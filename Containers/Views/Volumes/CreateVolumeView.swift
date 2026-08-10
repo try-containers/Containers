@@ -38,6 +38,7 @@ struct CreateVolumeView: View {
             width: 550,
             height: 450,
             scrollsContent: true,
+            contentPadding: selectedTab == .info ? 20 : 0,
             tabBar: {
                 CreateViewTabBar(selection: $selectedTab)
             },
@@ -46,14 +47,24 @@ struct CreateVolumeView: View {
             },
             actions: {
                 Spacer()
-                Button("Cancel") { dismiss() }
-                    .buttonStyle(.bordered)
-                Button("Create") {
-                    createVolume()
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Cancel")
+                        .frame(width: .sheetButtonLabelWidth)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                .buttonStyle(.bordered)
+
+                Button {
+                    createVolume()
+                } label: {
+                    Text("Create")
+                        .frame(width: .sheetButtonLabelWidth)
+                }
+                .defaultAction(
+                    enabled: !name.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
                 )
             }
         )
@@ -75,7 +86,7 @@ struct CreateVolumeView: View {
     }
 
     private var infoTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        FieldStack {
             EditableField(
                 title: "Name",
                 placeholder: "Ex: volume-1",
@@ -96,18 +107,17 @@ struct CreateVolumeView: View {
     }
 
     private var optionsTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 0) {
             EditableList(
                 items: $labels,
                 title: "Labels",
                 columnTitles: ["Key", "Value"],
                 addLabel: "Add Label",
                 emptyMessage: "No Labels",
+                hasContentBelow: true,
                 newItem: { KeyValue() },
-                rowSummary: keyValueSummary,
-                rowValues: { [$0.key, $0.value] },
-                rowContent: { keyValue in
-                    EditableListRowEdit(fields: [
+                rowFields: { keyValue in
+                    [
                         .init(
                             placeholder: "Key",
                             text: keyValue.key,
@@ -118,12 +128,10 @@ struct CreateVolumeView: View {
                             text: keyValue.value,
                             isMonospaced: true
                         ),
-                    ])
-                },
-                editorContent: { _ in
-                    EmptyView()
+                    ]
                 }
             )
+            .padding(.horizontal)
 
             EditableList(
                 items: $options,
@@ -132,10 +140,8 @@ struct CreateVolumeView: View {
                 addLabel: "Add Option",
                 emptyMessage: "No Options",
                 newItem: { KeyValue() },
-                rowSummary: keyValueSummary,
-                rowValues: { [$0.key, $0.value] },
-                rowContent: { keyValue in
-                    EditableListRowEdit(fields: [
+                rowFields: { keyValue in
+                    [
                         .init(
                             placeholder: "Key",
                             text: keyValue.key,
@@ -146,12 +152,10 @@ struct CreateVolumeView: View {
                             text: keyValue.value,
                             isMonospaced: true
                         ),
-                    ])
-                },
-                editorContent: { _ in
-                    EmptyView()
+                    ]
                 }
             )
+            .padding(.horizontal)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -25,8 +25,16 @@ struct PullImageView: View {
     @FocusState private var isTagFieldFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            registryFeaturedImageView
+        FieldStack {
+            featuredImageContent
+                // Contributes nothing to the stack's own width, so the fields
+                // do not shift when the cards arrive; it fills what they settle
+                // on instead.
+                .frame(idealWidth: 0, maxWidth: .infinity)
+                .frame(height: 132, alignment: .topLeading)
+                // Spans the label side too, so line its trailing edge up with
+                // the controls and let it reach back across them.
+                .alignmentGuide(.fieldLabel) { $0.width - .fieldControlWidth }
 
             EditableField(
                 title: "Registry",
@@ -46,7 +54,6 @@ struct PullImageView: View {
                 selection: $platform
             )
         }
-        .frame(maxWidth: .infinity, alignment: .center)
         .onChange(of: shouldLoadFeaturedImages, initial: true) { _, shouldLoad in
             guard shouldLoad else { return }
             loadRegistryFeaturedImages()
@@ -111,76 +118,65 @@ struct PullImageView: View {
         }
     }
 
+    private func featuredPageButton(
+        _ systemName: String,
+        step: Int,
+        isDisabled: Bool
+    ) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                featuredImagePage += step
+            }
+        } label: {
+            Image(systemName: systemName)
+                .imageScale(.large)
+                .foregroundStyle(
+                    isDisabled ? Color(nsColor: .separatorColor) : .secondary
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+    }
+
     @ViewBuilder
-    private var registryFeaturedImageView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var featuredImageContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Trending this week on \(registry.description)")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
             if !registryFeaturedImages.isEmpty {
-                HStack(spacing: 4) {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            featuredImagePage -= 1
-                        }
-                    } label: {
-                        Image(systemName: "arrow.left.circle.fill")
-                            .imageScale(.large)
-                            .foregroundStyle(featuredImagePage == 0 ? Color(nsColor: .separatorColor) : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(featuredImagePage == 0)
-
-                    HStack(spacing: 8) {
-                        ForEach(currentPageImages) { image in
-                            Button {
-                                selectRegistryImage(image.name)
-                            } label: {
-                                VStack(alignment: .center, spacing: 6) {
-                                    registryImageArtwork(for: image)
-
-                                    Text(image.name)
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .lineLimit(1)
-                                        .frame(maxWidth: .infinity)
-
-                                    if let publisher = image.publisher {
-                                        Text(publisher)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .frame(maxWidth: .infinity)
-                                    }
-                                }
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity, minHeight: 92)
-                                .padding(8)
-                                .background(Color(nsColor: .controlBackgroundColor))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color(nsColor: .separatorColor))
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .frame(maxWidth: .infinity)
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(currentPageImages) { image in
+                        FeaturedImageCard(image: image) {
+                            selectRegistryImage(image.name)
                         }
                     }
+                }
+                // Overlaid rather than placed alongside, so the cards keep the
+                // full width, and pushed back out past the edges so they sit
+                // clear of them: a form row is narrower than the sheet.
+                .overlay {
+                    if featuredPageCount > 1 {
+                        HStack(spacing: 0) {
+                            featuredPageButton(
+                                "arrow.left.circle.fill",
+                                step: -1,
+                                isDisabled: featuredImagePage == 0
+                            )
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            featuredImagePage += 1
+                            Spacer(minLength: 0)
+
+                            featuredPageButton(
+                                "arrow.right.circle.fill",
+                                step: 1,
+                                isDisabled: featuredImagePage
+                                    >= featuredPageCount - 1
+                            )
                         }
-                    } label: {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .imageScale(.large)
-                            .foregroundStyle(featuredImagePage >= featuredPageCount - 1 ? Color(nsColor: .separatorColor) : .secondary)
+                        .padding(.horizontal, -28)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(featuredImagePage >= featuredPageCount - 1)
                 }
             } else if isLoadingRegistryFeaturedImages {
                 ProgressView()
@@ -190,23 +186,17 @@ struct PullImageView: View {
                 Spacer(minLength: 0)
             }
         }
-        .frame(
-            width: EditableFormLayout.labelWidth
-                + EditableFormLayout.controlWidth,
-            height: 132,
-            alignment: .topLeading
-        )
-        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func registryField<Content: View>(
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        EditableFormRow {
+        HStack(alignment: .firstTextBaseline) {
             Text("\(title):")
-        } control: {
+
             content()
+                .fieldControl()
         }
     }
 
@@ -230,47 +220,11 @@ struct PullImageView: View {
         }
     }
 
-    private func registryImageFallbackArtwork(for name: String) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(registryImageFallbackColor(for: name).opacity(0.18))
-
-            Text(registryImageInitials(for: name))
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(registryImageFallbackColor(for: name))
-        }
-        .frame(width: 32, height: 32)
-    }
-
-    private func registryImageFallbackColor(for name: String) -> Color {
-        let colors: [Color] = [.blue, .green, .orange, .purple, .pink, .teal]
-        let value = name.unicodeScalars.reduce(0) { result, scalar in
-            result + Int(scalar.value)
-        }
-
-        return colors[value % colors.count]
-    }
-
     private func selectRegistryImage(_ name: String) {
         isImageNameFieldFocused = false
         isTagFieldFocused = false
         imageName = name
         tag = "latest"
-    }
-
-    private func registryImageInitials(for name: String) -> String {
-        let components =
-            name
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .suffix(2)
-
-        let initials = components.compactMap { component in
-            component.first.map(String.init)
-        }
-        .joined()
-
-        return initials.isEmpty ? "I" : initials.uppercased()
     }
 
     @ViewBuilder
@@ -283,25 +237,6 @@ struct PullImageView: View {
                 }
                 .textFieldStyle(.roundedBorder)
                 .focused($isTagFieldFocused)
-        }
-    }
-
-    @ViewBuilder
-    private func registryImageArtwork(for image: ImageSuggestion)
-        -> some View
-    {
-        if let url = image.imageURL {
-            AsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFit()
-            } placeholder: {
-                Image(systemName: "shippingbox")
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: 32, height: 32)
-        } else {
-            registryImageFallbackArtwork(for: image.name)
         }
     }
 
@@ -352,4 +287,107 @@ struct PullImageView: View {
         }
     }
 
+}
+
+private struct FeaturedImageCard: View {
+    let image: ImageSuggestion
+    let action: () -> Void
+
+    private let artworkSize: CGFloat = 44
+    private let artworkRadius: CGFloat = 10
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                artwork
+                    .frame(width: artworkSize, height: artworkSize)
+                    .clipShape(shape)
+
+                VStack(spacing: 1) {
+                    Text(image.name)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+
+                    // Kept in the layout when absent so every card is the
+                    // same height whatever the registry returns.
+                    Group {
+                        if let publisher = image.publisher {
+                            Text(publisher)
+                        } else {
+                            Text("Publisher").hidden()
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity)
+            .background {
+                card.fill(Color(nsColor: .controlBackgroundColor))
+                    .shadow(color: .black.opacity(0.10), radius: 3, y: 1)
+            }
+            .overlay(card.strokeBorder(.quaternary, lineWidth: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var card: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: artworkRadius, style: .continuous)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let url = image.imageURL {
+            AsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .scaledToFit()
+            } placeholder: {
+                initials
+            }
+        } else {
+            initials
+        }
+    }
+
+    private var initials: some View {
+        Text(initialsText)
+            .font(.headline)
+            .fontWeight(.semibold)
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(tint.opacity(0.18))
+    }
+
+    private var initialsText: String {
+        let components = image.name
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .suffix(2)
+
+        let initials = components.compactMap { $0.first.map(String.init) }
+            .joined()
+
+        return initials.isEmpty ? "I" : initials.uppercased()
+    }
+
+    private var tint: Color {
+        let colors: [Color] = [.blue, .green, .orange, .purple, .pink, .teal]
+        let value = image.name.unicodeScalars.reduce(0) { result, scalar in
+            result + Int(scalar.value)
+        }
+
+        return colors[value % colors.count]
+    }
 }

@@ -30,7 +30,7 @@ struct CreateImageMethod: View {
             }
 
             VStack(alignment: .leading, spacing: 15) {
-                Text("Choose how you want to add an image to your library.")
+                Text("How do you want to add an image to your library ?")
                     .fontWeight(.bold)
                     .padding(.leading, 8)
 

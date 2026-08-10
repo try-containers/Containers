@@ -160,19 +160,11 @@ struct ContainerDetailView: View {
             }
         )
         .sheet(isPresented: $showAddVolumeMount) {
-            AddVolumeMountView(
-                containerID: container.id,
+            MountVolumeSheet(
                 existingMountDestinations: snapshot?.configuration.mounts.map(
                     \.destination
                 ) ?? [],
-                onMount: { volume, destination in
-                    try await containerManager.mountVolume(
-                        id: container.id,
-                        volume: volume,
-                        destination: destination
-                    )
-                    await refreshSnapshot()
-                }
+                onMount: mountVolume
             )
             .environment(volumeManager)
         }
@@ -211,6 +203,28 @@ struct ContainerDetailView: View {
             Task {
                 await refreshSnapshot()
             }
+        }
+    }
+
+    private func mountVolume(_ draft: VolumeMountConfiguration) async {
+        do {
+            let volume = try await ContainerMountPlanner.volume(
+                named: draft.source == .anonymousVolume
+                    ? "" : draft.trimmedVolumeName,
+                among: try await volumeManager.list(),
+                using: volumeManager
+            )
+
+            try await containerManager.mountVolume(
+                id: container.id,
+                volume: volume,
+                destination: draft.trimmedTarget
+            )
+
+            await refreshSnapshot()
+        } catch {
+            self.error = error
+            showError = true
         }
     }
 
@@ -400,4 +414,40 @@ struct ContainerDetailView: View {
         )
     )
     .frame(width: 550)
+}
+
+private struct MountVolumeSheet: View {
+    let existingMountDestinations: [String]
+    let onMount: (VolumeMountConfiguration) async -> Void
+
+    @Environment(VolumeManager.self) private var volumeManager
+
+    @SwiftUI.State private var mount = VolumeMountConfiguration()
+    @SwiftUI.State private var availableVolumes: [Volume] = []
+
+    var body: some View {
+        FormSheet(
+            title: "Mount Volume",
+            description:
+                "Select an existing volume or create an anonymous volume.",
+            primaryButtonTitle: "Mount",
+            showsCancelButton: true,
+            isPrimaryButtonDisabled: !canMount,
+            onSave: { Task { await onMount(mount) } }
+        ) {
+            VolumeEditor(mount: $mount, availableVolumes: availableVolumes)
+        }
+        .task {
+            availableVolumes = (try? await volumeManager.list()) ?? []
+            mount.volumeName = availableVolumes.last?.name ?? ""
+            mount.source =
+                availableVolumes.isEmpty ? .anonymousVolume : .volume
+        }
+    }
+
+    private var canMount: Bool {
+        let target = mount.trimmedTarget
+        return target.hasPrefix("/")
+            && !existingMountDestinations.contains(target)
+    }
 }

@@ -126,91 +126,91 @@ struct DashboardView: View {
                             .background(Color(nsColor: .windowBackgroundColor))
                     }
                 }
-            .onAppear {
-                if UserDefaults.shouldShowWhatsNew {
-                    isFirstLaunch = UserDefaults.lastSeenVersion.isEmpty
-                    showWhatsNew = true
+                .onAppear {
+                    if UserDefaults.shouldShowWhatsNew {
+                        isFirstLaunch = UserDefaults.lastSeenVersion.isEmpty
+                        showWhatsNew = true
+                    }
                 }
-            }
-            .task {
-                guard !self.isSystemRunning else {
-                    return
-                }
+                .task {
+                    guard !self.isSystemRunning else {
+                        return
+                    }
 
-                try? await self.system.start(
-                    appRoot: UserDefaults.applicationDataRoot
+                    try? await self.system.start(
+                        appRoot: UserDefaults.applicationDataRoot
+                    )
+                }
+                .task {
+                    // Update resource usage every 2 seconds
+                    while !Task.isCancelled {
+                        await updateResourceUsage()
+
+                        try? await Task.sleep(for: .seconds(2))
+                    }
+                }
+                .alert(
+                    "Oops!",
+                    isPresented: $showError,
+                    actions: {
+                        Button(
+                            action: {
+                                self.showError = false
+                            },
+                            label: {
+                                Text("OK")
+                            }
+                        )
+                    },
+                    message: {
+                        let message = String(
+                            "\(self.error, default: "Unknown Error")"
+                        )
+                        Text(message)
+                            .lineLimit(5)
+                    }
                 )
-            }
-            .task {
-                // Update resource usage every 2 seconds
-                while !Task.isCancelled {
-                    await updateResourceUsage()
-
-                    try? await Task.sleep(for: .seconds(2))
+                .onChange(of: selectedTab) { _, newTab in
+                    UserDefaults.lastSelectedTab = newTab.rawValue
                 }
-            }
-            .alert(
-                "Oops!",
-                isPresented: $showError,
-                actions: {
-                    Button(
-                        action: {
-                            self.showError = false
-                        },
-                        label: {
-                            Text("OK")
-                        }
-                    )
-                },
-                message: {
-                    let message = String(
-                        "\(self.error, default: "Unknown Error")"
-                    )
-                    Text(message)
-                        .lineLimit(5)
+                .onChange(of: showWhatsNew) { _, isShowing in
+                    if !isShowing && isFirstLaunch {
+                        AddFirstImageTip.shouldShow = true
+                    }
                 }
-            )
-            .onChange(of: selectedTab) { _, newTab in
-                UserDefaults.lastSelectedTab = newTab.rawValue
-            }
-            .onChange(of: showWhatsNew) { _, isShowing in
-                if !isShowing && isFirstLaunch {
-                    AddFirstImageTip.shouldShow = true
+                .sheet(isPresented: $showWhatsNew) {
+                    WhatsNewView(isFirstLaunch: isFirstLaunch) {
+                        UserDefaults.markCurrentVersionSeen()
+                        showWhatsNew = false
+                    }
                 }
-            }
-            .sheet(isPresented: $showWhatsNew) {
-                WhatsNewView(isFirstLaunch: isFirstLaunch) {
-                    UserDefaults.markCurrentVersionSeen()
-                    showWhatsNew = false
-                }
-            }
-            .sheet(
-                isPresented: $showCreateContainerView,
-                onDismiss: {
-                    refreshTrigger += 1
-                },
-                content: {
-                    CreateContainerView(imageReference: "")
-                }
-            )
-            .sheet(
-                isPresented: $showCreateVolumeView,
-                onDismiss: {
-                    refreshTrigger += 1
-                },
-                content: {
-                    CreateVolumeView()
-                }
-            )
-            .sheet(
-                isPresented: $showCreateImageView,
-                onDismiss: {
-                    refreshTrigger += 1
-                },
-                content: {
-                    CreateImageView()
-                }
-            )
+                .sheet(
+                    isPresented: $showCreateContainerView,
+                    onDismiss: {
+                        refreshTrigger += 1
+                    },
+                    content: {
+                        CreateContainerView(imageReference: "")
+                    }
+                )
+                .sheet(
+                    isPresented: $showCreateVolumeView,
+                    onDismiss: {
+                        refreshTrigger += 1
+                    },
+                    content: {
+                        CreateVolumeView()
+                    }
+                )
+                .sheet(
+                    isPresented: $showCreateImageView,
+                    onDismiss: {
+                        refreshTrigger += 1
+                    },
+                    content: {
+                        CreateImageView()
+                    }
+                )
 
             statusBar
         }
@@ -444,4 +444,3 @@ struct DashboardView: View {
         )
     }
 }
-

@@ -22,7 +22,7 @@ struct BuildDockerfileView: View {
     @Binding var targetStage: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        FieldStack {
             FileSelection(
                 title: "Dockerfile",
                 placeholder: "No Dockerfile selected",
@@ -70,7 +70,7 @@ struct BuildDockerfileView: View {
             )
 
             EditableField(
-                title: "Target Stage (Optional)",
+                title: "Target Stage",
                 placeholder: "Ex: production",
                 value: $targetStage
             )

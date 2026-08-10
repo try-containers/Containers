@@ -1,5 +1,5 @@
 //
-//  EditableListEditor.swift
+//  FormSheet.swift
 //  Containers
 //
 //  Created by Axel Martinez on 27/06/2026.
@@ -7,15 +7,17 @@
 
 import SwiftUI
 
-struct EditableListEditor<Content: View>: View {
+struct FormSheet<Content: View>: View {
+    @Environment(\.dismiss) private var dismiss
+
     var title: String
     var description: String? = nil
     var primaryButtonTitle: String = "Done"
     var showsCancelButton: Bool = false
     var isPrimaryButtonDisabled: Bool = false
     var onSave: (() -> Void)?
+
     @ViewBuilder var content: Content
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {

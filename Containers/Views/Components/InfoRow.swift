@@ -13,6 +13,9 @@ struct InfoRow: View {
     let value: String
     let action: ActionButton?
 
+    private static let labelWidth: CGFloat = 150
+    private static let labelTopPadding: CGFloat = 5
+
     init(
         icon: String? = nil,
         label: String? = nil,
@@ -38,32 +41,32 @@ struct InfoRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(
-                    width: EditableFormLayout.labelWidth,
+                    width: Self.labelWidth,
                     alignment: .trailing
                 )
-                .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+                .padding(.top, Self.labelTopPadding)
             } else if let icon {
                 Image(systemName: icon)
                     .font(.body)
                     .foregroundStyle(.primary)
                     .frame(
-                        width: EditableFormLayout.labelWidth,
+                        width: Self.labelWidth,
                         alignment: .trailing
                     )
-                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+                    .padding(.top, Self.labelTopPadding)
             } else if let label {
                 Text("\(label):")
                     .font(.body)
                     .foregroundStyle(.primary)
                     .frame(
-                        width: EditableFormLayout.labelWidth,
+                        width: Self.labelWidth,
                         alignment: .trailing
                     )
-                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+                    .padding(.top, Self.labelTopPadding)
             } else {
                 Spacer()
-                    .frame(width: EditableFormLayout.labelWidth)
-                    .padding(.top, EditableFormLayout.fieldLabelTopPadding)
+                    .frame(width: Self.labelWidth)
+                    .padding(.top, Self.labelTopPadding)
             }
 
             HStack(alignment: .center, spacing: 8) {

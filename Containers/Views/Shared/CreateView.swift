@@ -19,6 +19,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
     let showsHeader: Bool
     let contentAlignment: Alignment
     let scrollsContent: Bool
+    let showsFooterDivider: Bool
     let contentID: AnyHashable?
     let contentTransition: AnyTransition
     let contentPadding: CGFloat
@@ -37,6 +38,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         showsHeader: Bool = true,
         contentAlignment: Alignment = .topLeading,
         scrollsContent: Bool = false,
+        showsFooterDivider: Bool = true,
         contentPadding: CGFloat = 20,
         contentID: AnyHashable? = nil,
         contentTransition: AnyTransition = .identity,
@@ -54,6 +56,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         self.showsHeader = showsHeader
         self.contentAlignment = contentAlignment
         self.scrollsContent = scrollsContent
+        self.showsFooterDivider = showsFooterDivider
         self.contentPadding = contentPadding
         self.contentID = contentID
         self.contentTransition = contentTransition
@@ -88,7 +91,9 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
 
             contentArea
 
-            Divider()
+            if showsFooterDivider {
+                Divider()
+            }
 
             footer
         }
@@ -175,9 +180,10 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
             actions
         }
         .controlSize(.regular)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .padding(16)
+        // The step change animates the content across; the buttons swapping
+        // with it reads as a glitch, so they change instantly.
+        .transaction { $0.animation = nil }
     }
 }
 struct CreateViewTabBar<Tab: Hashable & CaseIterable & RawRepresentable>: View

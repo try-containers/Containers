@@ -21,7 +21,6 @@ where Format.FormatOutput == String {
     let placeholder: String
     let value: Binding<Format.FormatInput>
     let format: Format?
-    let fieldWidth: CGFloat?
     let options: [Option]
     var selection: Binding<Option>?
     let actionLabel: (() -> Label)?
@@ -38,7 +37,6 @@ where Format.FormatOutput == String {
         placeholder: String,
         value: Binding<Format.FormatInput>,
         format: Format? = nil,
-        fieldWidth: CGFloat? = nil,
         options: [Option] = [],
         selection: Binding<Option>? = nil,
         actionLabel: (() -> Label)? = nil,
@@ -51,7 +49,6 @@ where Format.FormatOutput == String {
         self.placeholder = placeholder
         self.value = value
         self.format = format
-        self.fieldWidth = fieldWidth
         self.options = options
         self.selection = selection
         self.actionLabel = actionLabel
@@ -121,7 +118,7 @@ where Format.FormatOutput == String {
                         .help("Choose")
                 }
             }
-            .frame(width: fieldWidth)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let description {
                 Text(description)
@@ -142,7 +139,6 @@ extension SettingsField where Label == EmptyView {
         description: String? = nil,
         placeholder: String,
         value: Binding<String>,
-        fieldWidth: CGFloat? = nil,
     ) where Format == StringFormatStyle, Option == String {
         self.init(
             title: title,
@@ -152,7 +148,6 @@ extension SettingsField where Label == EmptyView {
             placeholder: placeholder,
             value: value,
             format: StringFormatStyle(),
-            fieldWidth: fieldWidth,
             options: [],
             selection: nil,
             actionLabel: nil,
@@ -168,7 +163,6 @@ extension SettingsField where Label == EmptyView {
         description: String? = nil,
         placeholder: String,
         value: Binding<String>,
-        fieldWidth: CGFloat? = nil,
         options: [Option],
         selection: Binding<Option>
     ) where Format == StringFormatStyle {
@@ -180,7 +174,6 @@ extension SettingsField where Label == EmptyView {
             placeholder: placeholder,
             value: value,
             format: StringFormatStyle(),
-            fieldWidth: fieldWidth,
             options: options,
             selection: selection,
             actionLabel: nil,
@@ -197,7 +190,6 @@ extension SettingsField where Label == EmptyView {
         placeholder: String,
         value: Binding<V>,
         format: Format,
-        fieldWidth: CGFloat? = nil,
         options: [Option],
         selection: Binding<Option>
     ) where Format.FormatInput == V {
@@ -209,7 +201,6 @@ extension SettingsField where Label == EmptyView {
             placeholder: placeholder,
             value: value,
             format: format,
-            fieldWidth: fieldWidth,
             options: options,
             selection: selection,
             actionLabel: nil,
