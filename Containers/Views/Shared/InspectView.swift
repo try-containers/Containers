@@ -15,7 +15,7 @@ struct InspectView: View {
 
     init(json: String) {
         self.json = json
-        self.root = JSONParser.parse(json)
+        self.root = JSONTree.build(json)
     }
 
     init<Value: Encodable>(value: Value) {
@@ -181,154 +181,82 @@ private struct JSONNode: Identifiable {
     /// opened stays open when the view is rebuilt — a fresh id each parse
     /// silently reset every disclosure.
     let id: String
-    /// Quoted, as written. `nil` for array elements and the root.
+    /// Quoted, as it would be written. `nil` for array elements and the root.
     let key: String?
     let value: Value
 }
 
 // MARK: - Parsing
 
-/// Parses the encoder's own output rather than going through
-/// `JSONSerialization`, which returns dictionaries and so loses the order the
-/// keys were written in.
-private enum JSONParser {
-    static func parse(_ json: String) -> JSONNode? {
-        var index = json.startIndex
-        skipWhitespace(json, &index)
+private enum JSONTree {
+    static func build(_ json: String) -> JSONNode? {
+        guard
+            let data = json.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(
+                with: data,
+                options: [.fragmentsAllowed]
+            )
+        else { return nil }
 
-        guard let value = parseValue(json, &index, path: "") else { return nil }
-
-        // Anything left over means this was not the JSON it looked like, and
-        // showing the text as it stands beats showing a tree built from half
-        // of it.
-        skipWhitespace(json, &index)
-        guard index == json.endIndex else { return nil }
-
-        return JSONNode(id: "", key: nil, value: value)
+        return JSONNode(id: "", key: nil, value: value(of: object, path: ""))
     }
 
-    private static func parseValue(
-        _ json: String,
-        _ index: inout String.Index,
-        path: String
-    ) -> JSONNode.Value? {
-        skipWhitespace(json, &index)
-        guard index < json.endIndex else { return nil }
-
-        switch json[index] {
-        case "{":
-            return parseContainer(json, &index, close: "}", keyed: true, path: path)
-        case "[":
-            return parseContainer(json, &index, close: "]", keyed: false, path: path)
-        case "\"":
-            guard let text = parseString(json, &index) else { return nil }
-            return .leaf(text, .string)
-        default:
-            return parseLiteral(json, &index)
-        }
-    }
-
-    private static func parseContainer(
-        _ json: String,
-        _ index: inout String.Index,
-        close: Character,
-        keyed: Bool,
-        path: String
-    ) -> JSONNode.Value? {
-        index = json.index(after: index)
-        var children: [JSONNode] = []
-
-        while true {
-            skipWhitespace(json, &index)
-            guard index < json.endIndex else { return nil }
-
-            if json[index] == close {
-                index = json.index(after: index)
-                return keyed ? .object(children) : .array(children)
-            }
-
-            if json[index] == "," {
-                index = json.index(after: index)
-                continue
-            }
-
-            var key: String?
-            if keyed {
-                guard let parsed = parseString(json, &index) else { return nil }
-                key = parsed
-
-                skipWhitespace(json, &index)
-                guard index < json.endIndex, json[index] == ":" else {
-                    return nil
+    private static func value(of object: Any, path: String) -> JSONNode.Value {
+        switch object {
+        case let dictionary as [String: Any]:
+            // Keys come back unordered, so they are sorted to keep the same
+            // tree between re-parses.
+            .object(
+                dictionary.sorted { $0.key < $1.key }.map { key, child in
+                    let childPath = "\(path)/\(key)"
+                    return JSONNode(
+                        id: childPath,
+                        key: quoted(key),
+                        value: value(of: child, path: childPath)
+                    )
                 }
-                index = json.index(after: index)
-            }
-
-            let childPath = "\(path)/\(key ?? String(children.count))"
-            guard
-                let value = parseValue(json, &index, path: childPath)
-            else { return nil }
-
-            children.append(JSONNode(id: childPath, key: key, value: value))
+            )
+        case let array as [Any]:
+            .array(
+                array.enumerated().map { offset, child in
+                    let childPath = "\(path)/\(offset)"
+                    return JSONNode(
+                        id: childPath,
+                        key: nil,
+                        value: value(of: child, path: childPath)
+                    )
+                }
+            )
+        case let string as String:
+            .leaf(quoted(string), .string)
+        case let number as NSNumber:
+            CFGetTypeID(number) == CFBooleanGetTypeID()
+                ? .leaf(number.boolValue ? "true" : "false", .boolean)
+                : .leaf(number.description, .number)
+        default:
+            .leaf("null", .null)
         }
     }
 
-    /// Returns the literal including its quotes, escapes untouched.
-    private static func parseString(
-        _ json: String,
-        _ index: inout String.Index
-    ) -> String? {
-        guard index < json.endIndex, json[index] == "\"" else { return nil }
+    /// Re-quotes and re-escapes a string that came out of `JSONSerialization`
+    /// decoded, so a row reads as the JSON it was written as.
+    private static func quoted(_ string: String) -> String {
+        var quoted = "\""
 
-        let start = index
-        index = json.index(after: index)
-
-        while index < json.endIndex {
-            if json[index] == "\\" {
-                index =
-                    json.index(index, offsetBy: 2, limitedBy: json.endIndex)
-                    ?? json.endIndex
-                continue
+        for scalar in string.unicodeScalars {
+            switch scalar {
+            case "\"": quoted += "\\\""
+            case "\\": quoted += "\\\\"
+            case "\n": quoted += "\\n"
+            case "\r": quoted += "\\r"
+            case "\t": quoted += "\\t"
+            case _ where scalar.value < 0x20:
+                quoted += String(format: "\\u%04x", scalar.value)
+            default: quoted.unicodeScalars.append(scalar)
             }
-            if json[index] == "\"" {
-                index = json.index(after: index)
-                return String(json[start..<index])
-            }
-            index = json.index(after: index)
         }
 
-        return nil
-    }
-
-    private static func parseLiteral(
-        _ json: String,
-        _ index: inout String.Index
-    ) -> JSONNode.Value? {
-        let start = index
-
-        while index < json.endIndex,
-            !",}] \n\t\r".contains(json[index])
-        {
-            index = json.index(after: index)
-        }
-
-        guard start < index else { return nil }
-        let text = String(json[start..<index])
-
-        return switch text {
-        case "true", "false": .leaf(text, .boolean)
-        case "null": .leaf(text, .null)
-        default: .leaf(text, .number)
-        }
-    }
-
-    private static func skipWhitespace(
-        _ json: String,
-        _ index: inout String.Index
-    ) {
-        while index < json.endIndex, json[index].isWhitespace {
-            index = json.index(after: index)
-        }
+        return quoted + "\""
     }
 }
 

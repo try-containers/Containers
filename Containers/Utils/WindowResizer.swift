@@ -6,7 +6,6 @@
 //
 
 import AppKit
-import SwiftUI
 
 /// A delegate rather than `contentMin/MaxSize`, which SwiftUI rewrites every
 /// layout pass, or `.resizable`, which is one flag for both axes.

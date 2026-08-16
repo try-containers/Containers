@@ -1,5 +1,5 @@
 //
-//  ListView.swift
+//  TableView.swift
 //  Containers
 //
 //  Created by Axel Martinez on 30/05/2026.
@@ -8,7 +8,12 @@
 import ContainerSystem
 import SwiftUI
 
-struct ListView<RowValue, Columns>: View
+enum TableStyle {
+    case automatic
+    case inset
+}
+
+struct TableView<RowValue, Columns>: View
 where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
     @Environment(SystemManager.self) private var system
 
@@ -16,7 +21,7 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
     let refreshTrigger: Int
     let lastUpdated: Date?
     let isFiltering: Bool
-    let tableStyle: ListTableStyle
+    let tableStyle: TableStyle
     let onClear: @MainActor () -> Void
     let onRefresh: @MainActor () async -> Void
     let columns: Columns
@@ -26,7 +31,7 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
         refreshTrigger: Int,
         lastUpdated: Date?,
         isFiltering: Bool,
-        tableStyle: ListTableStyle = .inset,
+        tableStyle: TableStyle = .inset,
         onClear: @escaping @MainActor () -> Void,
         onRefresh: @escaping @MainActor () async -> Void,
         @TableColumnBuilder<RowValue, Never> columns: () -> Columns
@@ -92,9 +97,4 @@ where RowValue: Identifiable, Columns: TableColumnContent<RowValue, Never> {
             rows: { ForEach(rows) }
         )
     }
-}
-
-enum ListTableStyle {
-    case automatic
-    case inset
 }

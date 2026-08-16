@@ -39,7 +39,7 @@ struct VolumesView: View {
     }
 
     var body: some View {
-        ListView(
+        TableView(
             rows: filteredVolumes,
             refreshTrigger: refreshTrigger,
             lastUpdated: lastUpdated,

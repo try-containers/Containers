@@ -48,7 +48,7 @@ struct ImagesView: View {
     }
 
     var body: some View {
-        ListView(
+        TableView(
             rows: filteredImages,
             refreshTrigger: refreshTrigger,
             lastUpdated: lastUpdated,

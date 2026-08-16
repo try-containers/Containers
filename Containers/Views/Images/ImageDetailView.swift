@@ -29,8 +29,8 @@ struct ImageDetailWindow: View {
                 // Empty until the detail arrives; the window grows into it.
                 Color.clear
                     .frame(
-                        width: DetailPlaceholder.width,
-                        height: DetailPlaceholder.height
+                        width: DetailPlaceholder.image.width,
+                        height: DetailPlaceholder.image.height
                     )
             } else {
                 ContentUnavailableView(
@@ -50,8 +50,6 @@ struct ImageDetailWindow: View {
                 actions: ImageDetailView.placeholderActions
             )
         )
-        // Empty until the image arrives, rather than a placeholder the user
-        // watches get replaced.
         .navigationTitle(
             image.map { Text("\($0.name):\($0.tag)") } ?? Text("")
         )
@@ -139,7 +137,7 @@ struct ImageDetailView: View {
             },
             tabIcon: { Self.tabIcon($0) },
             tabWidth: { category in
-                category == .inspect ? 750 : 650
+                category == .inspect ? 900 : 650
             },
             tabMaxHeight: { category in
                 switch category {
@@ -148,8 +146,6 @@ struct ImageDetailView: View {
                 case .inspect: 500
                 }
             },
-            // The inspect tab opens the window wider than the others need; the
-            // overview holds its own width there rather than stretching to it.
             tabContentWidth: { category in
                 switch category {
                 case .overview: 650

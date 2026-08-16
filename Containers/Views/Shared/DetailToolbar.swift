@@ -300,9 +300,6 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
 /// so the height everything else is sized against.
 struct DetailToolbarAttacher: NSViewRepresentable {
     let controller: DetailToolbarController
-    /// The toolbar's shape, which the window knows before it has loaded
-    /// anything. Supplying it here means the toolbar is complete when the
-    /// window is first shown, rather than filling in once the detail arrives.
     let tabs: [DetailToolbarController.Tab]
     let actions: [DetailAction]
 

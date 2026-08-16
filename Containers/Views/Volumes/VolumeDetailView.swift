@@ -28,8 +28,8 @@ struct VolumeDetailWindow: View {
                 // Empty until the detail arrives; the window grows into it.
                 Color.clear
                     .frame(
-                        width: DetailPlaceholder.width,
-                        height: DetailPlaceholder.height
+                        width: DetailPlaceholder.volume.width,
+                        height: DetailPlaceholder.volume.height
                     )
             } else {
                 ContentUnavailableView(
@@ -105,6 +105,11 @@ struct VolumeDetailView: View {
                 category.rawValue.localizedCapitalized
             },
             tabIcon: { Self.tabIcon($0) },
+            // Inspect has no width of its own to report — it scrolls in both
+            // directions — so the widest the layout allows is what it opens at.
+            tabWidth: { category in
+                category == .inspect ? 900 : nil
+            },
             tabMaxHeight: { category in
                 switch category {
                 case .overview: nil

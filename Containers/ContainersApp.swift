@@ -119,7 +119,10 @@ struct ContainersApp: App {
         // also carried the placement, hence the centring below.
         .restorationBehavior(.disabled)
         .defaultWindowPlacement { _, context in
-            DetailPlaceholder.centred(on: context.defaultDisplay.visibleRect)
+            DetailPlaceholder.centred(
+                on: context.defaultDisplay.visibleRect,
+                size: DetailPlaceholder.container
+            )
         }
         .commandsRemoved()
 
@@ -140,7 +143,10 @@ struct ContainersApp: App {
         // also carried the placement, hence the centring below.
         .restorationBehavior(.disabled)
         .defaultWindowPlacement { _, context in
-            DetailPlaceholder.centred(on: context.defaultDisplay.visibleRect)
+            DetailPlaceholder.centred(
+                on: context.defaultDisplay.visibleRect,
+                size: DetailPlaceholder.image
+            )
         }
         .commandsRemoved()
 
@@ -160,7 +166,10 @@ struct ContainersApp: App {
         // also carried the placement, hence the centring below.
         .restorationBehavior(.disabled)
         .defaultWindowPlacement { _, context in
-            DetailPlaceholder.centred(on: context.defaultDisplay.visibleRect)
+            DetailPlaceholder.centred(
+                on: context.defaultDisplay.visibleRect,
+                size: DetailPlaceholder.volume
+            )
         }
         .commandsRemoved()
 

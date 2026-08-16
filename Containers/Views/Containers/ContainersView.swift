@@ -49,7 +49,7 @@ struct ContainersView: View {
     }
 
     var body: some View {
-        ListView(
+        TableView(
             rows: filteredContainers,
             refreshTrigger: refreshTrigger,
             lastUpdated: lastUpdated,

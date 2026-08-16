@@ -41,18 +41,24 @@ struct DetailAction: Identifiable {
 }
 
 /// The size a detail window opens at, before it has anything to size to.
+///
+/// One per window, measured from what each one's overview actually settles at,
+/// so opening it is not followed by a resize. They differ enough — the image
+/// overview is four rows, the volume's is nine — that a shared number would be
+/// wrong for all three.
 enum DetailPlaceholder {
+    static let container = CGSize(width: 550, height: 230)
+    static let image = CGSize(width: 650, height: 158)
+    static let volume = CGSize(width: 550, height: 214)
+
+    /// The narrowest a tab may be when it does not ask for a width of its own,
+    /// which is also the narrowest the placeholders are.
     static let width: CGFloat = 550
-    static let height: CGFloat = 240
-    /// Deliberately below the opening height: a shorter tab should end at its
-    /// own height, not be padded out with space no one can drag away.
     static let minimumHeight: CGFloat = 140
 
     /// Centres on the window it was opened from. The parent is measured in
     /// AppKit's upward coordinates, `display` runs downward.
-    static func centred(on display: CGRect) -> WindowPlacement {
-        let size = CGSize(width: width, height: height)
-
+    static func centred(on display: CGRect, size: CGSize) -> WindowPlacement {
         guard
             let parent = NSApp.keyWindow,
             let screen = parent.screen

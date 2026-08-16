@@ -32,8 +32,8 @@ struct ContainerDetailWindow: View {
                 // Empty until the detail arrives; the window grows into it.
                 Color.clear
                     .frame(
-                        width: DetailPlaceholder.width,
-                        height: DetailPlaceholder.height
+                        width: DetailPlaceholder.container.width,
+                        height: DetailPlaceholder.container.height
                     )
             } else {
                 ContentUnavailableView(
@@ -62,6 +62,7 @@ struct ContainerDetailWindow: View {
 
     private func load() async {
         isLoading = true
+        
         defer { isLoading = false }
 
         do {
@@ -121,6 +122,11 @@ struct ContainerDetailView: View {
                 tab.rawValue.localizedCapitalized
             },
             tabIcon: { Self.tabIcon($0) },
+            // Inspect has no width of its own to report — it scrolls in both
+            // directions — so the widest the layout allows is what it opens at.
+            tabWidth: { tab in
+                tab == .inspect ? 900 : nil
+            },
             tabMaxHeight: { tab in
                 switch tab {
                 case .overview: nil
