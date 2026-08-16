@@ -16,11 +16,15 @@ struct ImageDetailWindow: View {
 
     @SwiftUI.State private var image: ImageViewModel?
     @SwiftUI.State private var isLoading: Bool = true
+    @SwiftUI.State private var toolbarController = DetailToolbarController()
 
     var body: some View {
         Group {
             if let image {
-                ImageDetailView(image: image)
+                ImageDetailView(
+                    image: image,
+                    toolbarController: toolbarController
+                )
             } else if isLoading {
                 // Empty until the detail arrives; the window grows into it.
                 Color.clear
@@ -39,9 +43,17 @@ struct ImageDetailWindow: View {
                 .frame(width: 550, height: 320)
             }
         }
+        .background(
+            DetailToolbarAttacher(
+                controller: toolbarController,
+                tabs: ImageDetailView.toolbarTabs,
+                actions: ImageDetailView.placeholderActions
+            )
+        )
+        // Empty until the image arrives, rather than a placeholder the user
+        // watches get replaced.
         .navigationTitle(
-            image.map { Text("\($0.name):\($0.tag)") }
-                ?? Text("Image")
+            image.map { Text("\($0.name):\($0.tag)") } ?? Text("")
         )
         .task(id: imageReference) {
             await load()
@@ -73,6 +85,7 @@ struct ImageDetailView: View {
     @Environment(\.openWindow) private var openWindow
 
     let image: ImageViewModel
+    let toolbarController: DetailToolbarController
 
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
@@ -86,6 +99,36 @@ struct ImageDetailView: View {
         case inspect
     }
 
+    static var toolbarTabs: [DetailToolbarController.Tab] {
+        DetailCategory.allCases.map {
+            .init(title: $0.rawValue.localizedCapitalized, icon: tabIcon($0))
+        }
+    }
+
+    static func tabIcon(_ tab: DetailCategory) -> String {
+        switch tab {
+        case .overview: "info.circle"
+        case .history: "clock.arrow.circlepath"
+        case .inspect: "curlybraces"
+        }
+    }
+
+    /// The same shape with nothing wired up, so the window can build its
+    /// toolbar before it has an image to build one from.
+    static var placeholderActions: [DetailAction] {
+        [
+            DetailAction(id: "run", title: "Run", icon: "play.fill", isEnabled: false) {},
+            DetailAction(id: "save", title: "Save", icon: "folder.fill", isEnabled: false) {},
+            DetailAction(
+                id: "delete",
+                title: "Delete",
+                icon: "trash",
+                isEnabled: false,
+                isDestructive: true
+            ) {},
+        ]
+    }
+
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
@@ -94,13 +137,7 @@ struct ImageDetailView: View {
             tabTitle: { category in
                 category.rawValue.localizedCapitalized
             },
-            tabIcon: { category in
-                switch category {
-                case .overview: "info.circle"
-                case .history: "clock.arrow.circlepath"
-                case .inspect: "curlybraces"
-                }
-            },
+            tabIcon: { Self.tabIcon($0) },
             tabWidth: { category in
                 category == .inspect ? 750 : 650
             },
@@ -119,6 +156,7 @@ struct ImageDetailView: View {
                 case .history, .inspect: nil
                 }
             },
+            toolbarController: toolbarController,
             tabContent: { category in
                 switch category {
                 case .overview:

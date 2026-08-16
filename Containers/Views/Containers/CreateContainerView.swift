@@ -64,18 +64,15 @@ struct CreateContainerView: View {
 
     @SwiftUI.State private var process: ContainerProcess = .init()
     @SwiftUI.State private var container: ContainerInfo = .init()
-    @SwiftUI.State private var volumes: [VolumeMountConfiguration] = []
-    @SwiftUI.State private var mounts: [MountConfiguration] = []
-    @SwiftUI.State private var ports: [PortsConfiguration] = []
+    @SwiftUI.State private var volumes: [VolumeMount] = []
+    @SwiftUI.State private var mounts: [Mount] = []
+    @SwiftUI.State private var ports: [PortMapping] = []
     @SwiftUI.State private var environments: [KeyValue] = []
-    @SwiftUI.State private var resource: ContainerConfiguration.Resources =
-        .init()
-    @SwiftUI.State private var registryScheme: String = RequestScheme.auto
-        .rawValue
-    @SwiftUI.State private var platformString: String = Platform.current
-        .description
+    @SwiftUI.State private var resource: ContainerConfiguration.Resources = .init()
+    @SwiftUI.State private var registryScheme: String = RequestScheme.auto.rawValue
+    @SwiftUI.State private var platformString: String = Platform.current.description
     @SwiftUI.State private var shmSizeInMiB: Int = 0
-    @SwiftUI.State private var capabilities: [CapabilityConfiguration] = []
+    @SwiftUI.State private var capabilities: [Capability] = []
     @SwiftUI.State private var errorMessage: String?
     @SwiftUI.State private var localImages: [ImageDescription] = []
     @SwiftUI.State private var availableVolumes: [Volume] = []
@@ -173,7 +170,6 @@ struct CreateContainerView: View {
         if mode == .run {
             HStack(alignment: .firstTextBaseline) {
                 Text("Image:")
-
                 Text(imageReference)
                     .fontWeight(.semibold)
                     .lineLimit(1)
@@ -181,20 +177,23 @@ struct CreateContainerView: View {
                     .fieldControl()
             }
         } else {
-            EditableField(
-                title: "Image",
-                placeholder: "Select Image...",
-                options: localImages.map { $0.reference },
-                selection: $imageReference,
-                selectionActionTitle: "Other...",
-                onSelectionAction: { showPickLocalImage = true }
-            )
+            FormRow(title: "Image") {
+                FormPicker(
+                    placeholder: "Select Image...",
+                    options: localImages.map { $0.reference },
+                    selection: $imageReference,
+                    actionTitle: "Other...",
+                    onAction: { showPickLocalImage = true }
+                )
+            }
         }
     }
 
     private func preloadLocalImages() async {
         guard localImages.isEmpty else { return }
+
         localImages = (try? await imageManager.list().map(\.description)) ?? []
+
         if imageReference.isEmpty, let first = localImages.first {
             imageReference = first.reference
         }
@@ -205,6 +204,7 @@ struct CreateContainerView: View {
             showPickLocalImage = true
             return
         }
+
         Task {
             do {
                 showProgressView = true
@@ -231,51 +231,60 @@ struct CreateContainerView: View {
     }
 
     private var infoTab: some View {
-        FieldStack {
+        FormStack {
             imageSelectionField
 
-            EditableField(
+            FormRow(
                 title: "Name",
                 description:
-                    "Leave empty to generate a unique name automatically.",
-                placeholder: "my-container",
-                value: $container.name
-            )
+                    "Leave empty to generate a unique name automatically."
+            ) {
+                FormField(
+                    placeholder: "my-container",
+                    value: $container.name
+                )
+            }
         }
     }
 
     private var processTab: some View {
         VStack(alignment: .leading, spacing: 0) {
-            FieldStack {
-                EditableField(
+            FormStack {
+                FormRow(
                     title: "Entrypoint",
-                    description: "Overrides the image's default entrypoint.",
-                    placeholder: "/bin/sh -c \"echo hello\"",
-                    value: Binding(
-                        get: { container.entryPoint ?? "" },
-                        set: { container.entryPoint = $0.isEmpty ? nil : $0 }
+                    description: "Overrides the image's default entrypoint."
+                ) {
+                    FormField(
+                        placeholder: "/bin/sh -c \"echo hello\"",
+                        value: Binding(
+                            get: { container.entryPoint ?? "" },
+                            set: {
+                                container.entryPoint = $0.isEmpty ? nil : $0
+                            }
+                        )
                     )
-                )
+                }
 
-                EditableField(
-                    title: "Stop Signal",
-                    placeholder: "SIGTERM",
-                    value: Binding(
-                        get: { container.stopSignal ?? "" },
-                        set: {
-                            container.stopSignal =
-                                $0.trimmingCharacters(
-                                    in: .whitespacesAndNewlines
-                                ).isEmpty ? nil : $0
-                        }
+                FormRow(title: "Stop Signal") {
+                    FormField(
+                        placeholder: "SIGTERM",
+                        value: Binding(
+                            get: { container.stopSignal ?? "" },
+                            set: {
+                                container.stopSignal =
+                                    $0.trimmingCharacters(
+                                        in: .whitespacesAndNewlines
+                                    ).isEmpty ? nil : $0
+                            }
+                        )
                     )
-                )
+                }
             }
             .padding(20)
 
             Divider()
 
-            EditableList(
+            FormList(
                 items: $environments,
                 columnTitles: ["Environment Variables", "Value"],
                 addLabel: "Add Environment Variable",
@@ -306,15 +315,18 @@ struct CreateContainerView: View {
 
     private var optionsTab: some View {
         VStack(alignment: .leading, spacing: 0) {
-            FieldStack {
-                EditableField(
+            FormStack {
+                FormRow(
                     title: "Platform",
                     description:
-                        "Choose the image variant to run. AMD64 containers use Rosetta on Apple Silicon.",
-                    placeholder: "Platform",
-                    options: Self.platformOptions,
-                    selection: $platformString
-                )
+                        "Choose the image variant to run. AMD64 containers use Rosetta on Apple Silicon."
+                ) {
+                    FormPicker(
+                        placeholder: "Platform",
+                        options: Self.platformOptions,
+                        selection: $platformString
+                    )
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -322,7 +334,7 @@ struct CreateContainerView: View {
 
             Divider()
 
-            EditableList(
+            FormList(
                 items: $volumes,
                 title: "Volumes",
                 editorDescription:
@@ -332,7 +344,7 @@ struct CreateContainerView: View {
                 emptyMessage: "No Volumes",
                 hasContentBelow: true,
                 newItem: {
-                    VolumeMountConfiguration(
+                    VolumeMount(
                         source: availableVolumes.isEmpty
                             ? .anonymousVolume : .volume,
                         volumeName: availableVolumes.last?.name ?? ""
@@ -350,7 +362,7 @@ struct CreateContainerView: View {
             )
             .padding(.horizontal)
 
-            EditableList(
+            FormList(
                 items: $mounts,
                 title: "Mounts",
                 editorDescription:
@@ -359,7 +371,7 @@ struct CreateContainerView: View {
                 addLabel: "Add Mount",
                 emptyMessage: "No Mounts",
                 hasContentBelow: true,
-                newItem: { MountConfiguration() },
+                newItem: { Mount() },
                 rowSummary: \.summary,
                 rowValues: \.columns,
                 canSave: { !$0.trimmedTarget.isEmpty },
@@ -369,7 +381,7 @@ struct CreateContainerView: View {
             )
             .padding(.horizontal)
 
-            EditableList(
+            FormList(
                 items: $ports,
                 title: "Port Mappings",
                 editorDescription:
@@ -378,7 +390,7 @@ struct CreateContainerView: View {
                 addLabel: "Add Port Mapping",
                 emptyMessage: "No Port Mappings",
                 hasContentBelow: true,
-                newItem: { PortsConfiguration() },
+                newItem: { PortMapping() },
                 rowSummary: \.summary,
                 rowValues: \.columns,
                 editorContent: { $port in
@@ -387,13 +399,13 @@ struct CreateContainerView: View {
             )
             .padding(.horizontal)
 
-            EditableList(
+            FormList(
                 items: $capabilities,
                 title: "Capabilities",
                 columnTitles: ["Capability"],
                 addLabel: "Add Capability",
                 emptyMessage: "No Capabilities",
-                newItem: { CapabilityConfiguration() },
+                newItem: { Capability() },
                 rowFields: { $capability in
                     [
                         .init(
@@ -427,10 +439,10 @@ struct CreateContainerView: View {
             self.showProgressView = true
 
             do {
-                let mounts = try await ContainerMountPlanner.plan(
+                let mounts = try await ContainerFilesystems(
                     mounts: self.mounts,
                     volumes: self.volumes,
-                    volumeManager: volumeManager
+                    using: volumeManager
                 )
 
                 self.container.virtualFileSystem = mounts.bindMounts

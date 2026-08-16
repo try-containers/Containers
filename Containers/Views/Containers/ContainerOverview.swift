@@ -14,50 +14,44 @@ struct ContainerOverview: View {
     let snapshot: ContainerSnapshot
 
     var body: some View {
-
         VStack(alignment: .leading, spacing: 10) {
-            InfoSection(rows: detailRows)
-
-            if portsSummary.count > 0 {
-                InfoSection(rows: [InfoRow(label: "Ports", value: portsSummary)]
+            InfoSection {
+                InfoRow(label: "ID", value: snapshot.id)
+                InfoRow(
+                    label: "Image",
+                    value: snapshot.configuration.image.reference
                 )
+                InfoRow(label: "OS", value: osSummary)
+                InfoRow(
+                    label: "Arch",
+                    value: snapshot.configuration.platform.architecture
+                )
+                InfoRow(label: "Command", value: commandSummary)
+                InfoRow(label: "Last Started", value: startedAtSummary)
             }
 
-            if labelRows.count > 0 {
-                InfoSection(
-                    title: "Labels",
-                    emptyMessage: "No labels",
-                    rows: labelRows
-                )
+            if portsSummary.count > 0 {
+                InfoSection {
+                    InfoRow(label: "Ports", value: portsSummary)
+                }
+            }
+
+            if !snapshot.configuration.labels.isEmpty {
+                InfoSection {
+                    ForEach(sortedLabels, id: \.key) { label in
+                        InfoRow(label: label.key, value: label.value)
+                    }
+                }
             }
         }
         .padding(20)
 
     }
 
-    private var detailRows: [InfoRow] {
-        [
-            InfoRow(label: "ID", value: snapshot.id),
-            InfoRow(
-                label: "Image",
-                value: snapshot.configuration.image.reference
-            ),
-            InfoRow(label: "OS", value: osSummary),
-            InfoRow(
-                label: "Arch",
-                value: snapshot.configuration.platform.architecture
-            ),
-            InfoRow(label: "Command", value: commandSummary),
-            InfoRow(label: "Last Started", value: startedAtSummary),
-        ]
-    }
-
-    private var labelRows: [InfoRow] {
-        snapshot.configuration.labels
-            .sorted {
-                $0.key.localizedStandardCompare($1.key) == .orderedAscending
-            }
-            .map { InfoRow(label: $0.key, value: $0.value) }
+    private var sortedLabels: [(key: String, value: String)] {
+        snapshot.configuration.labels.sorted {
+            $0.key.localizedStandardCompare($1.key) == .orderedAscending
+        }
     }
 
     private var osSummary: String {

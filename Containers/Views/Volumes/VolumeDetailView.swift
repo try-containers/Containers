@@ -15,11 +15,15 @@ struct VolumeDetailWindow: View {
 
     @SwiftUI.State private var volume: VolumeViewModel?
     @SwiftUI.State private var isLoading: Bool = true
+    @SwiftUI.State private var toolbarController = DetailToolbarController()
 
     var body: some View {
         Group {
             if let volume {
-                VolumeDetailView(volume: volume)
+                VolumeDetailView(
+                    volume: volume,
+                    toolbarController: toolbarController
+                )
             } else if isLoading {
                 // Empty until the detail arrives; the window grows into it.
                 Color.clear
@@ -38,10 +42,16 @@ struct VolumeDetailWindow: View {
                 .frame(width: 550, height: 320)
             }
         }
-        .navigationTitle(
-            volume.map { Text($0.name) }
-                ?? Text("Volume")
+        .background(
+            DetailToolbarAttacher(
+                controller: toolbarController,
+                tabs: VolumeDetailView.toolbarTabs,
+                actions: []
+            )
         )
+        // Empty until the volume arrives, rather than a placeholder the user
+        // watches get replaced.
+        .navigationTitle(volume.map { Text($0.name) } ?? Text(""))
         .task(id: id) {
             await load()
         }
@@ -66,6 +76,7 @@ struct VolumeDetailWindow: View {
 
 struct VolumeDetailView: View {
     let volume: VolumeViewModel
+    let toolbarController: DetailToolbarController
 
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
 
@@ -74,18 +85,26 @@ struct VolumeDetailView: View {
         case inspect
     }
 
+    static var toolbarTabs: [DetailToolbarController.Tab] {
+        DetailCategory.allCases.map {
+            .init(title: $0.rawValue.localizedCapitalized, icon: tabIcon($0))
+        }
+    }
+
+    static func tabIcon(_ tab: DetailCategory) -> String {
+        switch tab {
+        case .overview: "info.circle"
+        case .inspect: "curlybraces"
+        }
+    }
+
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
             tabTitle: { category in
                 category.rawValue.localizedCapitalized
             },
-            tabIcon: { category in
-                switch category {
-                case .overview: "info.circle"
-                case .inspect: "curlybraces"
-                }
-            },
+            tabIcon: { Self.tabIcon($0) },
             tabMaxHeight: { category in
                 switch category {
                 case .overview: nil
@@ -98,6 +117,7 @@ struct VolumeDetailView: View {
                 case .inspect: nil
                 }
             },
+            toolbarController: toolbarController,
             tabContent: { category in
                 switch category {
                 case .overview:

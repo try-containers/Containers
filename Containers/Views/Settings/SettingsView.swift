@@ -143,8 +143,11 @@ struct SettingsView: View {
     }
 
     private var storageLocationSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
+        SettingsSection(title: "Storage") {
+            SettingsRow(
+                description:
+                    "Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts."
+            ) {
                 HStack(spacing: 8) {
                     TextField("Storage location", text: storageLocationPath)
                         .textFieldStyle(.roundedBorder)
@@ -156,40 +159,26 @@ struct SettingsView: View {
                     .help("Choose")
                     .disabled(system.status == .running)
                 }
-
-                Text(
-                    "Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-                Divider()
-
-                HStack {
-                    Spacer()
-
-                    Button("Use Default", action: resetStorageLocation)
-                        .disabled(
-                            system.status == .running
-                                || UserDefaults.usesDefaultApplicationDataRoot
-                        )
-                }
             }
-            .padding(12)
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Storage")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+
+            HStack {
+                Spacer()
+
+                Button("Use Default", action: resetStorageLocation)
+                    .disabled(
+                        system.status == .running
+                            || UserDefaults.usesDefaultApplicationDataRoot
+                    )
             }
-            .padding(.bottom, 5)
         }
     }
 
     private var dnsDomainsSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
+        SettingsSection(title: "DNS Domains") {
+            SettingsRow(
+                description:
+                    "DNS domains let containers access host services, such as host.containers.internal:8000."
+            ) {
                 VStack(alignment: .leading, spacing: 8) {
                     if dnsDomains.isEmpty {
                         Text("No domains configured")
@@ -207,28 +196,11 @@ struct SettingsView: View {
                         }
                     }
                 }
-
-                Text(
-                    "DNS domains let containers access host services, such as host.containers.internal:8000."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-                Divider()
-
-                SettingsWarning(
-                    "DNS domain management requires administrator privileges. Manage domains by creating resolver files in /etc/resolver/."
-                )
             }
-            .padding(12)
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("DNS Domains")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-            }
-            .padding(.bottom, 5)
+
+            SettingsWarning(
+                "DNS domain management requires administrator privileges. Manage domains by creating resolver files in /etc/resolver/."
+            )
         }
     }
 

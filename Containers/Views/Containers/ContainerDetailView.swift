@@ -18,13 +18,15 @@ struct ContainerDetailWindow: View {
     @SwiftUI.State private var snapshot: ContainerSnapshot?
     @SwiftUI.State private var isLoading: Bool = true
     @SwiftUI.State private var loadError: Error?
+    @SwiftUI.State private var toolbarController = DetailToolbarController()
 
     var body: some View {
         Group {
             if let snapshot {
                 ContainerDetailView(
                     container: ContainerViewModel(snapshot),
-                    initialSnapshot: snapshot
+                    initialSnapshot: snapshot,
+                    toolbarController: toolbarController
                 )
             } else if isLoading {
                 // Empty until the detail arrives; the window grows into it.
@@ -45,6 +47,13 @@ struct ContainerDetailWindow: View {
                 .frame(width: 550, height: 320)
             }
         }
+        .background(
+            DetailToolbarAttacher(
+                controller: toolbarController,
+                tabs: ContainerDetailView.toolbarTabs,
+                actions: ContainerDetailView.placeholderActions
+            )
+        )
         .navigationTitle(id)
         .task(id: id) {
             await load()
@@ -87,10 +96,15 @@ struct ContainerDetailView: View {
         case inspect
     }
 
+    let toolbarController: DetailToolbarController
+
     init(
         container: ContainerViewModel,
-        initialSnapshot: ContainerSnapshot? = nil
+        initialSnapshot: ContainerSnapshot? = nil,
+        toolbarController: DetailToolbarController = DetailToolbarController()
     ) {
+        self.toolbarController = toolbarController
+
         let initialContainer =
             initialSnapshot.map(ContainerViewModel.init) ?? container
 
@@ -106,13 +120,7 @@ struct ContainerDetailView: View {
             tabTitle: { tab in
                 tab.rawValue.localizedCapitalized
             },
-            tabIcon: { tab in
-                switch tab {
-                case .overview: "info.circle"
-                case .logs: "list.bullet.rectangle"
-                case .inspect: "curlybraces"
-                }
-            },
+            tabIcon: { Self.tabIcon($0) },
             tabMaxHeight: { tab in
                 switch tab {
                 case .overview: nil
@@ -126,6 +134,7 @@ struct ContainerDetailView: View {
                 case .logs, .inspect: nil
                 }
             },
+            toolbarController: toolbarController,
             tabContent: { tab in
                 switch tab {
                 case .overview:
@@ -206,13 +215,12 @@ struct ContainerDetailView: View {
         }
     }
 
-    private func mountVolume(_ draft: VolumeMountConfiguration) async {
+    private func mountVolume(_ draft: VolumeMount) async {
         do {
-            let volume = try await ContainerMountPlanner.volume(
+            let volume = try await volumeManager.volume(
                 named: draft.source == .anonymousVolume
                     ? "" : draft.trimmedVolumeName,
-                among: try await volumeManager.list(),
-                using: volumeManager
+                among: try await volumeManager.list()
             )
 
             try await containerManager.mountVolume(
@@ -252,51 +260,38 @@ struct ContainerDetailView: View {
         .contentReady(!isLoadingSnapshot || snapshot != nil)
     }
 
+    /// A fixed set, in a fixed order: the toolbar is built from these ids
+    /// before the snapshot arrives, and a set that changed with the status
+    /// would rebuild the toolbar — items visibly popping in — the moment it
+    /// did. Only what the buttons do and whether they are enabled varies.
     private var actions: [DetailAction] {
-        var result: [DetailAction] = []
         let busy = isOperationInProgress
+        let isRunning = status == .running
+        let isStopped = status == .stopped
 
-        switch status {
-        case .running:
-            result.append(
-                DetailAction(
-                    id: "stop",
-                    title: "Stop",
-                    icon: "stop.fill",
-                    help: "Stop container",
-                    isEnabled: !busy
-                ) {
+        return [
+            DetailAction(
+                id: "run",
+                title: isRunning ? "Stop" : "Start",
+                icon: isRunning ? "stop.fill" : "play.fill",
+                help: isRunning ? "Stop container" : "Start container",
+                isEnabled: !busy && (isRunning || isStopped)
+            ) {
+                if isRunning {
                     stopContainer()
-                }
-            )
-        case .stopped:
-            result.append(
-                DetailAction(
-                    id: "start",
-                    title: "Start",
-                    icon: "play.fill",
-                    help: "Start container",
-                    isEnabled: !busy
-                ) {
+                } else {
                     runContainer()
                 }
-            )
-            result.append(
-                DetailAction(
-                    id: "add-volume",
-                    title: "Add Volume",
-                    icon: "externaldrive.badge.plus",
-                    help: "Mount volume",
-                    isEnabled: !busy && snapshot != nil
-                ) {
-                    showAddVolumeMount = true
-                }
-            )
-        case .stopping, .unknown:
-            break
-        }
-
-        result.append(
+            },
+            DetailAction(
+                id: "add-volume",
+                title: "Add Volume",
+                icon: "externaldrive.badge.plus",
+                help: "Mount volume",
+                isEnabled: !busy && isStopped && snapshot != nil
+            ) {
+                showAddVolumeMount = true
+            },
             DetailAction(
                 id: "delete",
                 title: "Delete",
@@ -306,10 +301,48 @@ struct ContainerDetailView: View {
                 isDestructive: true
             ) {
                 showDeleteConfirmation = true
-            }
-        )
+            },
+        ]
+    }
 
-        return result
+    /// The same shape with nothing wired up, so the window can build its
+    /// toolbar before it has a container to build one from.
+    static var placeholderActions: [DetailAction] {
+        [
+            DetailAction(
+                id: "run",
+                title: "Start",
+                icon: "play.fill",
+                isEnabled: false
+            ) {},
+            DetailAction(
+                id: "add-volume",
+                title: "Add Volume",
+                icon: "externaldrive.badge.plus",
+                isEnabled: false
+            ) {},
+            DetailAction(
+                id: "delete",
+                title: "Delete",
+                icon: "trash",
+                isEnabled: false,
+                isDestructive: true
+            ) {},
+        ]
+    }
+
+    static var toolbarTabs: [DetailToolbarController.Tab] {
+        DetailCategory.allCases.map {
+            .init(title: $0.rawValue.localizedCapitalized, icon: tabIcon($0))
+        }
+    }
+
+    static func tabIcon(_ tab: DetailCategory) -> String {
+        switch tab {
+        case .overview: "info.circle"
+        case .logs: "list.bullet.rectangle"
+        case .inspect: "curlybraces"
+        }
     }
 
     private func refreshSnapshot() async {
@@ -418,11 +451,11 @@ struct ContainerDetailView: View {
 
 private struct MountVolumeSheet: View {
     let existingMountDestinations: [String]
-    let onMount: (VolumeMountConfiguration) async -> Void
+    let onMount: (VolumeMount) async -> Void
 
     @Environment(VolumeManager.self) private var volumeManager
 
-    @SwiftUI.State private var mount = VolumeMountConfiguration()
+    @SwiftUI.State private var mount = VolumeMount()
     @SwiftUI.State private var availableVolumes: [Volume] = []
 
     var body: some View {

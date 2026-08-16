@@ -1,11 +1,12 @@
 //
-//  Dropdown.swift
+//  FormPicker.swift
 //  Containers
 //
 //  Created by Axel Martinez on 02/08/2026.
 //
 
 import AppKit
+import Foundation
 import SwiftUI
 
 /// A dropdown that fills the width it is given.
@@ -14,8 +15,8 @@ import SwiftUI
 /// width whatever the layout proposes, so it renders visibly narrower than the
 /// text fields it shares a column with. Driving the button directly lets
 /// `sizeThatFits` accept the proposal instead.
-struct Dropdown<Option: Hashable>: NSViewRepresentable {
-    enum Item {
+struct FormPicker<Option: Hashable & CustomStringConvertible>: NSViewRepresentable {
+    fileprivate enum Item {
         case option(Option, title: String)
         case separator
         /// A trailing command such as "Other…". Picking it runs `onAction` and
@@ -23,10 +24,37 @@ struct Dropdown<Option: Hashable>: NSViewRepresentable {
         case action(String)
     }
 
-    let items: [Item]
+    let placeholder: String
+    let options: [Option]
     @Binding var selection: Option
     var fillsAvailableWidth: Bool = true
+    var actionTitle: String?
     var onAction: (() -> Void)?
+
+    private var items: [Item] {
+        var items: [Item] = []
+
+        // A selection that is not one of the options — no image picked yet,
+        // say — still needs an entry to sit on, so show the placeholder.
+        if !options.contains(selection) {
+            items.append(.option(selection, title: placeholder))
+            items.append(.separator)
+        }
+
+        items += options.map { option in
+            .option(
+                option,
+                title: (option as? Unit)?.symbol ?? option.description
+            )
+        }
+
+        if let actionTitle {
+            items.append(.separator)
+            items.append(.action(actionTitle))
+        }
+
+        return items
+    }
 
     func makeNSView(context: Context) -> NSPopUpButton {
         let button = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -92,11 +120,11 @@ struct Dropdown<Option: Hashable>: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject {
-        var items: [Item] = []
+        fileprivate var items: [Item] = []
         var selection: Binding<Option>?
         var onAction: (() -> Void)?
 
-        func index(of option: Option) -> Int? {
+        fileprivate func index(of option: Option) -> Int? {
             items.firstIndex {
                 if case .option(let candidate, _) = $0 {
                     return candidate == option
@@ -106,7 +134,8 @@ struct Dropdown<Option: Hashable>: NSViewRepresentable {
         }
 
         @objc func selectionChanged(_ sender: NSPopUpButton) {
-            guard let tag = sender.selectedItem?.tag, items.indices.contains(tag)
+            guard let tag = sender.selectedItem?.tag,
+                items.indices.contains(tag)
             else { return }
 
             switch items[tag] {

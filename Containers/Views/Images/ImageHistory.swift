@@ -77,9 +77,12 @@ struct ImageHistory: View {
                     }
                     .padding(20)
                 }
-                .frame(maxHeight: 500)
             }
         }
+        // The layers run to any length, so the tab's bound is what it opens
+        // at — and, as with inspect, dragging the window taller shows more of
+        // them rather than padding the window out.
+        .contentUnbounded()
         .contentReady(!isLoading)
         .task {
             await loadLayers()

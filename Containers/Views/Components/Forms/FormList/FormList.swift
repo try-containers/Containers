@@ -1,5 +1,5 @@
 //
-//  EditableList.swift
+//  FormList.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/02/08.
@@ -8,19 +8,16 @@
 import SwiftUI
 
 private let cellPadding: CGFloat = 8
-
-/// Gap above and below a section's heading, and below its list, so the section
-/// sits evenly between its title and the rule that closes it.
 private let sectionSpacing: CGFloat = 8
 
 /// A table of items that are either edited in place — pass `rowFields` — or
 /// displayed as text and edited in a sheet — pass `editorContent`.
-struct EditableList<Item: Identifiable, EditorContent: View>: View
+struct FormList<Item: Identifiable, EditorContent: View>: View
 where Item.ID: Hashable {
 
     // MARK: - Properties
 
-    @Environment(\.editableListStyle) private var style
+    @Environment(\.formListStyle) private var style
 
     @SwiftUI.State var state = State()
     @SwiftUI.State private var isExpanded: Bool = true
@@ -486,7 +483,8 @@ where Item.ID: Hashable {
         }
     }
 }
-extension EditableList where EditorContent == EmptyView {
+
+extension FormList where EditorContent == EmptyView {
     /// Rows are edited in place through the fields `rowFields` describes, so
     /// there is no editor sheet.
     init(

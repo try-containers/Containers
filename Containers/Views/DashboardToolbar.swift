@@ -39,6 +39,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
 
     func attach(to window: NSWindow) {
         guard self.window !== window else { return }
+
         self.window = window
 
         let toolbar = NSToolbar(identifier: "dashboard")
@@ -48,10 +49,12 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         toolbar.autosavesConfiguration = false
         toolbar.displayMode = .iconOnly
         toolbar.centeredItemIdentifiers = [Self.tabsIdentifier]
+
         builtFrom = shape
 
         window.toolbar = toolbar
         window.toolbarStyle = .unified
+
         applyChrome()
 
         if ProcessInfo.processInfo.environment["DEBUG_FLASH"] != nil {
@@ -87,21 +90,16 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         }
     }
 
-    /// Reapplied on every update, not just on `attach`: something puts the
-    /// divider under the toolbar back after the items are installed.
-    /// `titlebarSeparatorStyle` does nothing here, reapplied or not — a
-    /// transparent titlebar is what drops the divider.
-    /// Called from `update()` as well as `attach`, because the window setup
-    /// puts the divider back once after the toolbar is installed — setting
-    /// this only in `attach` does not survive. Both writes are guarded, so
-    /// after those first two it is a comparison and nothing more.
-    /// `titlebarSeparatorStyle` does nothing here, reapplied or not; a
-    /// transparent titlebar is what drops the divider.
+    /// Hides the title, which only repeated the app name and cost the toolbar
+    /// the width its centred tabs need to stay uncollapsed, and drops the
+    /// divider under the toolbar — `titlebarSeparatorStyle` does nothing here,
+    /// a transparent titlebar is what removes it.
+    ///
+    /// Reapplied from `update()` and not just `attach`, because the window
+    /// setup puts the divider back once after the items are installed.
     private func applyChrome() {
         guard let window else { return }
 
-        // The tabs say where you are; the window title only repeated the app
-        // name and cost the toolbar the width it needs to stay uncollapsed.
         if window.titleVisibility != .hidden {
             window.titleVisibility = .hidden
         }
@@ -129,8 +127,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         }
 
         result.append(Self.addIdentifier)
-        // Keeps the search field out of the glass group the neighbouring
-        // buttons form.
         result.append(.space)
         result.append(Self.searchIdentifier)
 
@@ -269,9 +265,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         )
         group.selectedIndex = selectedIndex
         group.isEnabled = isEnabled
-        // The tabs are how the window is navigated, so they outrank everything
-        // else when the toolbar runs out of room — the search field is meant to
-        // be what collapses first.
         group.visibilityPriority = .high
         group.controlRepresentation = .expanded
         return group

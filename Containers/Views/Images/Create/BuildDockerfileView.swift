@@ -22,24 +22,26 @@ struct BuildDockerfileView: View {
     @Binding var targetStage: String
 
     var body: some View {
-        FieldStack {
-            FileSelection(
-                title: "Dockerfile",
-                placeholder: "No Dockerfile selected",
-                fileURL: $dockerFile,
-                allowedContentTypes: [.item],
-                defaultDirectory: defaultFileDialogDirectory,
-                onSelection: { errorMessage = nil }
-            )
+        FormStack {
+            FormRow(title: "Dockerfile") {
+                FileSelection(
+                    placeholder: "No Dockerfile selected",
+                    fileURL: $dockerFile,
+                    allowedContentTypes: [.item],
+                    defaultDirectory: defaultFileDialogDirectory,
+                    onSelection: { errorMessage = nil }
+                )
+            }
 
-            FileSelection(
-                title: "Build Directory",
-                placeholder: "No build directory selected",
-                fileURL: $contextDirectory,
-                canChooseDirectories: true,
-                defaultDirectory: defaultFileDialogDirectory,
-                onSelection: { errorMessage = nil }
-            )
+            FormRow(title: "Build Directory") {
+                FileSelection(
+                    placeholder: "No build directory selected",
+                    fileURL: $contextDirectory,
+                    canChooseDirectories: true,
+                    defaultDirectory: defaultFileDialogDirectory,
+                    onSelection: { errorMessage = nil }
+                )
+            }
             .onChange(
                 of: contextDirectory,
                 {
@@ -55,25 +57,27 @@ struct BuildDockerfileView: View {
                 }
             )
 
-            EditableField(
+            FormRow(
                 title: "Image Name",
-                description: "⭑ If empty, a generated UUID will be used",
-                placeholder: "Ex: my-app, my-app:dev",
-                value: $buildTag
-            )
+                description: "⭑ If empty, a generated UUID will be used"
+            ) {
+                FormField(
+                    placeholder: "Ex: my-app, my-app:dev",
+                    value: $buildTag
+                )
+            }
 
-            EditableField(
-                title: "Platform",
-                placeholder: "Platform",
-                options: platformOptions,
-                selection: $buildPlatform
-            )
+            FormRow(title: "Platform") {
+                FormPicker(
+                    placeholder: "Platform",
+                    options: platformOptions,
+                    selection: $buildPlatform
+                )
+            }
 
-            EditableField(
-                title: "Target Stage",
-                placeholder: "Ex: production",
-                value: $targetStage
-            )
+            FormRow(title: "Target Stage") {
+                FormField(placeholder: "Ex: production", value: $targetStage)
+            }
         }
     }
 

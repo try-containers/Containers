@@ -34,6 +34,7 @@ struct FormSheet<Content: View>: View {
             }
 
             content
+
             HStack {
                 Spacer()
                 if showsCancelButton {

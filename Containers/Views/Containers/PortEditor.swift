@@ -10,7 +10,7 @@ import SwiftUI
 
 /// The editors the create sheet's lists open for one drafted item at a time.
 struct PortEditor: View {
-    @Binding var port: PortsConfiguration
+    @Binding var port: PortMapping
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

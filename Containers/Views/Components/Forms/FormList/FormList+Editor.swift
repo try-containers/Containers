@@ -1,5 +1,5 @@
 //
-//  EditableList+Editor.swift
+//  FormList+Editor.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/08/09.
@@ -9,7 +9,7 @@ import SwiftUI
 
 // MARK: - Editor sheet
 
-extension EditableList {
+extension FormList {
     var editorPresentation: Binding<Bool> {
         Binding(
             get: { state.editorTarget != nil },

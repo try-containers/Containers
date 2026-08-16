@@ -1,5 +1,5 @@
 //
-//  EditableList+State.swift
+//  FormList+State.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/08/09.
@@ -9,7 +9,7 @@ import SwiftUI
 
 // MARK: - List state
 
-extension EditableList {
+extension FormList {
     /// Which item is selected, which one is being edited, and where both
     /// land when an item is added or removed. The items themselves stay in
     /// the caller's binding; this only tracks the list's own state.

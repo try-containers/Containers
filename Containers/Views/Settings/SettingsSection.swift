@@ -7,38 +7,22 @@
 
 import SwiftUI
 
-struct SettingsSection<
-    Label: View,
-    Option: Hashable & CustomStringConvertible,
-    Format: ParseableFormatStyle
->: View
-where Format.FormatOutput == String {
-
-    typealias Field = SettingsField<Label, Option, Format>
-
-    let title: String?
-    let description: String?
-    let fields: [Field]
-
-    init(
-        title: String? = nil,
-        description: String? = nil,
-        fields: [Field]
-    ) {
-        self.title = title
-        self.description = description
-        self.fields = fields
-    }
+struct SettingsSection<Content: View>: View {
+    var title: String?
+    var description: String?
+    @ViewBuilder var content: Content
 
     var body: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(fields.indices, id: \.self) { index in
-                    fields[index]
+            Group(subviews: content) { rows in
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(rows.indices, id: \.self) { index in
+                        rows[index]
 
-                    if index < fields.index(before: fields.endIndex) {
-                        Divider()
-                            .padding(.vertical, 12)
+                        if index < rows.index(before: rows.endIndex) {
+                            Divider()
+                                .padding(.vertical, 12)
+                        }
                     }
                 }
             }

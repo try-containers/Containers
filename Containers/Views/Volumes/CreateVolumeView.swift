@@ -86,29 +86,43 @@ struct CreateVolumeView: View {
     }
 
     private var infoTab: some View {
-        FieldStack {
-            EditableField(
-                title: "Name",
-                placeholder: "Ex: volume-1",
-                value: $name
-            )
+        FormStack {
+            FormRow(title: "Name") {
+                FormField(placeholder: "Ex: volume-1", value: $name)
+            }
 
-            EditableField(
+            // The only row with two controls in one column, so it holds the
+            // controls directly rather than going through FormField.
+            FormRow(
                 title: "Size",
                 description:
-                    "Sets the maximum capacity for the volume. Disk space is used as data is written, not reserved up front.",
-                placeholder: "Size",
-                value: $sizeValue,
-                format: .number,
-                options: [.megabytes, .gigabytes, .terabytes],
-                selection: $sizeUnit
-            )
+                    "Sets the maximum capacity for the volume. Disk space is used as data is written, not reserved up front."
+            ) {
+                HStack {
+                    TextField(
+                        value: $sizeValue,
+                        format: .number,
+                        prompt: Text("Size")
+                    ) {
+                        EmptyView()
+                    }
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+
+                    FormPicker(
+                        placeholder: "Unit",
+                        options: [.megabytes, .gigabytes, .terabytes],
+                        selection: $sizeUnit,
+                        fillsAvailableWidth: false
+                    )
+                }
+            }
         }
     }
 
     private var optionsTab: some View {
         VStack(alignment: .leading, spacing: 0) {
-            EditableList(
+            FormList(
                 items: $labels,
                 title: "Labels",
                 columnTitles: ["Key", "Value"],
@@ -133,7 +147,7 @@ struct CreateVolumeView: View {
             )
             .padding(.horizontal)
 
-            EditableList(
+            FormList(
                 items: $options,
                 title: "Driver Specific Options",
                 columnTitles: ["Key", "Value"],

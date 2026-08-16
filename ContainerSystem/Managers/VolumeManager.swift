@@ -211,6 +211,34 @@ public final class VolumeManager {
         )
     }
 }
+
+extension VolumeManager {
+    /// The volume of that name, created if it does not exist yet. An empty
+    /// name gets a fresh anonymous one.
+    public func volume(named name: String, among existing: [Volume]) async throws
+        -> Volume
+    {
+        if !name.isEmpty, let match = existing.first(where: { $0.name == name }) {
+            return match
+        }
+
+        var volumeName = name
+        var labels: [KeyValue] = []
+
+        if volumeName.isEmpty {
+            volumeName = VolumeStorage.generateAnonymousVolumeName()
+            labels.append(.init(key: Volume.anonymousLabel))
+        }
+
+        return try await create(
+            name: volumeName,
+            labels: labels,
+            options: [],
+            sizeInBytes: nil
+        )
+    }
+}
+
 public struct VolumeListItem: Sendable {
     public let volume: Volume
     public let inUse: Bool

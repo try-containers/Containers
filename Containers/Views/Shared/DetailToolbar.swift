@@ -9,10 +9,9 @@ import AppKit
 import SwiftUI
 
 /// Builds the detail window's toolbar in AppKit, for one reason: the tabs have
-/// to be an `NSToolbarItemGroup`. A toolbar draws its Icon and Text label per
-/// item, and only a group keeps a label per entry while still rendering as one
-/// control. SwiftUI's `.toolbar` flattens `ToolbarItemGroup` into separate
-/// items, so the tabs come out as separate buttons however they are declared.
+/// to be an `NSToolbarItemGroup`, the only thing that keeps a label per entry
+/// while rendering as one control. SwiftUI's `.toolbar` flattens a
+/// `ToolbarItemGroup` into separate items however it is declared.
 @MainActor
 final class DetailToolbarController: NSObject, NSToolbarDelegate {
     struct Tab: Equatable {
@@ -26,29 +25,20 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
     var onSelectTab: (Int) -> Void = { _ in }
 
     private static let tabsIdentifier = NSToolbarItem.Identifier("tabs")
-    /// Shared by every detail window, so the choice is made once. Stored here
-    /// rather than through `autosavesConfiguration`, which would also restore
-    /// item identifiers — and the three detail windows have different actions
-    /// under the one toolbar identifier.
     private static let displayModeKey = "detailToolbarDisplayMode"
 
     private static var savedDisplayMode: NSToolbar.DisplayMode? {
         let raw = UserDefaults.standard.object(forKey: displayModeKey)
         guard let raw = raw as? UInt else { return nil }
         let mode = NSToolbar.DisplayMode(rawValue: raw)
-        // `.default` is the toolbar's own fallback, which earlier builds
-        // persisted before there was a default here. It is not a choice.
         return mode == .default ? nil : mode
     }
 
     private weak var window: NSWindow?
     private var displayModeObservation: NSKeyValueObservation?
     private var isRebuildingTabs = false
-    /// What the tabs were last built for, so a repeat report of the same
-    /// display mode does not rebuild them again.
+    private var hasSettled = false
     private var builtShowingLabels: Bool?
-    /// What the toolbar was last built from; a change means new items rather
-    /// than new state on the existing ones.
     private var builtFrom: [String] = []
 
     func attach(to window: NSWindow) {
@@ -64,9 +54,8 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
         window.toolbar = toolbar
         window.toolbarStyle = .unified
 
-        // The segments are sized to their icons; the labels are drawn beneath
-        // by the toolbar and are usually wider. Nothing tells SwiftUI when the
-        // user changes the display mode, so watch the toolbar itself.
+        // Nothing tells SwiftUI when the user changes the display mode, and
+        // the labels drawn beneath a segment are usually wider than its icon.
         displayModeObservation = toolbar.observe(
             \.displayMode,
             options: [.initial, .new]
@@ -81,14 +70,30 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
         }
     }
 
-    /// Rebuilds the tabs so AppKit measures them again. Assigning new images
-    /// in place does not resize an item that has already been laid out, so a
-    /// tab kept its caption width after the captions were hidden.
+    /// Returns once the toolbar is installed and has stopped resizing itself.
     ///
-    /// Deferred and guarded: changing the toolbar's items makes AppKit report
-    /// the display mode again, which lands straight back here.
+    /// A window's chrome is its title bar plus its toolbar, and the toolbar
+    /// lands a turn after the view appears. Sizing before that measures the
+    /// title bar alone and leaves the window short by the toolbar's height, so
+    /// whoever sizes it waits here first — bounded, since a toolbar that never
+    /// arrives should cost a beat rather than the content.
+    func whenSettled(timeout: Duration) async {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+
+        while !hasSettled, ContinuousClock.now < deadline {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(8))
+        }
+    }
+
+    /// Rebuilds the tabs so AppKit measures them again: assigning new images
+    /// in place does not resize an item already laid out. Deferred and guarded,
+    /// because changing items makes AppKit report the display mode again, which
+    /// lands straight back here.
     private func scheduleTabRebuild() {
         guard !isRebuildingTabs, builtShowingLabels != showsLabels else {
+            // At its final height, so the window's chrome is worth measuring.
+            if !isRebuildingTabs { hasSettled = true }
             return
         }
 
@@ -124,8 +129,8 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
         }
     }
 
-    /// The group has no view of its own — AppKit lays the subitems out — so a
-    /// tab is only ever as wide as its image. Padding it is the width.
+    /// The group has no view of its own, so a tab is only ever as wide as its
+    /// image. Padding it is the width.
     private var tabImages: [NSImage] {
         let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
 
@@ -140,8 +145,7 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
 
             let caption = tab.title as NSString
             let width = caption.size(withAttributes: [.font: font]).width
-            // The caption alone: the toolbar adds its own padding around an
-            // item, so anything on top of this reads as too wide.
+            // The caption alone; the toolbar adds its own padding.
             return image.widened(to: ceil(width))
         }
     }
@@ -161,6 +165,16 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
                     group.selectedIndex = selectedIndex
                 }
             } else if let action = action(for: item.itemIdentifier) {
+                // In place, not a rebuild: a run button that becomes a stop
+                // button is the same item with a different face.
+                if item.label != action.title {
+                    item.label = action.title
+                    item.toolTip = action.help
+                    item.image = NSImage(
+                        systemSymbolName: action.icon,
+                        accessibilityDescription: action.title
+                    )
+                }
                 item.isEnabled = action.isEnabled
             }
         }
@@ -172,13 +186,20 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
         tabs.map(\.title) + ["·"] + actions.map(\.id)
     }
 
+    /// Unanimated: a toolbar animates items in and out, and the first build
+    /// lands while the window is still opening — the items would fade in a
+    /// beat after the title rather than being there with it.
     private func rebuild(_ toolbar: NSToolbar) {
-        while !toolbar.items.isEmpty {
-            toolbar.removeItem(at: toolbar.items.count - 1)
-        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
 
-        for (index, identifier) in identifiers.enumerated() {
-            toolbar.insertItem(withItemIdentifier: identifier, at: index)
+            while !toolbar.items.isEmpty {
+                toolbar.removeItem(at: toolbar.items.count - 1)
+            }
+
+            for (index, identifier) in identifiers.enumerated() {
+                toolbar.insertItem(withItemIdentifier: identifier, at: index)
+            }
         }
     }
 
@@ -232,12 +253,7 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
             action: #selector(tabSelected)
         )
         group.selectedIndex = selectedIndex
-        // The tabs are how the window is navigated, so they outrank the
-        // actions when the toolbar runs out of room and starts moving items
-        // into the overflow menu.
         group.visibilityPriority = .high
-        // And they stay as three tabs rather than folding into the single
-        // popup a narrow toolbar would otherwise reduce them to.
         group.controlRepresentation = .expanded
         return group
     }
@@ -255,8 +271,6 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
             accessibilityDescription: action.title
         )
         item.isBordered = true
-        // Managed from SwiftUI's state, so keep AppKit from overriding it with
-        // a responder-chain check that would always fail here.
         item.autovalidates = false
         item.isEnabled = action.isEnabled
         item.target = self
@@ -280,6 +294,27 @@ final class DetailToolbarController: NSObject, NSToolbarDelegate {
     }
 }
 
+/// Installs the toolbar as soon as the window exists, before the detail it
+/// belongs to has loaded. Declared on the window rather than inside the view
+/// that fills it: a toolbar arriving later changes the window's chrome, and
+/// so the height everything else is sized against.
+struct DetailToolbarAttacher: NSViewRepresentable {
+    let controller: DetailToolbarController
+    /// The toolbar's shape, which the window knows before it has loaded
+    /// anything. Supplying it here means the toolbar is complete when the
+    /// window is first shown, rather than filling in once the detail arrives.
+    let tabs: [DetailToolbarController.Tab]
+    let actions: [DetailAction]
+
+    func makeNSView(context: Context) -> NSView {
+        controller.tabs = tabs
+        controller.actions = actions
+        return DetailToolbarBinder.BindingView(controller: controller)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 /// Hands the controller its window, and the current state on every update.
 struct DetailToolbarBinder: NSViewRepresentable {
     let controller: DetailToolbarController
@@ -300,7 +335,7 @@ struct DetailToolbarBinder: NSViewRepresentable {
         controller.update()
     }
 
-    private final class BindingView: NSView {
+    final class BindingView: NSView {
         let controller: DetailToolbarController
 
         init(controller: DetailToolbarController) {
@@ -315,6 +350,15 @@ struct DetailToolbarBinder: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
+
+            // Before the window is on screen there is no render pass to
+            // reenter, and installing here means the toolbar is up before the
+            // window is shown rather than arriving a beat after the title bar.
+            guard window.isVisible else {
+                controller.attach(to: window)
+                controller.update()
+                return
+            }
 
             // Deferred: this runs inside the render pass that installing a
             // toolbar would reenter.

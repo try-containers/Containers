@@ -10,8 +10,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct FileSelection: View {
-    let title: String
-    let description: String?
     let placeholder: String
     let fileURL: Binding<URL?>
     let allowedContentTypes: [UTType]
@@ -22,8 +20,6 @@ struct FileSelection: View {
     let isPresented: Binding<Bool>?
 
     init(
-        title: String,
-        description: String? = nil,
         placeholder: String,
         fileURL: Binding<URL?>,
         allowedContentTypes: [UTType] = [],
@@ -33,8 +29,6 @@ struct FileSelection: View {
         onSelection: (() -> Void)? = nil,
         isPresented: Binding<Bool>? = nil
     ) {
-        self.title = title
-        self.description = description
         self.placeholder = placeholder
         self.fileURL = fileURL
         self.allowedContentTypes = allowedContentTypes
@@ -56,14 +50,11 @@ struct FileSelection: View {
     }
 
     var body: some View {
-        EditableField(
-            title: title,
-            description: description,
+        FormField(
             placeholder: placeholder,
             value: path,
-            actionLabel: {
-                Label("Browse", systemImage: "folder").labelStyle(.iconOnly)
-            },
+            actionIcon: "folder",
+            actionTitle: "Browse",
             action: selectFile
         )
         .onChange(of: isPresented?.wrappedValue ?? false) { _, isPresented in

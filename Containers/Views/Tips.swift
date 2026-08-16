@@ -1,5 +1,5 @@
 //
-//  AppTips.swift
+//  Tips.swift
 //  Containers
 //
 //  Created by Axel Martinez on 26/07/2026.

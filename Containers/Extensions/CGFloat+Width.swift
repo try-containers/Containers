@@ -12,4 +12,7 @@ extension CGFloat {
     /// their titles. It goes on the label: a macOS button keeps its intrinsic
     /// width whatever frame it is given, and adds about 24pt around the label.
     static let sheetButtonLabelWidth: CGFloat = 64
+
+    /// The fixed width of a form's control column.
+    static let fieldControlWidth: CGFloat = 260
 }

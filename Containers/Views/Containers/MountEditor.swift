@@ -9,7 +9,7 @@ import AppKit
 import SwiftUI
 
 struct MountEditor: View {
-    @Binding var mount: MountConfiguration
+    @Binding var mount: Mount
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -18,13 +18,11 @@ struct MountEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                EditableField(
+                FormField(
                     placeholder: "/Users/me/project",
                     value: $mount.hostPath,
-                    actionLabel: {
-                        Label("Browse", systemImage: "folder")
-                            .labelStyle(.iconOnly)
-                    },
+                    actionIcon: "folder",
+                    actionTitle: "Browse",
                     action: browseFolder
                 )
             }
@@ -34,7 +32,7 @@ struct MountEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                EditableField(
+                FormField(
                     placeholder: "/workspace",
                     value: $mount.containerPath
                 )

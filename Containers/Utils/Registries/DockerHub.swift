@@ -8,6 +8,11 @@
 import Foundation
 
 struct DockerHub: RegistryClient {
+    /// Trending is a weekly list, and the logos behind it cost a request per
+    /// image on top of the search itself, so it is worth keeping between
+    /// sheets. There is only one such list, so it is stored without a key.
+    private static let trending = RegistryCache<[ImageSuggestion]>()
+
     private struct FeaturedResponse: Decodable {
         let summaries: [FeaturedImage]?
         let results: [FeaturedImage]?
@@ -135,6 +140,10 @@ struct DockerHub: RegistryClient {
     }
 
     func trendingImages() async throws -> [ImageSuggestion] {
+        if let cached = await Self.trending.value() {
+            return cached
+        }
+
         var components = URLComponents()
         components.scheme = "https"
         components.host = "hub.docker.com"
@@ -155,10 +164,19 @@ struct DockerHub: RegistryClient {
             let decoded: FeaturedResponse = try await fetch(url: url)
             let products = decoded.summaries ?? decoded.results ?? []
             let suggestions = products.compactMap(\.suggestion)
-            let images =
-                suggestions.isEmpty ? fallbackTrendingImages : suggestions
 
-            return await suggestionsWithRepositoryLogos(images)
+            // The stand-in is not worth remembering: keeping it would hold the
+            // strip on placeholders until the entry expired.
+            guard !suggestions.isEmpty else {
+                return await suggestionsWithRepositoryLogos(
+                    fallbackTrendingImages
+                )
+            }
+
+            let images = await suggestionsWithRepositoryLogos(suggestions)
+            await Self.trending.store(images)
+
+            return images
         } catch {
             return await suggestionsWithRepositoryLogos(fallbackTrendingImages)
         }
@@ -239,8 +257,7 @@ struct DockerHub: RegistryClient {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "hub.docker.com"
-        components.path =
-            "/v2/repositories/\(repository.namespace)/\(repository.name)/tags/"
+        components.path = "/v2/repositories/\(repository.namespace)/\(repository.name)/tags/"
         components.queryItems = [
             URLQueryItem(name: "page_size", value: "20")
         ]

@@ -25,36 +25,33 @@ struct PullImageView: View {
     @FocusState private var isTagFieldFocused: Bool
 
     var body: some View {
-        FieldStack {
+        FormStack {
             featuredImageContent
-                // Contributes nothing to the stack's own width, so the fields
-                // do not shift when the cards arrive; it fills what they settle
-                // on instead.
-                .frame(idealWidth: 0, maxWidth: .infinity)
                 .frame(height: 132, alignment: .topLeading)
-                // Spans the label side too, so line its trailing edge up with
-                // the controls and let it reach back across them.
-                .alignmentGuide(.fieldLabel) { $0.width - .fieldControlWidth }
-
-            EditableField(
-                title: "Registry",
-                placeholder: "Registry",
-                options: Registry.allCases,
-                selection: $registry
-            )
+        } content: {
+            FormRow(title: "Registry") {
+                FormPicker(
+                    placeholder: "Registry",
+                    options: Registry.allCases,
+                    selection: $registry
+                )
+            }
 
             registryImageNameField
 
             registryTagField
 
-            EditableField(
-                title: "Platform",
-                placeholder: "Platform",
-                options: platformOptions,
-                selection: $platform
-            )
+            FormRow(title: "Platform") {
+                FormPicker(
+                    placeholder: "Platform",
+                    options: platformOptions,
+                    selection: $platform
+                )
+            }
         }
-        .onChange(of: shouldLoadFeaturedImages, initial: true) { _, shouldLoad in
+        .onChange(of: shouldLoadFeaturedImages, initial: true) {
+            _,
+            shouldLoad in
             guard shouldLoad else { return }
             loadRegistryFeaturedImages()
         }
@@ -79,12 +76,19 @@ struct PullImageView: View {
     private let featuredImagesPerPage = 5
 
     private var featuredPageCount: Int {
-        max(1, (registryFeaturedImages.count + featuredImagesPerPage - 1) / featuredImagesPerPage)
+        max(
+            1,
+            (registryFeaturedImages.count + featuredImagesPerPage - 1)
+                / featuredImagesPerPage
+        )
     }
 
     private var currentPageImages: [ImageSuggestion] {
         let start = featuredImagePage * featuredImagesPerPage
-        let end = min(start + featuredImagesPerPage, registryFeaturedImages.count)
+        let end = min(
+            start + featuredImagesPerPage,
+            registryFeaturedImages.count
+        )
         guard start < end else { return [] }
         return Array(registryFeaturedImages[start..<end])
     }
@@ -188,35 +192,29 @@ struct PullImageView: View {
         }
     }
 
-    private func registryField<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("\(title):")
-
-            content()
-                .fieldControl()
-        }
-    }
-
     private var registryImageNameField: some View {
-        registryField(title: "Image Name") {
-            TextField("Ex: nginx, ubuntu, redis", text: $imageName)
-                .suggestions(for: isImageNameFieldFocused ? imageName : nil) {
-                    [client = registry.client] text in
-                    try await client.images(matching: text)
-                        .filter { $0 != text }
+        FormRow(title: "Image Name") {
+            TextField(
+                text: $imageName,
+                prompt: Text("Ex: nginx, ubuntu, redis")
+            ) {
+                EmptyView()
+            }
+            .suggestions(for: isImageNameFieldFocused ? imageName : nil) {
+                [client = registry.client] text in
+                try await client.images(matching: text)
+                    .filter { $0 != text }
+            }
+            .textFieldStyle(.roundedBorder)
+            .labelsHidden()
+            .focused($isImageNameFieldFocused)
+            .onChange(of: imageName) { oldValue, newValue in
+                // A new image invalidates the tag, but refreshing the tag
+                // suggestions is the tag field's job, not this one's.
+                if oldValue != newValue, tag != "latest" {
+                    tag = "latest"
                 }
-                .textFieldStyle(.roundedBorder)
-                .focused($isImageNameFieldFocused)
-                .onChange(of: imageName) { oldValue, newValue in
-                    // A new image invalidates the tag, but refreshing the tag
-                    // suggestions is the tag field's job, not this one's.
-                    if oldValue != newValue, tag != "latest" {
-                        tag = "latest"
-                    }
-                }
+            }
         }
     }
 
@@ -229,14 +227,20 @@ struct PullImageView: View {
 
     @ViewBuilder
     private var registryTagField: some View {
-        registryField(title: "Tag") {
-            TextField("Ex: latest, 1.0, stable", text: $tag)
-                .suggestions(for: isTagFieldFocused ? tag : nil) {
-                    [client = registry.client, imageName] text in
-                    try await client.tags(for: imageName, matching: text)
-                }
-                .textFieldStyle(.roundedBorder)
-                .focused($isTagFieldFocused)
+        FormRow(title: "Tag") {
+            TextField(
+                text: $tag,
+                prompt: Text("Ex: latest, 1.0, stable")
+            ) {
+                EmptyView()
+            }
+            .suggestions(for: isTagFieldFocused ? tag : nil) {
+                [client = registry.client, imageName] text in
+                try await client.tags(for: imageName, matching: text)
+            }
+            .textFieldStyle(.roundedBorder)
+            .labelsHidden()
+            .focused($isTagFieldFocused)
         }
     }
 

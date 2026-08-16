@@ -13,52 +13,43 @@ struct VolumeOverview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            InfoSection(rows: detailRows)
-
-            if !labelRows.isEmpty {
-                InfoSection(
-                    title: "Labels",
-                    emptyMessage: "No labels",
-                    rows: labelRows
+            InfoSection {
+                InfoRow(label: "Name", value: volume.name)
+                InfoRow(label: "Type", value: volume.volumeType.rawValue)
+                InfoRow(
+                    label: "State",
+                    value: volume.inUse ? "In use" : "Unused"
                 )
+                InfoRow(label: "Size", value: volume.formattedSize ?? "N/A")
+                InfoRow(label: "Created", value: volume.formattedCreated)
+                InfoRow(label: "Driver", value: volume.driver)
+                InfoRow(label: "Format", value: volume.format)
             }
 
-            if !optionRows.isEmpty {
-                InfoSection(
-                    title: "Options",
-                    emptyMessage: "No options",
-                    rows: optionRows
-                )
+            if !volume.labels.isEmpty {
+                InfoSection {
+                    ForEach(sorted(volume.labels), id: \.key) { label in
+                        InfoRow(label: label.key, value: label.value)
+                    }
+                }
+            }
+
+            if !volume.options.isEmpty {
+                InfoSection {
+                    ForEach(sorted(volume.options), id: \.key) { option in
+                        InfoRow(label: option.key, value: option.value)
+                    }
+                }
             }
         }
         .padding(20)
     }
 
-    private var detailRows: [InfoRow] {
-        [
-            InfoRow(label: "Name", value: volume.name),
-            InfoRow(label: "Type", value: volume.volumeType.rawValue),
-            InfoRow(label: "State", value: volume.inUse ? "In use" : "Unused"),
-            InfoRow(label: "Size", value: volume.formattedSize ?? "N/A"),
-            InfoRow(label: "Created", value: volume.formattedCreated),
-            InfoRow(label: "Driver", value: volume.driver),
-            InfoRow(label: "Format", value: volume.format),
-        ]
-    }
-
-    private var labelRows: [InfoRow] {
-        volume.labels
-            .sorted {
-                $0.key.localizedStandardCompare($1.key) == .orderedAscending
-            }
-            .map { InfoRow(label: $0.key, value: $0.value) }
-    }
-
-    private var optionRows: [InfoRow] {
-        volume.options
-            .sorted {
-                $0.key.localizedStandardCompare($1.key) == .orderedAscending
-            }
-            .map { InfoRow(label: $0.key, value: $0.value) }
+    private func sorted(
+        _ values: [String: String]
+    ) -> [(key: String, value: String)] {
+        values.sorted {
+            $0.key.localizedStandardCompare($1.key) == .orderedAscending
+        }
     }
 }

@@ -1,5 +1,5 @@
 //
-//  Registry.swift
+//  RegistryClient.swift
 //  Containers
 //
 //  Created by Axel Martinez on 01/08/2026.
@@ -31,29 +31,12 @@ protocol RegistryClient: Sendable {
     func trendingImages() async throws -> [ImageSuggestion]
 }
 
-/// The registries offered in the Registry field.
-enum Registry: Hashable, CaseIterable, CustomStringConvertible, Sendable {
-    case dockerHub
-
-    var description: String {
-        switch self {
-        case .dockerHub:
-            "Docker Hub"
-        }
-    }
-
+extension Registry {
+    /// The client that answers this registry's lookups.
     var client: any RegistryClient {
         switch self {
         case .dockerHub:
             DockerHub()
         }
     }
-}
-
-struct ImageSuggestion: Identifiable, Sendable {
-    var id: String { name }
-    let name: String
-    let publisher: String?
-    let description: String?
-    let imageURL: URL?
 }

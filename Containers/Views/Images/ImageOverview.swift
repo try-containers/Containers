@@ -12,18 +12,17 @@ struct ImageOverview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            InfoSection(rows: detailRows)
-
+            InfoSection {
+                InfoRow(label: "Tag", value: image.tag)
+                InfoRow(
+                    label: "Digest",
+                    value: image.fullDigestWithoutAlgorithm
+                )
+                InfoRow(label: "Size", value: image.formattedSize)
+                InfoRow(label: "Created", value: image.formattedCreated)
+            }
         }
         .padding(20)
     }
 
-    private var detailRows: [InfoRow] {
-        [
-            InfoRow(label: "Tag", value: image.tag),
-            InfoRow(label: "Digest", value: image.fullDigestWithoutAlgorithm),
-            InfoRow(label: "Size", value: image.formattedSize),
-            InfoRow(label: "Created", value: image.formattedCreated),
-        ]
-    }
 }

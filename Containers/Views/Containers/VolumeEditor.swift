@@ -9,7 +9,7 @@ import ContainerSystem
 import SwiftUI
 
 struct VolumeEditor: View {
-    @Binding var mount: VolumeMountConfiguration
+    @Binding var mount: VolumeMount
     let availableVolumes: [Volume]
 
     var body: some View {
@@ -19,7 +19,7 @@ struct VolumeEditor: View {
 
             if mount.source == .volume {
                 field("Volume") {
-                    EditableField(
+                    FormPicker(
                         placeholder: "Select a volume...",
                         options: availableVolumes.map(\.name),
                         selection: $mount.volumeName
@@ -28,7 +28,7 @@ struct VolumeEditor: View {
             }
 
             field("Target (Required)") {
-                EditableField(placeholder: "/data", value: $mount.target)
+                FormField(placeholder: "/data", value: $mount.target)
             }
         }
     }

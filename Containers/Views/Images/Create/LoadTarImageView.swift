@@ -17,16 +17,19 @@ struct LoadTarImageView: View {
     let onSelection: () -> Void
 
     var body: some View {
-        FieldStack {
-            FileSelection(
+        FormStack {
+            FormRow(
                 title: "Tar Archive",
-                description: "Select a tar archive containing the image",
-                placeholder: "No tar archive selected",
-                fileURL: $tarFile,
-                allowedContentTypes: tarContentTypes,
-                defaultDirectory: defaultDirectory,
-                onSelection: onSelection
-            )
+                description: "Select a tar archive containing the image"
+            ) {
+                FileSelection(
+                    placeholder: "No tar archive selected",
+                    fileURL: $tarFile,
+                    allowedContentTypes: tarContentTypes,
+                    defaultDirectory: defaultDirectory,
+                    onSelection: onSelection
+                )
+            }
 
             Toggle(isOn: $force) {
                 VStack(alignment: .leading, spacing: 2) {

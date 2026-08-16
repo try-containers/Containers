@@ -13,7 +13,9 @@ struct InfoRow: View {
     let value: String
     let action: ActionButton?
 
-    private static let labelWidth: CGFloat = 150
+    /// The label column's width, which is also where the value starts — widen
+    /// it to move the pair right, narrow it to move it left.
+    private static let labelWidth: CGFloat = 200
     private static let labelTopPadding: CGFloat = 5
 
     init(
