@@ -137,7 +137,7 @@ struct ImageDetailView: View {
             },
             tabIcon: { Self.tabIcon($0) },
             tabWidth: { category in
-                category == .inspect ? 900 : 650
+                category == .inspect ? 750 : 650
             },
             tabMaxHeight: { category in
                 switch category {

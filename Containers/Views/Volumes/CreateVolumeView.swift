@@ -68,8 +68,6 @@ struct CreateVolumeView: View {
                 )
             }
         )
-        .animation(.default, value: self.labels.count)
-        .animation(.default, value: self.options.count)
         .onDisappear {
             self.showProgressView = false
         }
@@ -172,27 +170,6 @@ struct CreateVolumeView: View {
             .padding(.horizontal)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func keyValueSummary(_ keyValue: KeyValue) -> String {
-        let key = keyValue.key.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = keyValue.value.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        if key.isEmpty && value.isEmpty {
-            return "New Item"
-        }
-
-        if value.isEmpty {
-            return key
-        }
-
-        if key.isEmpty {
-            return value
-        }
-
-        return "\(key)=\(value)"
     }
 
     private func createVolume() {

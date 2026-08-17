@@ -31,6 +31,16 @@ extension View {
     func contentUnbounded(_ isUnbounded: Bool = true) -> some View {
         layoutValue(key: ContentUnboundedKey.self, value: isUnbounded)
     }
+
+    /// The size this content would take if nothing constrained it, for
+    /// content that cannot report it through `sizeThatFits` — a scroll view
+    /// answers with its viewport, not with what it holds. A layout reading
+    /// `contentIdealSize` knows how large the window must be to show all of
+    /// it, which is a thing only the content can work out. Zero on an axis
+    /// means "ask me the usual way".
+    func contentIdealSize(_ size: CGSize) -> some View {
+        layoutValue(key: ContentIdealSizeKey.self, value: size)
+    }
 }
 
 extension LayoutSubview {
@@ -45,6 +55,11 @@ extension LayoutSubview {
     nonisolated var isContentUnbounded: Bool {
         self[ContentUnboundedKey.self]
     }
+
+    /// See `View.contentIdealSize(_:)`.
+    nonisolated var contentIdealSize: CGSize {
+        self[ContentIdealSizeKey.self]
+    }
 }
 
 private struct ContentReadyKey: LayoutValueKey {
@@ -53,4 +68,8 @@ private struct ContentReadyKey: LayoutValueKey {
 
 private struct ContentUnboundedKey: LayoutValueKey {
     nonisolated static let defaultValue = false
+}
+
+private struct ContentIdealSizeKey: LayoutValueKey {
+    nonisolated static let defaultValue: CGSize = .zero
 }

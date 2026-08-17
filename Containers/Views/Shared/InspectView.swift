@@ -13,6 +13,11 @@ struct InspectView: View {
     private let root: JSONNode?
     private let json: String
 
+    /// What the tree would take unconstrained. A scroll view answers
+    /// `sizeThatFits` with its viewport, so the size it holds has to be
+    /// measured here and declared upward.
+    @State private var treeSize: CGSize = .zero
+
     init(json: String) {
         self.json = json
         self.root = JSONTree.build(json)
@@ -20,6 +25,17 @@ struct InspectView: View {
 
     init<Value: Encodable>(value: Value) {
         self.init(json: InspectJSONEncoder.encode(value))
+    }
+
+    /// Called from layout, so the write is deferred.
+    private func measureTree(size: CGSize) {
+        guard
+            size.width > 0,
+            abs(treeSize.width - size.width) > 0.5
+                || abs(treeSize.height - size.height) > 0.5
+        else { return }
+
+        Task { @MainActor in treeSize = size }
     }
 
     var body: some View {
@@ -30,32 +46,72 @@ struct InspectView: View {
         // nothing and `maxHeight: .infinity` has nothing to fill.
         GeometryReader { viewport in
             ScrollView([.vertical, .horizontal]) {
-                Group {
-                    if let root {
-                        JSONNodeView(node: root)
-                    } else {
-                        // Not parseable: the text is still the answer.
-                        Text(json)
-                            .font(JSONStyle.font)
-                            .textSelection(.enabled)
+                MeasuredSize(onSize: measureTree) {
+                    Group {
+                        if let root {
+                            JSONNodeView(node: root)
+                        } else {
+                            // Not parseable: the text is still the answer.
+                            Text(json)
+                                .font(JSONStyle.font)
+                                .textSelection(.enabled)
+                        }
                     }
+                    // JSON is read a line at a time; wrapping a digest across
+                    // two of them is worse than scrolling for it.
+                    .fixedSize()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(
+                        minWidth: viewport.size.width,
+                        minHeight: viewport.size.height,
+                        alignment: .topLeading
+                    )
                 }
-                // JSON is read a line at a time; wrapping a digest across two
-                // of them is worse than scrolling for it.
-                .fixedSize()
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .frame(
-                    minWidth: viewport.size.width,
-                    minHeight: viewport.size.height,
-                    alignment: .topLeading
-                )
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .contentIdealSize(treeSize)
+        // Not ready until it has measured itself: the size arrives a turn
+        // after the tree is first laid out, and fitting before it lands uses
+        // the fallbacks — so the window took its height, then its width, in
+        // two animations instead of one.
+        .contentReady(treeSize != .zero)
         // The JSON runs to any length, so the tab's bound is what it gets —
         // and a tree this size is not worth measuring twice a layout pass.
         .contentUnbounded()
+    }
+}
+
+/// Reports what its content would take unconstrained, while still handing it
+/// whatever it is given — one pass, so the tree is not laid out twice.
+private struct MeasuredSize: Layout {
+    let onSize: @MainActor @Sendable (CGSize) -> Void
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+
+        let natural = subview.sizeThatFits(.unspecified)
+        MainActor.assumeIsolated { onSize(natural) }
+
+        return proposal.replacingUnspecifiedDimensions(by: natural)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        subviews.first?.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(bounds.size)
+        )
     }
 }
 

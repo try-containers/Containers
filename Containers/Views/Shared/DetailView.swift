@@ -118,7 +118,9 @@ struct DetailView<
     @State private var contentOpacity: Double = 0
     @State private var measuredHeight: CGFloat = 0
     @State private var measuredWidth: CGFloat = 0
-    @State private var contentOverflows = false
+    @State private var naturalWidth: CGFloat = 0
+    @State private var heightOverflows = false
+    @State private var widthOverflows = false
     @State private var pendingTab: Tab?
     @State private var isTransitioning = false
     @State private var hasSized = false
@@ -163,11 +165,24 @@ struct DetailView<
         min(tabMaxHeight(displayedTab) ?? maximumHeight, maximumHeight)
     }
 
+    /// How wide a drag may take the window, as opposed to how wide it opens.
+    /// Content that is cut off should be draggable until it is not, and the
+    /// opening cap is far narrower than that — height works the same way,
+    /// opening at its cap but free to be dragged to the screen.
+    private var dragMaximumWidth: CGFloat {
+        guard widthOverflows else { return maximumWidth }
+
+        // Exactly as wide as the content, so dragging stops once none of it is
+        // hidden — bounded by the screen, which is as far as a window goes.
+        return min(naturalWidth, resizer.visibleScreenWidth ?? naturalWidth)
+    }
+
     private var windowConstraints: WindowConstraints {
         WindowConstraints(
-            heightIsFixed: !contentOverflows,
+            heightIsFixed: !heightOverflows,
+            widthIsFixed: !widthOverflows,
             minWidth: effectiveMinWidth,
-            maxWidth: maximumWidth
+            maxWidth: dragMaximumWidth
         )
     }
 
@@ -200,8 +215,13 @@ struct DetailView<
         guard ideal > 0 else { return }
 
         let height = min(max(ideal, minimumHeight), heightCap)
-        let overflows = unbounded || ideal > height + 0.5
-        let width = idealSize.width
+
+        let width = min(max(idealSize.width, effectiveMinWidth), maximumWidth)
+
+        // Only content the window cannot show all of is worth dragging for.
+        // Unbounded content scrolls both ways, so it always has more to give.
+        let overflowsHeight = unbounded || ideal > height + 0.5
+        let overflowsWidth = idealSize.width > width + 0.5
 
         // `awaitMeasurement` waits on the first report after a swap, so it
         // gets through even when it matches the outgoing height.
@@ -209,14 +229,18 @@ struct DetailView<
             !hasMeasured
                 || abs(measuredHeight - height) > 0.5
                 || abs(measuredWidth - width) > 0.5
-                || overflows != contentOverflows
+                || abs(naturalWidth - idealSize.width) > 0.5
+                || overflowsHeight != heightOverflows
+                || overflowsWidth != widthOverflows
         else { return }
 
         // Runs from layout, so the writes are deferred.
         Task { @MainActor in
             measuredHeight = height
             measuredWidth = width
-            contentOverflows = overflows
+            naturalWidth = idealSize.width
+            heightOverflows = overflowsHeight
+            widthOverflows = overflowsWidth
             hasMeasured = true
         }
     }
@@ -226,7 +250,11 @@ struct DetailView<
         // overlay does not report its height, and the width must be the
         // placeholder's or SwiftUI widens from the left edge, off centre.
         Color.clear
-            .frame(minWidth: defaultMinWidth, maxWidth: maximumWidth)
+            // Both axes flexible: `maximumWidth` is how wide the window
+            // opens, which the fit applies — capping the layout with it too
+            // left the content 900 wide inside a window dragged wider, so the
+            // extra was empty and the content stayed hidden.
+            .frame(minWidth: defaultMinWidth, maxWidth: .infinity)
             .frame(minHeight: minimumHeight, maxHeight: .infinity)
             .overlay(alignment: .top) {
                 sizedContent
@@ -380,31 +408,34 @@ struct DetailView<
         ) -> CGSize {
             guard let subview = subviews.first else { return .zero }
 
-            // Nothing proposed, so this is the content's own width.
-            let width = min(
-                max(subview.sizeThatFits(.unspecified).width, minWidth),
-                maxWidth
-            )
+            // Nothing proposed, so this is the content's own width — except
+            // for content that scrolls, which answers with its viewport and
+            // has to declare the width it holds instead.
+            let declared = subview.contentIdealSize
+            let natural = declared.width > 0 ? declared.width :
+            subview.sizeThatFits(.unspecified).width
+            let width = min(max(natural, minWidth), maxWidth)
 
             // At that width, not the current one: the outgoing width reports
             // a height for a wrap about to change.
-            let ideal =
-                subview.isContentUnbounded
-                ? CGSize(width: width, height: 0)
-                : CGSize(
-                    width: width,
-                    height: subview.sizeThatFits(
-                        ProposedViewSize(width: width, height: nil)
-                    ).height
-                )
+            // Content that scrolls reports zero unless it declared a height,
+            // and zero is what marks it as unbounded further up.
+            let height = subview.isContentUnbounded ? declared.height :
+            subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
 
             // A nil width is SwiftUI probing extremes; an unready tab
             // measures whatever it draws while empty.
+            // Reported unclamped; the view applies the bounds and can see
+            // when the content did not fit inside them.
             if proposal.width != nil, subview.isContentReady {
-                MainActor.assumeIsolated { onIdealSize(ideal) }
+                MainActor.assumeIsolated {
+                    onIdealSize(CGSize(width: natural, height: height))
+                }
             }
 
-            return proposal.replacingUnspecifiedDimensions(by: ideal)
+            return proposal.replacingUnspecifiedDimensions(
+                by: CGSize(width: width, height: height)
+            )
         }
 
         func placeSubviews(

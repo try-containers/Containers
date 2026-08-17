@@ -7,24 +7,24 @@
 
 import AppKit
 
-/// A delegate rather than `contentMin/MaxSize`, which SwiftUI rewrites every
-/// layout pass, or `.resizable`, which is one flag for both axes.
 final class ResizeConstrainer: NSObject, NSWindowDelegate {
     var constraints = WindowConstraints()
     /// Nonisolated for the forwarding below; delegate calls arrive on main.
     nonisolated(unsafe) weak var next: NSWindowDelegate?
 
-    func windowWillResize(
-        _ sender: NSWindow,
-        to frameSize: NSSize
-    ) -> NSSize {
+    func windowWillResize(_ sender: NSWindow,to frameSize: NSSize) -> NSSize {
         var size =
             next?.windowWillResize?(sender, to: frameSize) ?? frameSize
 
-        size.width = min(
-            max(size.width, constraints.minWidth),
-            constraints.maxWidth
-        )
+        if constraints.widthIsFixed {
+            size.width = sender.frame.width
+        } else {
+            size.width = min(
+                max(size.width, constraints.minWidth),
+                constraints.maxWidth
+            )
+        }
+
         if constraints.heightIsFixed {
             size.height = sender.frame.height
         }
@@ -32,12 +32,12 @@ final class ResizeConstrainer: NSObject, NSWindowDelegate {
         return size
     }
 
-    func windowWillUseStandardFrame(
-        _ window: NSWindow,
-        defaultFrame: NSRect
-    ) -> NSRect {
+    func windowWillUseStandardFrame(_ window: NSWindow,defaultFrame: NSRect) -> NSRect {
         var frame = window.frame
-        frame.size.width = min(defaultFrame.width, constraints.maxWidth)
+
+        if !constraints.widthIsFixed {
+            frame.size.width = min(defaultFrame.width, constraints.maxWidth)
+        }
 
         if !constraints.heightIsFixed {
             frame.size.height = defaultFrame.height
@@ -54,17 +54,20 @@ final class ResizeConstrainer: NSObject, NSWindowDelegate {
             || next?.responds(to: aSelector) == true
     }
 
-    nonisolated override func forwardingTarget(for aSelector: Selector!)
-        -> Any?
-    {
+    nonisolated override func forwardingTarget(for aSelector: Selector!)-> Any? {
         next
     }
 }
 
 struct WindowConstraints: Equatable {
+    /// Set per axis when the window already shows everything on that axis:
+    /// there is nothing a drag could reveal, so it is refused.
     var heightIsFixed = true
+    var widthIsFixed = true
     var minWidth: CGFloat = 0
     var maxWidth: CGFloat = .greatestFiniteMagnitude
+
+    var isFixed: Bool { heightIsFixed && widthIsFixed }
 }
 
 /// Animates the window height — the one step SwiftUI has no hook for.
@@ -98,6 +101,10 @@ final class WindowResizer {
         (window?.screen ?? NSScreen.main)?.visibleFrame.height
     }
 
+    var visibleScreenWidth: CGFloat? {
+        (window?.screen ?? NSScreen.main)?.visibleFrame.width
+    }
+
     func setConstraints(_ constraints: WindowConstraints) {
         self.constraints = constraints
         constrainer.constraints = constraints
@@ -114,12 +121,18 @@ final class WindowResizer {
         _ constraints: WindowConstraints,
         to window: NSWindow
     ) {
-        // The style mask covers both axes at once, so height is the
-        // delegate's to hold and this stays on.
-        window.styleMask.insert(.resizable)
+        // The style mask covers both axes at once, so a window resizable on
+        // one of them keeps it and the delegate holds the other. A window
+        // showing all of its content on both loses it, handle and all.
+        if constraints.isFixed {
+            window.styleMask.remove(.resizable)
+        } else {
+            window.styleMask.insert(.resizable)
+        }
 
         window.collectionBehavior.remove(.fullScreenPrimary)
         window.collectionBehavior.insert(.fullScreenNone)
+
     }
 
     private func attachConstrainer(to window: NSWindow) {
