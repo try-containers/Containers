@@ -38,6 +38,7 @@ public struct ContainerInfo: Sendable {
     public var deleteOnTermination = false
     public var virtualization: Bool = false
     public var ssh = false
+    public var readOnly = false
 
     public init() {}
 }

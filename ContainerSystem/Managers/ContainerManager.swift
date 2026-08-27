@@ -404,12 +404,9 @@ public final class ContainerManager {
         return trimmedName
     }
 
-    private static func isValidContainerName(_ name: String) -> Bool {
-        guard !name.isEmpty, name.count <= 255 else { return false }
-        return name.range(
-            of: "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
-            options: .regularExpression
-        ) != nil
+    /// Whether a name can be a container id.
+    public static func isValidContainerName(_ name: String) -> Bool {
+        EntityName.isValid(name)
     }
 
     private func resolveImage(
@@ -629,6 +626,7 @@ public final class ContainerManager {
 
         config.mounts = resolvedMounts
         config.virtualization = container.virtualization
+        config.readOnly = container.readOnly
         config.networks = try Self.getAttachmentConfigurations(
             containerId: config.id,
             networkIds: container.networks

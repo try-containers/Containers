@@ -17,34 +17,39 @@ import SwiftUI
 /// `sizeThatFits` accept the proposal instead.
 struct FormPicker<Option: Hashable & CustomStringConvertible>: NSViewRepresentable {
     fileprivate enum Item {
+        /// The selection when it is none of the options. It titles the button
+        /// but stays out of the menu, since it is not something to pick.
+        case placeholder(Option, title: String)
         case option(Option, title: String)
         case separator
-        /// A trailing command such as "Other…". Picking it runs `onAction` and
-        /// restores the previous selection rather than becoming the selection.
+        /// A trailing command such as "Other…".
         case action(String)
     }
 
     let placeholder: String
     let options: [Option]
+    
     @Binding var selection: Option
+    
     var fillsAvailableWidth: Bool = true
     var actionTitle: String?
     var onAction: (() -> Void)?
+    var title: ((Option) -> String)?
+    var icon: ((Option) -> NSImage?)?
 
     private var items: [Item] {
         var items: [Item] = []
 
-        // A selection that is not one of the options — no image picked yet,
-        // say — still needs an entry to sit on, so show the placeholder.
         if !options.contains(selection) {
-            items.append(.option(selection, title: placeholder))
-            items.append(.separator)
+            items.append(.placeholder(selection, title: placeholder))
         }
 
         items += options.map { option in
             .option(
                 option,
-                title: (option as? Unit)?.symbol ?? option.description
+                title: title?(option)
+                    ?? (option as? Unit)?.symbol
+                    ?? option.description
             )
         }
 
@@ -80,7 +85,27 @@ struct FormPicker<Option: Hashable & CustomStringConvertible>: NSViewRepresentab
             switch item {
             case .separator:
                 menu.addItem(.separator())
-            case .option(_, let title), .action(let title):
+            case .option(let option, let title):
+                let menuItem = NSMenuItem(
+                    title: title,
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                menuItem.tag = index
+                menuItem.image = icon?(option)
+                menu.addItem(menuItem)
+            case .placeholder(_, let title):
+                let menuItem = NSMenuItem(
+                    title: title,
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                menuItem.tag = index
+                // Hidden rather than absent: the button reads its title from
+                // the item it has selected.
+                menuItem.isHidden = true
+                menu.addItem(menuItem)
+            case .action(let title):
                 let menuItem = NSMenuItem(
                     title: title,
                     action: nil,
@@ -126,10 +151,13 @@ struct FormPicker<Option: Hashable & CustomStringConvertible>: NSViewRepresentab
 
         fileprivate func index(of option: Option) -> Int? {
             items.firstIndex {
-                if case .option(let candidate, _) = $0 {
+                switch $0 {
+                case .option(let candidate, _),
+                    .placeholder(let candidate, _):
                     return candidate == option
+                case .separator, .action:
+                    return false
                 }
-                return false
             }
         }
 
@@ -148,7 +176,7 @@ struct FormPicker<Option: Hashable & CustomStringConvertible>: NSViewRepresentab
                     sender.selectItem(withTag: index)
                 }
                 onAction?()
-            case .separator:
+            case .separator, .placeholder:
                 break
             }
         }

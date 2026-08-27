@@ -29,32 +29,30 @@ enum MountError: LocalizedError {
 
 struct Mount: Identifiable {
     let id: UUID = UUID()
-    var hostPath: String = ""
+    var hostURL: URL?
     var containerPath: String = ""
+    /// An in-memory mount, which has no host path to share.
+    var isTemporary: Bool = false
 
     var summary: String {
-        if trimmedSource.isEmpty && trimmedTarget.isEmpty {
+        if !isTemporary && hostURL == nil && trimmedTarget.isEmpty {
             return "New Mount"
         }
 
-        if trimmedSource.isEmpty {
-            return trimmedTarget.isEmpty
-                ? "Temporary Mount" : "Temporary Mount -> \(trimmedTarget)"
-        }
-
         return trimmedTarget.isEmpty
-            ? trimmedSource : "\(trimmedSource) -> \(trimmedTarget)"
+            ? sourceLabel : "\(sourceLabel) -> \(trimmedTarget)"
     }
 
     var columns: [String] {
-        [
-            trimmedSource.isEmpty ? "Temporary Mount" : trimmedSource,
-            trimmedTarget,
-        ]
+        [sourceLabel, trimmedTarget]
     }
 
-    var trimmedSource: String {
-        hostPath.trimmingCharacters(in: .whitespacesAndNewlines)
+    var sourceLabel: String {
+        if isTemporary {
+            return "Temporary Mount"
+        }
+
+        return hostURL?.path ?? "No Source"
     }
 
     var trimmedTarget: String {

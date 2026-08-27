@@ -11,7 +11,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
     View
 {
     let title: String
-    let errorMessage: Binding<String?>
+    let error: Binding<ErrorAlert?>
     let isProcessing: Bool
     let progressTitle: String?
     let width: CGFloat
@@ -23,6 +23,8 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
     let contentID: AnyHashable?
     let contentTransition: AnyTransition
     let contentPadding: CGFloat
+    let contentTitle: String?
+    let contentTitleRule: Bool
     let tabBar: TabBar
     let content: Content
     let actions: Actions
@@ -30,7 +32,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
 
     init(
         title: String,
-        errorMessage: Binding<String?> = .constant(nil),
+        error: Binding<ErrorAlert?> = .constant(nil),
         isProcessing: Bool = false,
         progressTitle: String? = nil,
         width: CGFloat,
@@ -42,13 +44,15 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         contentPadding: CGFloat = 20,
         contentID: AnyHashable? = nil,
         contentTransition: AnyTransition = .identity,
+        contentTitle: String? = nil,
+        contentTitleRule: Bool = false,
         @ViewBuilder tabBar: () -> TabBar = { EmptyView() },
         @ViewBuilder content: () -> Content,
         @ViewBuilder actions: () -> Actions,
         @ViewBuilder progress: () -> Progress = { EmptyView() }
     ) {
         self.title = title
-        self.errorMessage = errorMessage
+        self.error = error
         self.isProcessing = isProcessing
         self.progressTitle = progressTitle
         self.width = width
@@ -60,6 +64,8 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         self.contentPadding = contentPadding
         self.contentID = contentID
         self.contentTransition = contentTransition
+        self.contentTitle = contentTitle
+        self.contentTitleRule = contentTitleRule
         self.tabBar = tabBar()
         self.content = content()
         self.actions = actions()
@@ -99,32 +105,32 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         }
         .frame(width: width, height: height)
         .interactiveDismissDisabled(isProcessing)
-        .alert(
-            "Error",
-            isPresented: Binding(
-                get: { errorMessage.wrappedValue != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        errorMessage.wrappedValue = nil
-                    }
-                }
-            ),
-            actions: {
-                Button("OK", role: .cancel) {
-                    errorMessage.wrappedValue = nil
-                }
-            },
-            message: {
-                Text(errorMessage.wrappedValue ?? "")
-            }
-        )
+        .errorAlert(error)
     }
 
     private var contentArea: some View {
-        ZStack(alignment: contentAlignment) {
-            contentContainer
-                .id(contentID)
-                .transition(contentTransition)
+        // The header sits outside the transition: it belongs to the sheet
+        // rather than to the step, so it does not slide or fade with one.
+        VStack(alignment: .leading, spacing: 0) {
+            if let contentTitle {
+                Text(contentTitle)
+                    .padding(.horizontal, contentPadding)
+                    .padding(.top, contentPadding)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Ruled off directly under the title, so the rule belongs to
+                // it rather than to whatever the step puts below.
+                if contentTitleRule {
+                    Divider()
+                }
+            }
+
+            ZStack(alignment: contentAlignment) {
+                contentContainer
+                    .id(contentID)
+                    .transition(contentTransition)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()

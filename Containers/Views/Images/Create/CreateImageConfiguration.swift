@@ -18,7 +18,7 @@ struct CreateImageConfiguration: View {
     let shouldLoadPullFeaturedImages: Bool
     let onFileSelection: () -> Void
 
-    @Binding var errorMessage: String?
+    @Binding var error: ErrorAlert?
     @Binding var imageName: String
     @Binding var tag: String
     @Binding var pullPlatform: PlatformSelection
@@ -44,7 +44,7 @@ struct CreateImageConfiguration: View {
             case .build:
                 BuildDockerfileView(
                     defaultFileDialogDirectory: defaultFileDialogDirectory,
-                    errorMessage: $errorMessage,
+                    error: $error,
                     contextDirectory: $contextDirectory,
                     dockerFile: $dockerFile,
                     buildTag: $buildTag,

@@ -11,6 +11,7 @@ import ContainerizationExtras
 import ContainerizationOCI
 import Foundation
 import SwiftUI
+import Virtualization
 
 struct CreateContainerView: View {
     enum Mode {
@@ -73,7 +74,7 @@ struct CreateContainerView: View {
     @SwiftUI.State private var platformString: String = Platform.current.description
     @SwiftUI.State private var shmSizeInMiB: Int = 0
     @SwiftUI.State private var capabilities: [Capability] = []
-    @SwiftUI.State private var errorMessage: String?
+    @SwiftUI.State private var errorAlert: ErrorAlert?
     @SwiftUI.State private var localImages: [ImageDescription] = []
     @SwiftUI.State private var availableVolumes: [Volume] = []
     @SwiftUI.State private var showProgressView: Bool = false
@@ -88,7 +89,7 @@ struct CreateContainerView: View {
     var body: some View {
         CreateView(
             title: mode.title,
-            errorMessage: $errorMessage,
+            error: $errorAlert,
             isProcessing: showProgressView,
             progressTitle: mode.progressTitle,
             width: 660,
@@ -213,10 +214,19 @@ struct CreateContainerView: View {
                 showPickLocalImage = true
             } catch (let error) {
                 showProgressView = false
-                errorMessage = "\(error)"
+                errorAlert = ErrorAlert(
+                    "The images couldn’t be loaded.",
+                    error: error
+                )
             }
         }
     }
+
+    /// Nested virtualization is refused outright by the Virtualization
+    /// framework on hardware that cannot do it, so the flag is not offered
+    /// where ticking it could only fail.
+    private static let supportsNestedVirtualization =
+        VZGenericPlatformConfiguration.isNestedVirtualizationSupported
 
     @ViewBuilder
     private var tabContent: some View {
@@ -237,11 +247,12 @@ struct CreateContainerView: View {
             FormRow(
                 title: "Name",
                 description:
-                    "Leave empty to generate a unique name automatically."
+                    "Leave empty to generate a unique name automatically. Names start with a letter or number, and may contain only letters, numbers, underscores, periods, and hyphens."
             ) {
                 FormField(
                     placeholder: "my-container",
-                    value: $container.name
+                    value: $container.name,
+                    filter: EntityName.valid(from:)
                 )
             }
         }
@@ -327,6 +338,40 @@ struct CreateContainerView: View {
                         selection: $platformString
                     )
                 }
+
+                FormRow(title: "Management") {
+                    VStack(alignment: .leading) {
+                        Toggle(
+                            "Mount the root filesystem as read-only",
+                            isOn: $container.readOnly
+                        )
+
+                        Toggle(
+                            "Remove the container after it stops",
+                            isOn: $container.deleteOnTermination
+                        )
+
+                        Toggle(
+                            "Expose virtualization capabilities",
+                            isOn: $container.virtualization
+                        )
+                        .disabled(!Self.supportsNestedVirtualization)
+
+                        if !Self.supportsNestedVirtualization {
+                            Text(
+                                "Nested virtualization needs an Apple silicon M3 chip or later."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+
+                        Toggle(
+                            "Forward the SSH agent socket",
+                            isOn: $container.ssh
+                        )
+                    }
+                    .toggleStyle(.checkbox)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -366,7 +411,7 @@ struct CreateContainerView: View {
                 items: $mounts,
                 title: "Mounts",
                 editorDescription:
-                    "Share a host path with the container. Leave Source empty to create a temporary in-memory mount.",
+                    "Share a host path with the container, or tick Temporary mount to create an in-memory mount instead.",
                 columnTitles: ["Source", "Target"],
                 addLabel: "Add Mount",
                 emptyMessage: "No Mounts",
@@ -374,7 +419,10 @@ struct CreateContainerView: View {
                 newItem: { Mount() },
                 rowSummary: \.summary,
                 rowValues: \.columns,
-                canSave: { !$0.trimmedTarget.isEmpty },
+                canSave: {
+                    !$0.trimmedTarget.isEmpty
+                        && ($0.isTemporary || $0.hostURL != nil)
+                },
                 editorContent: { $mount in
                     MountEditor(mount: $mount)
                 }
@@ -431,7 +479,10 @@ struct CreateContainerView: View {
         )
 
         guard !trimmedReference.isEmpty else {
-            self.errorMessage = "Image is not specified."
+            self.errorAlert = ErrorAlert(
+                "The container needs an image.",
+                message: "Choose the image to create the container from."
+            )
             return
         }
 
@@ -499,7 +550,15 @@ struct CreateContainerView: View {
                 dismiss()
 
             } catch (let error) {
-                self.errorMessage = "\(error)"
+                self.errorAlert = ErrorAlert(
+                    mode == .run
+                        ? "The container couldn’t be started."
+                        : "The container couldn’t be created.",
+                    error: error,
+                    // What went wrong here reads in full, so there is nothing
+                    // to keep folded away.
+                    showsDetails: false
+                )
             }
 
             self.showProgressView = false

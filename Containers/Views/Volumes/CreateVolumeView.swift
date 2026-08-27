@@ -25,14 +25,14 @@ struct CreateVolumeView: View {
     @SwiftUI.State private var labels: [KeyValue] = []
     @SwiftUI.State private var sizeValue: Double = 512
     @SwiftUI.State private var sizeUnit: UnitInformationStorage = .gigabytes
-    @SwiftUI.State private var errorMessage: String?
+    @SwiftUI.State private var errorAlert: ErrorAlert?
     @SwiftUI.State private var showProgressView: Bool = false
     @SwiftUI.State private var selectedTab: Tab = .info
 
     var body: some View {
         CreateView(
             title: "Create New Volume",
-            errorMessage: $errorMessage,
+            error: $errorAlert,
             isProcessing: showProgressView,
             progressTitle: "Creating volume...",
             width: 550,
@@ -85,12 +85,18 @@ struct CreateVolumeView: View {
 
     private var infoTab: some View {
         FormStack {
-            FormRow(title: "Name") {
-                FormField(placeholder: "Ex: volume-1", value: $name)
+            FormRow(
+                title: "Name",
+                description:
+                    "Names start with a letter or number, and may contain only letters, numbers, underscores, periods, and hyphens."
+            ) {
+                FormField(
+                    placeholder: "Ex: volume-1",
+                    value: $name,
+                    filter: EntityName.valid(from:)
+                )
             }
 
-            // The only row with two controls in one column, so it holds the
-            // controls directly rather than going through FormField.
             FormRow(
                 title: "Size",
                 description:
@@ -178,13 +184,16 @@ struct CreateVolumeView: View {
         )
 
         guard !trimmedName.isEmpty else {
-            self.errorMessage = "Name is not specified."
+            self.errorAlert = ErrorAlert(
+                "The volume needs a name.",
+                message: "Enter a name for the volume."
+            )
             return
         }
 
         Task {
             self.showProgressView = true
-            self.errorMessage = nil
+            self.errorAlert = nil
 
             do {
                 let validLabels = self.labels.filter({
@@ -223,7 +232,11 @@ struct CreateVolumeView: View {
 
                 dismiss()
             } catch (let error) {
-                self.errorMessage = "\(error)"
+                self.errorAlert = ErrorAlert(
+                    "The volume couldn’t be created.",
+                    error: error,
+                    showsDetails: false
+                )
             }
 
             self.showProgressView = false

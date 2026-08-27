@@ -13,8 +13,7 @@ struct SettingsView: View {
     @Environment(NetworkManager.self) private var networkManager
     @Environment(SystemManager.self) private var system
 
-    @State private var errorMessage: String?
-    @State private var showError: Bool = false
+    @State private var errorAlert: ErrorAlert?
     @State private var storageLocation = UserDefaults.applicationDataRoot
     @State private var dnsDomains: [DNSDomainSetting] = []
     @State private var selectedSection: SettingsPane? = .general
@@ -70,34 +69,13 @@ struct SettingsView: View {
         .task {
             refreshSettings()
         }
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") {
-                    showError = false
-                }
-            },
-            message: {
-                Text(errorMessage ?? "Unknown Error")
-            }
-        )
+        .errorAlert($errorAlert)
         .onChange(of: selectedSection) { oldValue, newValue in
             guard let newValue, newValue != oldValue else {
                 return
             }
 
             recordSectionNavigation(to: newValue)
-        }
-        .onChange(of: errorMessage) {
-            if errorMessage != nil {
-                showError = true
-            }
-        }
-        .onChange(of: showError) {
-            if !showError {
-                errorMessage = nil
-            }
         }
     }
 
@@ -148,17 +126,15 @@ struct SettingsView: View {
                 description:
                     "Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts."
             ) {
-                HStack(spacing: 8) {
-                    TextField("Storage location", text: storageLocationPath)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(true)
-
-                    Button(action: chooseStorageLocation) {
-                        Image(systemName: "folder")
-                    }
-                    .help("Choose")
-                    .disabled(system.status == .running)
-                }
+                FormField(
+                    placeholder: "Storage location",
+                    value: storageLocationPath,
+                    isEditable: false,
+                    actionIcon: "folder",
+                    actionTitle: "Choose",
+                    action: chooseStorageLocation
+                )
+                .disabled(system.status == .running)
             }
 
             HStack {
@@ -282,7 +258,10 @@ struct SettingsView: View {
             UserDefaults.setApplicationDataRoot(url, bookmarkData: bookmarkData)
             storageLocation = UserDefaults.applicationDataRoot
         } catch {
-            errorMessage = error.localizedDescription
+            errorAlert = ErrorAlert(
+                "The storage location couldn’t be changed.",
+                error: error
+            )
         }
     }
 

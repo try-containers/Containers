@@ -57,8 +57,7 @@ struct DashboardView: View {
     @SwiftUI.State private var refreshContainerNeeded: Bool = false
 
     // Local error state
-    @SwiftUI.State private var error: Error?
-    @SwiftUI.State private var showError: Bool = false
+    @SwiftUI.State private var errorAlert: ErrorAlert?
 
     // Sheet presentation state for creating new items
     @SwiftUI.State private var isFirstLaunch: Bool = false
@@ -149,27 +148,7 @@ struct DashboardView: View {
                         try? await Task.sleep(for: .seconds(2))
                     }
                 }
-                .alert(
-                    "Oops!",
-                    isPresented: $showError,
-                    actions: {
-                        Button(
-                            action: {
-                                self.showError = false
-                            },
-                            label: {
-                                Text("OK")
-                            }
-                        )
-                    },
-                    message: {
-                        let message = String(
-                            "\(self.error, default: "Unknown Error")"
-                        )
-                        Text(message)
-                            .lineLimit(5)
-                    }
-                )
+                .errorAlert($errorAlert)
                 .onChange(of: selectedTab) { _, newTab in
                     UserDefaults.lastSelectedTab = newTab.rawValue
                 }
@@ -280,8 +259,10 @@ struct DashboardView: View {
                                 }
                             } catch (let error) {
                                 await MainActor.run {
-                                    self.error = error
-                                    self.showError = true
+                                    self.errorAlert = ErrorAlert(
+                                        "The container system couldn’t restart.",
+                                        error: error
+                                    )
                                 }
                             }
                         }
@@ -309,8 +290,10 @@ struct DashboardView: View {
                                     try await startSystem()
                                 } catch (let error) {
                                     await MainActor.run {
-                                        self.error = error
-                                        self.showError = true
+                                        self.errorAlert = ErrorAlert(
+                                            "The container system couldn’t restart.",
+                                            error: error
+                                        )
                                     }
                                 }
                             }

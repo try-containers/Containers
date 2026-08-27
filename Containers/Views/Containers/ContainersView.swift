@@ -22,8 +22,7 @@ struct ContainersView: View {
     @State private var containers: [ContainerViewModel] = []
     @State private var selectedContainer: ContainerViewModel? = nil
     @State private var lastUpdated: Date? = nil
-    @State private var error: Error?
-    @State private var showError = false
+    @State private var errorAlert: ErrorAlert?
     @State private var showDeleteConfirmation = false
     @State private var showCreateContainerView = false
 
@@ -132,8 +131,10 @@ struct ContainersView: View {
                                             )
                                         )
                                     } catch (let err) {
-                                        self.error = err
-                                        self.showError = true
+                                        self.errorAlert = ErrorAlert(
+                                            "The container couldn’t be stopped.",
+                                            error: err
+                                        )
                                     }
                                 }
                             },
@@ -155,8 +156,10 @@ struct ContainersView: View {
                                             attachStdin: false
                                         )
                                     } catch (let err) {
-                                        self.error = err
-                                        self.showError = true
+                                        self.errorAlert = ErrorAlert(
+                                            "The container couldn’t be started.",
+                                            error: err
+                                        )
                                     }
                                 }
                             },
@@ -205,20 +208,7 @@ struct ContainersView: View {
                 CreateContainerView(imageReference: "")
             }
         )
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") {
-                    self.showError = false
-                }
-            },
-            message: {
-                if let error = error {
-                    Text(error.localizedDescription)
-                }
-            }
-        )
+        .errorAlert($errorAlert)
         .confirmationDialog(
             "Delete Container?",
             isPresented: $showDeleteConfirmation,
@@ -237,8 +227,10 @@ struct ContainersView: View {
                         )
                         await refreshContainers()
                     } catch (let err) {
-                        self.error = err
-                        self.showError = true
+                        self.errorAlert = ErrorAlert(
+                            "The container couldn’t be deleted.",
+                            error: err
+                        )
                     }
                 }
 
@@ -271,8 +263,10 @@ struct ContainersView: View {
                 .sorted { $0.id < $1.id }
             self.lastUpdated = Date()
         } catch (let err) {
-            self.error = err
-            self.showError = true
+            self.errorAlert = ErrorAlert(
+                "The containers couldn’t be loaded.",
+                error: err
+            )
         }
     }
 }

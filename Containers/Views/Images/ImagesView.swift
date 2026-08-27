@@ -26,8 +26,7 @@ struct ImagesView: View {
     @SwiftUI.State private var lastUpdated: Date? = nil
     @SwiftUI.State private var createContainerForImage: ImageViewModel? = nil
     @SwiftUI.State private var imageToDelete: ImageViewModel?
-    @SwiftUI.State private var error: Error?
-    @SwiftUI.State private var showError: Bool = false
+    @SwiftUI.State private var errorAlert: ErrorAlert?
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
     @SwiftUI.State private var showInUseContainerForImage: ImageViewModel?
 
@@ -178,20 +177,7 @@ struct ImagesView: View {
                 )
             }
         )
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") {
-                    self.showError = false
-                }
-            },
-            message: {
-                if let error = error {
-                    Text(error.localizedDescription)
-                }
-            }
-        )
+        .errorAlert($errorAlert)
         .confirmationDialog(
             "Delete Image?",
             isPresented: $showDeleteConfirmation,
@@ -210,8 +196,10 @@ struct ImagesView: View {
 
                         await self.listImages()
                     } catch (let err) {
-                        self.error = err
-                        self.showError = true
+                        self.errorAlert = ErrorAlert(
+                            "The image couldn’t be deleted.",
+                            error: err
+                        )
                     }
                 }
 
@@ -241,8 +229,10 @@ struct ImagesView: View {
             self.lastUpdated = Date()
 
         } catch (let err) {
-            self.error = err
-            self.showError = true
+            self.errorAlert = ErrorAlert(
+                "The images couldn’t be loaded.",
+                error: err
+            )
         }
     }
 }

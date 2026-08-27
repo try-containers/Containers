@@ -22,8 +22,7 @@ struct ImageContainersView: View {
     @SwiftUI.State private var isLoading: Bool
     @SwiftUI.State private var filterText: String = ""
     @SwiftUI.State private var hoveredID: String?
-    @SwiftUI.State private var error: Error?
-    @SwiftUI.State private var showError = false
+    @SwiftUI.State private var errorAlert: ErrorAlert?
 
     init(image: ImageViewModel) {
         self.image = image
@@ -72,18 +71,7 @@ struct ImageContainersView: View {
             guard taskID != nil else { return }
             await loadContainers()
         }
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") { showError = false }
-            },
-            message: {
-                if let error {
-                    Text(error.localizedDescription)
-                }
-            }
-        )
+        .errorAlert($errorAlert)
     }
 
     @ViewBuilder
@@ -191,8 +179,10 @@ struct ImageContainersView: View {
                 self.containers = []
             }
         } catch {
-            self.error = error
-            self.showError = true
+            self.errorAlert = ErrorAlert(
+                "The containers couldn’t be loaded.",
+                error: error
+            )
             self.containers = []
         }
     }

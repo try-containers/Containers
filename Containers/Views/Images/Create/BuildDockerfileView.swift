@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 struct BuildDockerfileView: View {
     let defaultFileDialogDirectory: URL?
 
-    @Binding var errorMessage: String?
+    @Binding var error: ErrorAlert?
     @Binding var contextDirectory: URL?
     @Binding var dockerFile: URL?
     @Binding var buildTag: String
@@ -29,17 +29,19 @@ struct BuildDockerfileView: View {
                     fileURL: $dockerFile,
                     allowedContentTypes: [.item],
                     defaultDirectory: defaultFileDialogDirectory,
-                    onSelection: { errorMessage = nil }
+                    onSelection: { error = nil }
                 )
             }
 
             FormRow(title: "Build Directory") {
                 FileSelection(
-                    placeholder: "No build directory selected",
+                    placeholder: FileSelection.userHomeDirectory.path(),
                     fileURL: $contextDirectory,
                     canChooseDirectories: true,
+                    canCreateDirectories: true,
                     defaultDirectory: defaultFileDialogDirectory,
-                    onSelection: { errorMessage = nil }
+                    style: .field,
+                    onSelection: { error = nil }
                 )
             }
             .onChange(

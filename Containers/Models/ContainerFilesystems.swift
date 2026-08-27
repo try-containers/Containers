@@ -35,11 +35,13 @@ struct ContainerFilesystems {
         }
 
         for mount in mounts {
-            let source = mount.trimmedSource
             let target = mount.trimmedTarget
 
             // A row added and then left alone is not a mount.
-            guard !source.isEmpty || !target.isEmpty else { continue }
+            guard mount.isTemporary || mount.hostURL != nil || !target.isEmpty
+            else {
+                continue
+            }
 
             guard !target.isEmpty else {
                 throw MountError.targetMissing
@@ -49,21 +51,20 @@ struct ContainerFilesystems {
             }
             try reserve(target)
 
-            guard !source.isEmpty else {
+            guard !mount.isTemporary else {
                 temporaryFileSystems.append(
                     .tmpfs(destination: target, options: options)
                 )
                 continue
             }
 
-            let resolvedSource = (source as NSString).expandingTildeInPath
-            guard resolvedSource.hasPrefix("/") else {
+            guard let source = mount.hostURL, source.path.hasPrefix("/") else {
                 throw MountError.sourceNotAbsolute
             }
 
             bindMounts.append(
                 .virtiofs(
-                    source: resolvedSource,
+                    source: source.path,
                     destination: target,
                     options: options
                 )

@@ -20,8 +20,7 @@ struct VolumesView: View {
     @State private var volumeToDelete: VolumeViewModel?
     @State private var showCreateVolumeView: Bool = false
     @State private var showDeleteConfirmation: Bool = false
-    @State private var error: Error?
-    @State private var showError: Bool = false
+    @State private var errorAlert: ErrorAlert?
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -153,20 +152,7 @@ struct VolumesView: View {
                 CreateVolumeView()
             }
         )
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") {
-                    self.showError = false
-                }
-            },
-            message: {
-                if let error = error {
-                    Text(error.localizedDescription)
-                }
-            }
-        )
+        .errorAlert($errorAlert)
         .confirmationDialog(
             "Delete Volume?",
             isPresented: $showDeleteConfirmation,
@@ -182,8 +168,10 @@ struct VolumesView: View {
                         try await volumeManager.delete(volumes: [volume.volume])
                         await self.listVolumes()
                     } catch (let err) {
-                        self.error = err
-                        self.showError = true
+                        self.errorAlert = ErrorAlert(
+                            "The volume couldn’t be deleted.",
+                            error: err
+                        )
                     }
                 }
 
@@ -211,8 +199,10 @@ struct VolumesView: View {
             self.lastUpdated = Date()
 
         } catch (let err) {
-            self.error = err
-            self.showError = true
+            self.errorAlert = ErrorAlert(
+                "The volumes couldn’t be loaded.",
+                error: err
+            )
         }
     }
 }

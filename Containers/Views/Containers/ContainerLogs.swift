@@ -14,62 +14,104 @@ struct ContainerLogs: View {
     @Environment(ContainerManager.self) private var containerManager
 
     @State private var logs: String = ""
+    @State private var bootLog: String = ""
+    @State private var source: Source = .output
     @State private var hasLoaded: Bool = false
-    @State private var error: Error?
-    @State private var showError: Bool = false
+    @State private var errorAlert: ErrorAlert?
+
+    private enum Source: String, CaseIterable, Identifiable {
+        case output = "Output"
+        case boot = "Boot"
+
+        var id: String { rawValue }
+
+        var emptyMessage: String {
+            switch self {
+            case .output:
+                "Logs will appear here when the container generates output"
+            case .boot:
+                "The boot log is written while the container starts up"
+            }
+        }
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Log", selection: $source) {
+                ForEach(Source.allCases) { source in
+                    Text(source.rawValue).tag(source)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 180)
+
             if !hasLoaded {
                 // Hidden by the window until ready, so nothing to draw.
                 Color.clear
-            } else if logs.isEmpty {
+            } else if selectedLogs.isEmpty {
                 ContentUnavailableView {
                     Label("No Logs Available", systemImage: "doc.text")
                 } description: {
-                    Text(
-                        "Logs will appear here when the container generates output"
-                    )
+                    Text(source.emptyMessage)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    Text(logs)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                }
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(.bottom, for: .sizeChanges)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .textBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                )
-                .padding(20)
+                terminal
             }
         }
+        .padding(20)
         .contentReady(hasLoaded)
         .task {
             await streamLogs()
         }
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") {
-                    self.showError = false
-                }
-            },
-            message: {
-                if let error = error {
-                    Text(error.localizedDescription)
-                }
-            }
+        .task(id: source) {
+            guard source == .boot else { return }
+            bootLog = Self.read(Self.bootLogFile(for: containerID))
+        }
+        .errorAlert($errorAlert)
+    }
+
+    private var terminal: some View {
+        ScrollView {
+            Text(selectedLogs)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.white)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+        }
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
         )
+    }
+
+    private var selectedLogs: String {
+        switch source {
+        case .output:
+            logs
+        case .boot:
+            bootLog
+        }
+    }
+
+    private static func bootLogFile(for containerID: String) -> URL {
+        UserDefaults.applicationDataRoot
+            .appendingPathComponent("containers")
+            .appendingPathComponent(containerID)
+            .appendingPathComponent("vminitd.log")
+    }
+
+    private static func read(_ file: URL) -> String {
+        (try? String(contentsOf: file, encoding: .utf8))?
+            .trimmingCharacters(in: .newlines) ?? ""
     }
 
     private func streamLogs() async {

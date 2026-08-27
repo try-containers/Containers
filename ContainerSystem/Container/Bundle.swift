@@ -18,10 +18,24 @@ public struct Bundle: Sendable {
     public let path: URL
 
     // Filenames for bundle contents
-    private static let configFilename = "container-config.json"
+    private static let configFilename = "config.json"
     private static let kernelFilename = "kernel.json"
-    private static let initFsFilename = "init-fs.json"
+    private static let kernelBinaryFilename = "kernel.bin"
+    private static let initFsFilename = "initfs.ext4"
     private static let rootFsFilename = "rootfs.json"
+    private static let rootFsBlockFilename = "rootfs.ext4"
+    private static let optionsFilename = "options.json"
+    private static let stateFilename = "state.json"
+    private static let bootLogFilename = "vminitd.log"
+
+    /// What a container carries over from one run to the next.
+    public struct State: Codable, Sendable {
+        public var startedDate: Date?
+
+        public init(startedDate: Date? = nil) {
+            self.startedDate = startedDate
+        }
+    }
 
     /// Load an existing bundle from the given path.
     public init(path: URL) {
@@ -42,11 +56,25 @@ public struct Bundle: Sendable {
         }
     }
 
-    /// Load the initial filesystem configuration from disk.
+    /// The initial filesystem, described from the copy the bundle holds
+    /// rather than from a stored descriptor pointing elsewhere.
     public var initialFilesystem: Filesystem {
-        get throws {
-            try load(filename: Self.initFsFilename)
-        }
+        Filesystem(
+            type: .block(format: "ext4"),
+            source: path.appendingPathComponent(Self.initFsFilename).path,
+            destination: "/",
+            options: ["ro"]
+        )
+    }
+
+    /// Where the VM writes its console output.
+    public var bootLog: URL {
+        path.appendingPathComponent(Self.bootLogFilename)
+    }
+
+    /// The block holding the container's own root filesystem.
+    public var containerRootfsBlock: URL {
+        path.appendingPathComponent(Self.rootFsBlockFilename)
     }
 
     /// Load the container root filesystem configuration from disk.
@@ -61,7 +89,8 @@ public struct Bundle: Sendable {
         path: URL,
         initialFilesystem: Filesystem,
         kernel: Kernel,
-        containerConfiguration: ContainerConfiguration
+        containerConfiguration: ContainerConfiguration,
+        options: ContainerCreateOptions? = nil
     ) throws -> Bundle {
         let fm = FileManager.default
 
@@ -69,40 +98,94 @@ public struct Bundle: Sendable {
 
         let bundle = Bundle(path: path)
 
+        // The kernel binary is copied in, so the container keeps booting the
+        // one it was made with even if the original moves or is replaced.
+        var kernel = kernel
+        let kernelBinary = path.appendingPathComponent(kernelBinaryFilename)
+        try fm.copyItem(at: kernel.path, to: kernelBinary)
+        kernel.path = kernelBinary
+
+        try bundle.write(filename: kernelFilename, value: kernel)
+
+        // The init filesystem is cloned in for the same reason, which is why
+        // `initialFilesystem` reads from the bundle instead of a descriptor.
+        guard case .block(let format, _, _) = initialFilesystem.type,
+            format == "ext4"
+        else {
+            throw ContainerizationError(
+                .invalidArgument,
+                message: "initial filesystem must be an ext4 block"
+            )
+        }
+
+        try fm.copyItem(
+            atPath: initialFilesystem.source,
+            toPath: path.appendingPathComponent(initFsFilename).path
+        )
+
         try bundle.write(
             filename: configFilename,
             value: containerConfiguration
         )
-        try bundle.write(filename: kernelFilename, value: kernel)
-        try bundle.write(filename: initFsFilename, value: initialFilesystem)
+
+        if let options {
+            try bundle.write(filename: optionsFilename, value: options)
+        }
 
         return bundle
     }
 
-    /// Set the container root filesystem by cloning a source filesystem.
-    public func setContainerRootFs(cloning source: Filesystem) throws {
-        // Clone the source filesystem image to our bundle directory
-        let clonedSource = path.appendingPathComponent("rootfs.img").path
+    /// Point the container root filesystem at a filesystem that already sits
+    /// where it is going to stay.
+    public func setContainerRootFs(_ fs: Filesystem) throws {
+        try write(filename: Self.rootFsFilename, value: fs)
+    }
+
+    /// Clone a filesystem into the bundle and make it the container root.
+    public func cloneContainerRootFs(
+        cloning source: Filesystem,
+        readonly: Bool = false
+    ) throws {
+        var options = source.options
+        if readonly, !options.contains("ro") {
+            options.append("ro")
+        }
 
         try FileManager.default.copyItem(
             atPath: source.source,
-            toPath: clonedSource
+            toPath: containerRootfsBlock.path
         )
 
-        // Create a block filesystem pointing to the cloned image
-        let rootFs = Filesystem(
-            type: .block(format: "ext4"),
-            source: clonedSource,
-            destination: "/",
-            options: []
+        try setContainerRootFs(
+            Filesystem(
+                type: source.type,
+                source: containerRootfsBlock.path,
+                destination: source.destination,
+                options: options
+            )
         )
+    }
 
-        try write(filename: Self.rootFsFilename, value: rootFs)
+    /// The options the container was created with, so that what they ask for
+    /// still holds on a later run of the app.
+    public var createOptions: ContainerCreateOptions {
+        get throws {
+            try load(filename: Self.optionsFilename)
+        }
+    }
+
+    /// What the container kept from its last run, empty until it has had one.
+    public var state: State {
+        (try? load(filename: Self.stateFilename)) ?? State()
     }
 
     /// Persist an updated container configuration to disk.
     public func setConfiguration(_ configuration: ContainerConfiguration) throws {
         try write(filename: Self.configFilename, value: configuration)
+    }
+
+    public func setState(_ state: State) throws {
+        try write(filename: Self.stateFilename, value: state)
     }
 
     /// Delete this bundle and all its contents from disk.

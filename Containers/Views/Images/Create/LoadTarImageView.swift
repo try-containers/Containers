@@ -16,6 +16,8 @@ struct LoadTarImageView: View {
     let defaultDirectory: URL?
     let onSelection: () -> Void
 
+    @State private var archiveLocations: [URL] = []
+
     var body: some View {
         FormStack {
             FormRow(
@@ -27,7 +29,19 @@ struct LoadTarImageView: View {
                     fileURL: $tarFile,
                     allowedContentTypes: tarContentTypes,
                     defaultDirectory: defaultDirectory,
+                    locations: archiveLocations,
+                    recents: .tarArchive,
                     onSelection: onSelection
+                )
+            }
+            .task {
+                archiveLocations = FileSelection.files(
+                    in: [
+                        defaultDirectory,
+                        .downloadsDirectory,
+                        .documentsDirectory,
+                    ],
+                    matching: isArchive
                 )
             }
 
@@ -44,5 +58,16 @@ struct LoadTarImageView: View {
             .toggleStyle(.checkbox)
         }
         .frame(maxWidth: .infinity, minHeight: 320, alignment: .center)
+    }
+
+    private func isArchive(_ url: URL) -> Bool {
+        guard
+            let type = try? url.resourceValues(forKeys: [.contentTypeKey])
+                .contentType
+        else {
+            return false
+        }
+
+        return tarContentTypes.contains { type.conforms(to: $0) }
     }
 }

@@ -58,7 +58,7 @@ struct CreateImageView: View {
     @SwiftUI.State private var currentStep: Step = .method
     @SwiftUI.State private var stepTransitionDirection: Int = 1
     @SwiftUI.State private var selectedMethod: CreationMethod?
-    @SwiftUI.State private var errorMessage: String?
+    @SwiftUI.State private var failure: ErrorAlert?
     @SwiftUI.State private var isCreating: Bool = false
     @SwiftUI.State private var creationTask: Task<Void, Never>?
     @SwiftUI.State private var tarFile: URL?
@@ -73,11 +73,11 @@ struct CreateImageView: View {
     @SwiftUI.State private var buildArguments: [KeyValue] = []
     @SwiftUI.State private var targetStage: String = ""
     @SwiftUI.State private var shouldLoadPullFeaturedImages: Bool = false
+    @SwiftUI.State private var paneTitle: String?
 
     var body: some View {
         CreateView(
             title: "Create Image",
-            errorMessage: $errorMessage,
             isProcessing: isCreating,
             progressTitle: progressMessage,
             width: Self.sheetWidth,
@@ -85,11 +85,18 @@ struct CreateImageView: View {
             showsHeader: false,
             contentAlignment: .center,
             showsFooterDivider: false,
-            contentID: currentStep,
+            contentID: failure == nil ? AnyHashable(currentStep) : "failure",
             contentTransition: stepTransition,
+            contentTitle: paneTitle,
+            // Only the suggestions are ruled off into their own section.
+            contentTitleRule: selectedMethod == .pull,
             content: {
-                currentStepContent
-                    .multilineTextAlignment(.leading)
+                if let failure {
+                    CreateImageFailure(failure: failure)
+                } else {
+                    currentStepContent
+                        .multilineTextAlignment(.leading)
+                }
             },
             actions: {
                 if !isCreating {
@@ -120,7 +127,9 @@ struct CreateImageView: View {
                     }
                 )
                 .buttonStyle(.bordered)
-                .disabled(currentStep.rawValue == 0 || isCreating)
+                .disabled(
+                    (currentStep.rawValue == 0 && failure == nil) || isCreating
+                )
 
                 if !isCreating {
                     switch currentStep {
@@ -141,12 +150,24 @@ struct CreateImageView: View {
                                     .frame(width: .sheetButtonLabelWidth)
                             }
                         )
-                        .defaultAction(enabled: canProceedToNextStep)
+                        .defaultAction(
+                            enabled: canProceedToNextStep && failure == nil
+                        )
                     }
                 }
             }
         )
         .animation(.default, value: isCreating)
+    }
+
+    private func paneTitle(for step: Step) -> String? {
+        guard step == .configuration,
+            selectedMethod == .build || selectedMethod == .pull
+        else {
+            return nil
+        }
+
+        return "Choose options for your new image"
     }
 
     @ViewBuilder
@@ -164,8 +185,8 @@ struct CreateImageView: View {
                     defaultFileDialogDirectory,
                 tarContentTypes: tarContentTypes,
                 shouldLoadPullFeaturedImages: shouldLoadPullFeaturedImages,
-                onFileSelection: { errorMessage = nil },
-                errorMessage: $errorMessage,
+                onFileSelection: { failure = nil },
+                error: $failure,
                 imageName: $imageName,
                 tag: $tag,
                 pullPlatform: $pullPlatform,
@@ -185,14 +206,9 @@ struct CreateImageView: View {
     private static let stepAnimation: Animation = .easeOut(duration: 0.2)
 
     private var stepTransition: AnyTransition {
-        // Measured off the assistant mid-animation: the arriving step starts
-        // about a third of the sheet out, clipped at its edge, and is still
-        // near transparent a quarter of the way in.
         let distance = Self.sheetWidth / 3
         let shift = stepTransitionDirection > 0 ? distance : -distance
 
-        // The step being left goes at once; the one arriving slides in from
-        // the side it came from, fading up in step with the slide.
         return .asymmetric(
             insertion: .opacity.combined(with: .offset(x: shift)),
             removal: .identity
@@ -247,7 +263,7 @@ struct CreateImageView: View {
     }
 
     private func selectTarArchiveAndLoad() {
-        errorMessage = nil
+        failure = nil
 
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
@@ -286,23 +302,36 @@ struct CreateImageView: View {
 
         prepareStepTransition()
         stepTransitionDirection = 1
+        paneTitle = paneTitle(for: nextStep)
         withAnimation(Self.stepAnimation) {
             currentStep = nextStep
-            errorMessage = nil
+            failure = nil
         } completion: {
             completeStepTransition()
         }
     }
 
     func previousStep() {
+        // The failure stands in front of the step that produced it, so going
+        // back leaves the failure rather than the step.
+        guard failure == nil else {
+            stepTransitionDirection = -1
+            paneTitle = paneTitle(for: currentStep)
+            withAnimation(Self.stepAnimation) {
+                failure = nil
+            }
+            return
+        }
+
         guard let previousStep = Step(rawValue: currentStep.rawValue - 1) else {
             return
         }
         prepareStepTransition()
         stepTransitionDirection = -1
+        paneTitle = paneTitle(for: previousStep)
         withAnimation(Self.stepAnimation) {
             currentStep = previousStep
-            errorMessage = nil
+            failure = nil
         } completion: {
             completeStepTransition()
         }
@@ -313,9 +342,11 @@ struct CreateImageView: View {
     func createImage() {
         guard let method = selectedMethod else { return }
 
+        paneTitle = nil
+
         creationTask = Task { @MainActor in
             isCreating = true
-            errorMessage = nil
+            failure = nil
 
             do {
                 switch method {
@@ -330,9 +361,17 @@ struct CreateImageView: View {
                 // Dismiss on success
                 dismiss()
 
+            } catch is CancellationError {
+                isCreating = false
             } catch {
                 isCreating = false
-                errorMessage = "\(error)"
+                failure = ErrorAlert(
+                    failureTitle(for: method),
+                    error: error,
+                    // What went wrong here reads in full, so there is nothing
+                    // to keep folded away.
+                    showsDetails: false
+                )
             }
         }
     }
@@ -341,7 +380,18 @@ struct CreateImageView: View {
         creationTask?.cancel()
         creationTask = nil
         isCreating = false
-        errorMessage = "Operation cancelled"
+        paneTitle = paneTitle(for: currentStep)
+    }
+
+    private func failureTitle(for method: CreationMethod) -> String {
+        switch method {
+        case .pull:
+            "The image couldn’t be pulled."
+        case .build:
+            "The image couldn’t be built."
+        case .load:
+            "The image couldn’t be loaded."
+        }
     }
 
     func pullImage() async throws {

@@ -66,6 +66,7 @@ public struct ContainerConfiguration: Sendable, Codable {
     public var virtualization: Bool = false
     public var ssh: Bool = false
     public var useInit: Bool = false
+    public var readOnly: Bool = false
     public var capabilities: [String] = []
     public var shmSize: UInt64?
     public var stopSignal: String?
@@ -88,6 +89,7 @@ public struct ContainerConfiguration: Sendable, Codable {
         case virtualization
         case ssh
         case useInit
+        case readOnly
         case capabilities
         case shmSize
         case stopSignal
@@ -149,6 +151,8 @@ public struct ContainerConfiguration: Sendable, Codable {
             try container.decodeIfPresent(Bool.self, forKey: .ssh) ?? false
         self.useInit =
             try container.decodeIfPresent(Bool.self, forKey: .useInit) ?? false
+        self.readOnly =
+            try container.decodeIfPresent(Bool.self, forKey: .readOnly) ?? false
         self.capabilities =
             try container.decodeIfPresent([String].self, forKey: .capabilities)
             ?? []

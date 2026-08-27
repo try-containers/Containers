@@ -14,9 +14,9 @@ struct SystemStatusView: View {
     var body: some View {
         switch system.status {
         case .starting:
-            startingView
+            progress("Starting the container system…")
         case .stopping:
-            stoppingView
+            progress("Stopping the container system…")
         case .failed:
             failedView
         case .notStarted:
@@ -26,94 +26,50 @@ struct SystemStatusView: View {
         }
     }
 
-    private var startingView: some View {
-        ContentUnavailableView(
-            label: {
-                ProgressView()
-                    .controlSize(.large)
-                    .padding(.bottom, 4)
-                Text("Starting Container System…")
-            },
-            description: {
-                Text("Please wait while the container system initializes.")
-            }
-        )
-    }
+    /// Work under way is not missing content: it is a spinner and a line
+    /// saying what is happening, not an unavailable-content view.
+    private func progress(_ title: String) -> some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.large)
 
-    private var stoppingView: some View {
-        ContentUnavailableView(
-            label: {
-                ProgressView()
-                    .controlSize(.large)
-                    .padding(.bottom, 4)
-                Text("Stopping Container System…")
-            },
-            description: {
-                Text("Please wait while the container system shuts down.")
-            }
-        )
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var failedView: some View {
-        ContentUnavailableView(
-            label: {
-                Label(
-                    "System Failed to Start",
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-            },
-            description: {
-                if let error = system.startupError {
-                    Text(error.localizedDescription)
-                }
-            },
-            actions: {
-                Button(
-                    action: {
-                        Task {
-                            do {
-                                try await system.start(
-                                    appRoot: UserDefaults.applicationDataRoot
-                                )
-                            } catch {
-                                // Error is available via system.startupError
-                            }
-                        }
-                    },
-                    label: {
-                        Text("Retry")
-                    }
-                )
+        ContentUnavailableView {
+            Label(
+                "The Container System Couldn’t Start",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+        } description: {
+            if let error = system.startupError {
+                Text(error.localizedDescription)
             }
-        )
+        } actions: {
+            Button("Try Again", action: start)
+        }
     }
 
     private var stoppedView: some View {
-        ContentUnavailableView(
-            label: {
-                Label(
-                    "System Is Stopped",
-                    systemImage: "exclamationmark.octagon.fill"
-                )
-            },
-            actions: {
-                Button(
-                    action: {
-                        Task {
-                            do {
-                                try await system.start(
-                                    appRoot: UserDefaults.applicationDataRoot
-                                )
-                            } catch {
-                                // Error is available via system.startupError
-                            }
-                        }
-                    },
-                    label: {
-                        Text("Start System")
-                    }
-                )
-            }
-        )
+        ContentUnavailableView {
+            Label("Container System Stopped", image: "server.pause")
+        } description: {
+            Text("Start it to work with your containers, images and volumes.")
+        } actions: {
+            Button("Start System", action: start)
+        }
+    }
+
+    private func start() {
+        Task {
+            // A failure puts the view into its own failed state, by way of
+            // `system.startupError`.
+            try? await system.start(appRoot: UserDefaults.applicationDataRoot)
+        }
     }
 }

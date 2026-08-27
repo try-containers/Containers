@@ -5,26 +5,38 @@
 //  Created by Axel Martinez on 04/08/2026.
 //
 
-import AppKit
 import SwiftUI
 
 struct MountEditor: View {
     @Binding var mount: Mount
 
+    private var isTemporary: Binding<Bool> {
+        Binding {
+            mount.isTemporary
+        } set: { isTemporary in
+            mount.isTemporary = isTemporary
+            if isTemporary { mount.hostURL = nil }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Toggle("Temporary mount", isOn: isTemporary)
+                .toggleStyle(.checkbox)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Source")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                FormField(
-                    placeholder: "/Users/me/project",
-                    value: $mount.hostPath,
-                    actionIcon: "folder",
-                    actionTitle: "Browse",
-                    action: browseFolder
+                FileSelection(
+                    placeholder: "No source selected",
+                    fileURL: $mount.hostURL,
+                    canChooseDirectories: true,
+                    label: .path,
+                    recents: .mountSource
                 )
+                .disabled(mount.isTemporary)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -37,18 +49,6 @@ struct MountEditor: View {
                     value: $mount.containerPath
                 )
             }
-        }
-    }
-
-    private func browseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            mount.hostPath = url.path
         }
     }
 }

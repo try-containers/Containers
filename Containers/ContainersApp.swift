@@ -102,77 +102,59 @@ struct ContainersApp: App {
         .defaultPosition(.center)
         .commands { PreferencesCommands() }
 
-        WindowGroup(
+        windowGroup(
             "Container Details",
             id: Self.containerDetailWindowID,
-            for: String.self
-        ) { $id in
-            if let id {
-                ContainerDetailWindow(id: id)
-                    .environment(containerManager)
-                    .environment(volumeManager)
-            }
+            placeholder: DetailPlaceholder.container
+        ) { id in
+            ContainerDetailWindow(id: id)
+                .environment(containerManager)
+                .environment(volumeManager)
+                .environment(imageManager)
         }
-        .windowResizability(.contentMinSize)
-        // Without this the group reuses the last detail window's frame, and a
-        // shorter tab then has to shrink into place instead of growing. It
-        // also carried the placement, hence the centring below.
-        .restorationBehavior(.disabled)
-        .defaultWindowPlacement { _, context in
-            DetailPlaceholder.centred(
-                on: context.defaultDisplay.visibleRect,
-                size: DetailPlaceholder.container
-            )
-        }
-        .commandsRemoved()
 
-        WindowGroup(
+        windowGroup(
             "Image Details",
             id: Self.imageDetailWindowID,
-            for: String.self
-        ) { $reference in
-            if let reference {
-                ImageDetailWindow(imageReference: reference)
-                    .environment(imageManager)
-                    .environment(containerManager)
-            }
+            placeholder: DetailPlaceholder.image
+        ) { reference in
+            ImageDetailWindow(imageReference: reference)
+                .environment(imageManager)
+                .environment(containerManager)
+                .environment(volumeManager)
         }
-        .windowResizability(.contentMinSize)
-        // Without this the group reuses the last detail window's frame, and a
-        // shorter tab then has to shrink into place instead of growing. It
-        // also carried the placement, hence the centring below.
-        .restorationBehavior(.disabled)
-        .defaultWindowPlacement { _, context in
-            DetailPlaceholder.centred(
-                on: context.defaultDisplay.visibleRect,
-                size: DetailPlaceholder.image
-            )
-        }
-        .commandsRemoved()
 
-        WindowGroup(
+        windowGroup(
             "Volume Details",
             id: Self.volumeDetailWindowID,
-            for: String.self
-        ) { $volumeID in
-            if let volumeID {
-                VolumeDetailWindow(id: volumeID)
-                    .environment(volumeManager)
+            placeholder: DetailPlaceholder.volume
+        ) { volumeID in
+            VolumeDetailWindow(id: volumeID)
+                .environment(volumeManager)
+        }
+    }
+
+    /// A detail window group, keyed by the id of what it shows.
+    private func windowGroup<Content: View>(
+        _ title: String,
+        id: String,
+        placeholder: CGSize,
+        @ViewBuilder content: @escaping (String) -> Content
+    ) -> some Scene {
+        WindowGroup(title, id: id, for: String.self) { $value in
+            if let value {
+                content(value)
             }
         }
         .windowResizability(.contentMinSize)
-        // Without this the group reuses the last detail window's frame, and a
-        // shorter tab then has to shrink into place instead of growing. It
-        // also carried the placement, hence the centring below.
         .restorationBehavior(.disabled)
         .defaultWindowPlacement { _, context in
             DetailPlaceholder.centred(
                 on: context.defaultDisplay.visibleRect,
-                size: DetailPlaceholder.volume
+                size: placeholder
             )
         }
         .commandsRemoved()
-
     }
 
     struct PreferencesCommands: Commands {

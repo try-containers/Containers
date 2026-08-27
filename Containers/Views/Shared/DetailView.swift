@@ -210,7 +210,8 @@ struct DetailView<
 
     private func fitTo(idealSize: CGSize) {
         // Zero from a tab with a bound is unbounded content, not empty.
-        let unbounded = idealSize.height <= 0 && tabMaxHeight(displayedTab) != nil
+        let unbounded =
+            idealSize.height <= 0 && tabMaxHeight(displayedTab) != nil
         let ideal = unbounded ? heightCap : idealSize.height
         guard ideal > 0 else { return }
 
@@ -412,16 +413,21 @@ struct DetailView<
             // for content that scrolls, which answers with its viewport and
             // has to declare the width it holds instead.
             let declared = subview.contentIdealSize
-            let natural = declared.width > 0 ? declared.width :
-            subview.sizeThatFits(.unspecified).width
+            let natural =
+                declared.width > 0
+                ? declared.width : subview.sizeThatFits(.unspecified).width
             let width = min(max(natural, minWidth), maxWidth)
 
             // At that width, not the current one: the outgoing width reports
             // a height for a wrap about to change.
             // Content that scrolls reports zero unless it declared a height,
             // and zero is what marks it as unbounded further up.
-            let height = subview.isContentUnbounded ? declared.height :
-            subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+            let height =
+                subview.isContentUnbounded
+                ? declared.height
+                : subview.sizeThatFits(
+                    ProposedViewSize(width: width, height: nil)
+                ).height
 
             // A nil width is SwiftUI probing extremes; an unready tab
             // measures whatever it draws while empty.

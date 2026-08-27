@@ -25,30 +25,48 @@ struct PullImageView: View {
     @FocusState private var isTagFieldFocused: Bool
 
     var body: some View {
-        FormStack {
+        VStack(spacing: 0) {
+            // Held against the title's rule rather than centred with the rest,
+            // so what sits between the two rules is the section itself.
             featuredImageContent
-                .frame(height: 132, alignment: .topLeading)
-        } content: {
-            FormRow(title: "Registry") {
-                FormPicker(
-                    placeholder: "Registry",
-                    options: Registry.allCases,
-                    selection: $registry
+                .frame(height: 156)
+                // Tinted rather than given a background colour: the sheet
+                // draws its own, and a named one resolves to the same white.
+                //
+                // Filled before the frame is pulled up so the grey covers the
+                // band itself, and spread past the sheet's padding to meet its
+                // edges without widening the cards.
+                .background(
+                    Color.primary.opacity(0.05)
+                        .padding(.horizontal, -Self.sheetContentPadding)
                 )
+                .padding(.top, -Self.sheetContentPadding)
+
+            FormStack {
+                FormRow(title: "Registry") {
+                    FormPicker(
+                        placeholder: "Registry",
+                        options: Registry.allCases,
+                        selection: $registry
+                    )
+                }
+
+                registryImageNameField
+
+                registryTagField
+
+                FormRow(title: "Platform") {
+                    FormPicker(
+                        placeholder: "Platform",
+                        options: platformOptions,
+                        selection: $platform
+                    )
+                }
             }
-
-            registryImageNameField
-
-            registryTagField
-
-            FormRow(title: "Platform") {
-                FormPicker(
-                    placeholder: "Platform",
-                    options: platformOptions,
-                    selection: $platform
-                )
-            }
+            // The form takes what the section leaves and centres in it.
+            .frame(maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: shouldLoadFeaturedImages, initial: true) {
             _,
             shouldLoad in
@@ -72,6 +90,13 @@ struct PullImageView: View {
 
         return options
     }
+
+    /// What `CreateView` insets its content by, which the section has to undo
+    /// to meet the sheet's edges.
+    private static let sheetContentPadding: CGFloat = 20
+
+    /// What each page arrow takes out of the row it sits beside.
+    private static let pageControlWidth: CGFloat = 28
 
     private let featuredImagesPerPage = 5
 
@@ -144,51 +169,64 @@ struct PullImageView: View {
 
     @ViewBuilder
     private var featuredImageContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Trending this week on \(registry.description)")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+        VStack(spacing: 10) {
+            VStack(spacing: 10) {
+                HStack {
+                    Spacer()
+                    Text("Trending this week on \(registry.description)")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                }
 
-            if !registryFeaturedImages.isEmpty {
-                HStack(alignment: .top, spacing: 8) {
-                    ForEach(currentPageImages) { image in
-                        FeaturedImageCard(image: image) {
-                            selectRegistryImage(image.name)
+                if !registryFeaturedImages.isEmpty {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(currentPageImages) { image in
+                            FeaturedImageCard(image: image) {
+                                selectRegistryImage(image.name)
+                            }
                         }
                     }
-                }
-                // Overlaid rather than placed alongside, so the cards keep the
-                // full width, and pushed back out past the edges so they sit
-                // clear of them: a form row is narrower than the sheet.
-                .overlay {
-                    if featuredPageCount > 1 {
-                        HStack(spacing: 0) {
-                            featuredPageButton(
-                                "arrow.left.circle.fill",
-                                step: -1,
-                                isDisabled: featuredImagePage == 0
-                            )
+                    .padding(
+                        .horizontal,
+                        featuredPageCount > 1 ? Self.pageControlWidth : 0
+                    )
+                    .overlay {
+                        if featuredPageCount > 1 {
+                            HStack(spacing: 0) {
+                                featuredPageButton(
+                                    "arrow.left.circle.fill",
+                                    step: -1,
+                                    isDisabled: featuredImagePage == 0
+                                )
 
-                            Spacer(minLength: 0)
+                                Spacer(minLength: 0)
 
-                            featuredPageButton(
-                                "arrow.right.circle.fill",
-                                step: 1,
-                                isDisabled: featuredImagePage
-                                    >= featuredPageCount - 1
-                            )
+                                featuredPageButton(
+                                    "arrow.right.circle.fill",
+                                    step: 1,
+                                    isDisabled: featuredImagePage
+                                        >= featuredPageCount - 1
+                                )
+                            }
                         }
-                        .padding(.horizontal, -28)
                     }
+                } else if isLoadingRegistryFeaturedImages {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 108)
+                } else {
+                    Text("No suggestions available")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 108)
                 }
-            } else if isLoadingRegistryFeaturedImages {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, minHeight: 108)
-            } else {
-                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+                .padding(.horizontal, -Self.sheetContentPadding)
         }
     }
 
@@ -209,8 +247,6 @@ struct PullImageView: View {
             .labelsHidden()
             .focused($isImageNameFieldFocused)
             .onChange(of: imageName) { oldValue, newValue in
-                // A new image invalidates the tag, but refreshing the tag
-                // suggestions is the tag field's job, not this one's.
                 if oldValue != newValue, tag != "latest" {
                     tag = "latest"
                 }

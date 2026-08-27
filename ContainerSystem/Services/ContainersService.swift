@@ -163,11 +163,19 @@ actor ContainersService {
             do {
                 let bundle = Bundle(path: dir)
                 let config = try bundle.configuration
+
+                if (try? bundle.createOptions)?.autoRemove ?? false {
+                    log.info("Reaping auto-remove container \(config.id)")
+                    try? bundle.delete()
+                    continue
+                }
+
                 results[config.id] = ContainerState(
                     snapshot: ContainerSnapshot(
                         configuration: config,
                         status: .stopped,
-                        networks: []
+                        networks: [],
+                        startedDate: bundle.state.startedDate
                     ),
                     container: LinuxContainer?.none,
                     bundle: bundle
@@ -244,7 +252,8 @@ actor ContainersService {
             path: path,
             initialFilesystem: initFs,
             kernel: kernel,
-            containerConfiguration: configuration
+            containerConfiguration: configuration,
+            options: options
         )
 
         do {
@@ -253,8 +262,10 @@ actor ContainersService {
                 description: configuration.image,
                 platform: configuration.platform
             )
-            try bundle.setContainerRootFs(cloning: imageFs)
-            try bundle.write(filename: "options.json", value: options)
+            try bundle.cloneContainerRootFs(
+                cloning: imageFs,
+                readonly: configuration.readOnly
+            )
 
             let snapshot = ContainerSnapshot(
                 configuration: configuration,
@@ -305,8 +316,8 @@ actor ContainersService {
 
         let config = try bundle.configuration
         let bundleKernel = try bundle.kernel
-        let initMount = try await MainActor.run {
-            try bundle.initialFilesystem.asMount
+        let initMount = await MainActor.run {
+            bundle.initialFilesystem.asMount
         }
         let vmm = VZVirtualMachineManager(
             kernel: bundleKernel,
@@ -406,6 +417,10 @@ actor ContainersService {
             czConfig.process.stdout = stdout
             czConfig.process.stderr = stderr
             czConfig.process.stdin = stdin
+
+            // The console is the only account of a boot that never reaches the
+            // container process, which is when stdio stays empty.
+            czConfig.bootLog = .file(path: bundle.bootLog, append: true)
         }
 
         do {
@@ -460,8 +475,22 @@ actor ContainersService {
         // Container init process started
 
         if isInit {
+            let startedDate = Date()
+
             state.snapshot.status = .running
-            state.snapshot.startedDate = Date()
+            state.snapshot.startedDate = startedDate
+
+            // Kept on disk so the container still reports when it last ran
+            // after the app has been quit and reopened.
+            do {
+                try state.bundle?.setState(
+                    Bundle.State(startedDate: startedDate)
+                )
+            } catch {
+                log.warning(
+                    "Failed to record start date for container \(id): \(error)"
+                )
+            }
 
             // Start port forwarding for published ports
             let config = state.snapshot.configuration
@@ -544,6 +573,10 @@ actor ContainersService {
 
         containers[id] = state
 
+        if autoRemoves(state) {
+            removeContainer(id: id)
+        }
+
         // Notify observers that container stopped
         notifyStateChange()
     }
@@ -563,13 +596,26 @@ actor ContainersService {
             )
         }
 
-        // Delete container bundle
+        removeContainer(id: id)
+        notifyStateChange()
+    }
+
+    /// Takes the container off disk and out of the list. The caller decides
+    /// whether removing it is allowed and when observers hear about it.
+    private func removeContainer(id: String) {
         let path = containerRoot.appendingPathComponent(id)
         try? FileManager.default.removeItem(at: path)
 
         releaseIP(for: id)
         containers.removeValue(forKey: id)
-        notifyStateChange()
+    }
+
+    /// Whether the container asked at create time to be taken away as soon as
+    /// it stops, which is answered by the options kept in its bundle.
+    private func autoRemoves(_ state: ContainerState) -> Bool {
+        guard let bundle = state.bundle else { return false }
+
+        return (try? bundle.createOptions)?.autoRemove ?? false
     }
 
     func updateMounts(id: String, mounts: [Filesystem]) async throws {
@@ -705,6 +751,10 @@ actor ContainersService {
         }
 
         containers[id] = state
+
+        if autoRemoves(state) {
+            removeContainer(id: id)
+        }
 
         notifyStateChange()
     }

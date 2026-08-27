@@ -36,6 +36,24 @@ struct ContainerOverview: View {
                 }
             }
 
+            InfoSection {
+                InfoRow(
+                    label: "Root Filesystem",
+                    value: snapshot.configuration.readOnly
+                        ? "Read-only" : "Read-write"
+                )
+                InfoRow(
+                    label: "Virtualization",
+                    value: snapshot.configuration.virtualization
+                        ? "Enabled" : "Disabled"
+                )
+                InfoRow(
+                    label: "SSH Agent",
+                    value: snapshot.configuration.ssh
+                        ? "Forwarded" : "Not forwarded"
+                )
+            }
+
             if !snapshot.configuration.labels.isEmpty {
                 InfoSection {
                     ForEach(sortedLabels, id: \.key) { label in

@@ -18,8 +18,7 @@ struct ImageHistory: View {
 
     @SwiftUI.State private var layers: [LayerInfo] = []
     @SwiftUI.State private var isLoading = true
-    @SwiftUI.State private var error: Error?
-    @SwiftUI.State private var showError = false
+    @SwiftUI.State private var errorAlert: ErrorAlert?
 
     struct LayerInfo: Identifiable {
         let id = UUID()
@@ -87,20 +86,7 @@ struct ImageHistory: View {
         .task {
             await loadLayers()
         }
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") {
-                    self.showError = false
-                }
-            },
-            message: {
-                if let error = error {
-                    Text(error.localizedDescription)
-                }
-            }
-        )
+        .errorAlert($errorAlert)
     }
 
     private func layerRow(layer: LayerInfo, index: Int) -> some View {
@@ -195,8 +181,10 @@ struct ImageHistory: View {
             }
 
         } catch {
-            self.error = error
-            self.showError = true
+            self.errorAlert = ErrorAlert(
+                "The image history couldn’t be loaded.",
+                error: error
+            )
             self.layers = []
         }
     }

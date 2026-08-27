@@ -77,17 +77,14 @@ public enum VolumeError: Error, LocalizedError {
 /// Utility functions for volume storage.
 public struct VolumeStorage {
     /// Regex pattern for valid volume names.
-    public static let volumeNamePattern = "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    public static let volumeNamePattern = EntityName.pattern
 
     /// Default volume size: 512 GB.
     public static let defaultVolumeSizeBytes: UInt64 = 512 * 1024 * 1024 * 1024
 
     /// Validate a volume name.
     public static func isValidVolumeName(_ name: String) -> Bool {
-        guard !name.isEmpty, name.count <= 255 else { return false }
-        let regex = try? NSRegularExpression(pattern: volumeNamePattern)
-        let range = NSRange(name.startIndex..., in: name)
-        return regex?.firstMatch(in: name, range: range) != nil
+        EntityName.isValid(name)
     }
 
     /// Generate a unique anonymous volume name.

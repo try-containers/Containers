@@ -84,8 +84,7 @@ struct ContainerDetailView: View {
     @SwiftUI.State private var snapshot: ContainerSnapshot?
     @SwiftUI.State private var status: ContainerStatus
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
-    @SwiftUI.State private var error: Error?
-    @SwiftUI.State private var showError: Bool = false
+    @SwiftUI.State private var errorAlert: ErrorAlert?
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
     @SwiftUI.State private var showAddVolumeMount: Bool = false
     @SwiftUI.State private var isLoadingSnapshot: Bool = false
@@ -155,20 +154,7 @@ struct ContainerDetailView: View {
             guard snapshot == nil else { return }
             await refreshSnapshot()
         }
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") {
-                    showError = false
-                }
-            },
-            message: {
-                if let error {
-                    Text(error.localizedDescription)
-                }
-            }
-        )
+        .errorAlert($errorAlert)
         .sheet(isPresented: $showAddVolumeMount) {
             MountVolumeSheet(
                 existingMountDestinations: snapshot?.configuration.mounts.map(
@@ -191,14 +177,16 @@ struct ContainerDetailView: View {
                             force: true
                         )
 
-                        error = nil
+                        errorAlert = nil
                         dismissWindow(
                             id: ContainersApp.containerDetailWindowID,
                             value: container.id
                         )
                     } catch {
-                        self.error = error
-                        showError = true
+                        self.errorAlert = ErrorAlert(
+                            "The container couldn’t be deleted.",
+                            error: error
+                        )
                     }
                 }
             }
@@ -232,8 +220,10 @@ struct ContainerDetailView: View {
 
             await refreshSnapshot()
         } catch {
-            self.error = error
-            showError = true
+            self.errorAlert = ErrorAlert(
+                "The volume couldn’t be mounted.",
+                error: error
+            )
         }
     }
 
@@ -361,10 +351,12 @@ struct ContainerDetailView: View {
             snapshot = updatedSnapshot
             container = updatedContainer
             status = updatedContainer.status
-            error = nil
+            errorAlert = nil
         } catch {
-            self.error = error
-            showError = true
+            self.errorAlert = ErrorAlert(
+                "The container couldn’t be refreshed.",
+                error: error
+            )
         }
     }
 
@@ -383,12 +375,14 @@ struct ContainerDetailView: View {
                     attachStdin: false
                 )
 
-                error = nil
+                errorAlert = nil
                 await refreshSnapshot()
 
             } catch {
-                self.error = error
-                showError = true
+                self.errorAlert = ErrorAlert(
+                    "The container couldn’t be started.",
+                    error: error
+                )
             }
         }
     }
@@ -407,12 +401,14 @@ struct ContainerDetailView: View {
                     timeoutSeconds: UserDefaults.stopContainerTimeoutSeconds
                 )
 
-                error = nil
+                errorAlert = nil
                 await refreshSnapshot()
 
             } catch {
-                self.error = error
-                showError = true
+                self.errorAlert = ErrorAlert(
+                    "The container couldn’t be stopped.",
+                    error: error
+                )
             }
         }
     }

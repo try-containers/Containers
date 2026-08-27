@@ -88,8 +88,7 @@ struct ImageDetailView: View {
     @SwiftUI.State private var selectedCategory: DetailCategory = .overview
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
     @SwiftUI.State private var showCreateContainer: Bool = false
-    @SwiftUI.State private var error: Error?
-    @SwiftUI.State private var showError: Bool = false
+    @SwiftUI.State private var errorAlert: ErrorAlert?
 
     enum DetailCategory: String, CaseIterable, Hashable {
         case overview
@@ -190,18 +189,7 @@ struct ImageDetailView: View {
                 "Delete \(image.name):\(image.tag)? This cannot be undone."
             )
         }
-        .alert(
-            "Error",
-            isPresented: $showError,
-            actions: {
-                Button("OK") { showError = false }
-            },
-            message: {
-                if let error {
-                    Text(error.localizedDescription)
-                }
-            }
-        )
+        .errorAlert($errorAlert)
     }
 
     private var actions: [DetailAction] {
@@ -224,8 +212,10 @@ struct ImageDetailView: View {
                     image: image.imageDescription,
                     imageManager: imageManager,
                     onError: { err in
-                        self.error = err
-                        self.showError = true
+                        self.errorAlert = ErrorAlert(
+                            "The image couldn’t be saved.",
+                            error: err
+                        )
                     }
                 )
             },
@@ -250,8 +240,10 @@ struct ImageDetailView: View {
                     value: image.imageDescription.reference
                 )
             } catch {
-                self.error = error
-                self.showError = true
+                self.errorAlert = ErrorAlert(
+                    "The image couldn’t be deleted.",
+                    error: error
+                )
             }
         }
     }

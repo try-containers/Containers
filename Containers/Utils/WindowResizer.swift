@@ -12,7 +12,7 @@ final class ResizeConstrainer: NSObject, NSWindowDelegate {
     /// Nonisolated for the forwarding below; delegate calls arrive on main.
     nonisolated(unsafe) weak var next: NSWindowDelegate?
 
-    func windowWillResize(_ sender: NSWindow,to frameSize: NSSize) -> NSSize {
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         var size =
             next?.windowWillResize?(sender, to: frameSize) ?? frameSize
 
@@ -32,7 +32,9 @@ final class ResizeConstrainer: NSObject, NSWindowDelegate {
         return size
     }
 
-    func windowWillUseStandardFrame(_ window: NSWindow,defaultFrame: NSRect) -> NSRect {
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame: NSRect)
+        -> NSRect
+    {
         var frame = window.frame
 
         if !constraints.widthIsFixed {
@@ -50,11 +52,10 @@ final class ResizeConstrainer: NSObject, NSWindowDelegate {
     // AppKit checks `responds(to:)` before sending an optional delegate
     // method, so both are needed to forward the rest to SwiftUI.
     nonisolated override func responds(to aSelector: Selector!) -> Bool {
-        super.responds(to: aSelector)
-            || next?.responds(to: aSelector) == true
+        super.responds(to: aSelector) || next?.responds(to: aSelector) == true
     }
 
-    nonisolated override func forwardingTarget(for aSelector: Selector!)-> Any? {
+    nonisolated override func forwardingTarget(for aSelector: Selector!) -> Any? {
         next
     }
 }
