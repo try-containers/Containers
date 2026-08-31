@@ -32,6 +32,58 @@ private struct MultiWriter: Writer {
     }
 }
 
+/// Answers a wait once, with whichever comes first: the container's exit, or
+/// the caller giving up on it.
+///
+/// A task's value is not a cancellable thing to await, so a container that
+/// runs for hours would hold whoever waited on it for just as long.
+private final class ExitWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Int32, Error>?
+    private var answered = false
+
+    func wait(for monitor: Task<Int32, Never>) async throws -> Int32 {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+
+                // Cancelled before the wait even began.
+                guard !answered else {
+                    lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+
+                self.continuation = continuation
+                lock.unlock()
+
+                Task {
+                    let exitCode = await monitor.value
+                    self.answer(with: .success(exitCode))
+                }
+            }
+        } onCancel: {
+            answer(with: .failure(CancellationError()))
+        }
+    }
+
+    private func answer(with result: Result<Int32, Error>) {
+        lock.lock()
+
+        guard !answered else {
+            lock.unlock()
+            return
+        }
+
+        answered = true
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+
+        continuation?.resume(with: result)
+    }
+}
+
 private struct FileHandleReader: ReaderStream {
     let handle: FileHandle
 
@@ -100,7 +152,8 @@ actor ContainersService {
         var snapshot: ContainerSnapshot
         var container: LinuxContainer?
         var bundle: Bundle?
-        var exitMonitorTask: Task<Void, Never>?
+        var exitMonitorTask: Task<Int32, Never>?
+        var lastExitCode: Int32?
     }
 
     private let log: Logger
@@ -515,13 +568,14 @@ actor ContainersService {
             let logger = self.log
 
             state.exitMonitorTask = Task { [weak self] in
+                var exitCode: Int32 = 0
                 do {
-                    try await container.wait()
-                    // Container exited
+                    exitCode = try await container.wait().exitCode
                 } catch {
                     logger.error("Error waiting for container \(id): \(error)")
                 }
-                await self?.handleContainerExit(id: id)
+                await self?.handleContainerExit(id: id, exitCode: exitCode)
+                return exitCode
             }
 
             containers[id] = state
@@ -529,6 +583,24 @@ actor ContainersService {
             // Notify observers that container started
             notifyStateChange()
         }
+    }
+
+    /// Waits for the container's init process to exit and returns its code.
+    func wait(id: String) async throws -> Int32 {
+        guard let state = containers[id] else {
+            throw ContainerizationError(
+                .notFound,
+                message: "container with ID \(id) not found"
+            )
+        }
+
+        // A container that exited before anyone waited on it has already torn
+        // down its monitor, so the code it left behind is all there is.
+        guard let monitor = state.exitMonitorTask else {
+            return state.lastExitCode ?? 0
+        }
+
+        return try await ExitWaiter().wait(for: monitor)
     }
 
     func stop(id: String, options: ContainerStopOptions) async throws {
@@ -618,35 +690,6 @@ actor ContainersService {
         return (try? bundle.createOptions)?.autoRemove ?? false
     }
 
-    func updateMounts(id: String, mounts: [Filesystem]) async throws {
-        guard var state = containers[id] else {
-            throw ContainerizationError(
-                .notFound,
-                message: "container with ID \(id) not found"
-            )
-        }
-
-        guard state.snapshot.status == .stopped else {
-            throw ContainerizationError(
-                .invalidState,
-                message:
-                    "container must be stopped before changing volume mounts"
-            )
-        }
-
-        let bundle =
-            state.bundle
-            ?? Bundle(path: containerRoot.appendingPathComponent(id))
-        var configuration = state.snapshot.configuration
-        configuration.mounts = mounts
-
-        try bundle.setConfiguration(configuration)
-        state.snapshot.configuration = configuration
-        state.bundle = bundle
-        containers[id] = state
-        notifyStateChange()
-    }
-
     /// Execute a command in a running container and return its output (uses vsock, no networking needed).
     func exec(id: String, arguments: [String]) async throws -> String {
         guard let state = containers[id], let container = state.container else {
@@ -733,11 +776,12 @@ actor ContainersService {
 
     // MARK: - Private Methods
 
-    private func handleContainerExit(id: String) {
+    private func handleContainerExit(id: String, exitCode: Int32) {
         guard var state = containers[id] else {
             log.warning("Container \(id) not found during exit handling")
             return
         }
+        state.lastExitCode = exitCode
         state.snapshot.status = .stopped
         state.snapshot.networks = []
         state.container = nil

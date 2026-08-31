@@ -39,6 +39,12 @@ public final class SystemManager {
         return .notStarted
     }
 
+    /// Observable state for progress while the system installs what a first
+    /// run needs. This mirrors the runtime's progress reporter.
+    public var progress: ProgressReporter {
+        runtime.progress
+    }
+
     /// Public initializer - creates instance referencing shared runtime
     public init() {
         self.runtime = ContainerRuntime.shared

@@ -45,6 +45,7 @@ struct ContainerLogs: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 180)
+            .frame(maxWidth: .infinity)
 
             if !hasLoaded {
                 // Hidden by the window until ready, so nothing to draw.

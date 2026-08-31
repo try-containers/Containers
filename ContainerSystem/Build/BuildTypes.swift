@@ -30,6 +30,7 @@ extension Builder {
         public var exports: [BuildExport]
         public var cacheIn: [String]
         public var cacheOut: [String]
+        public var statusUpdate: (@Sendable (String) async -> Void)?
 
         public init(
             id: String,
@@ -46,7 +47,8 @@ extension Builder {
             quiet: Bool = false,
             exports: [BuildExport] = [],
             cacheIn: [String] = [],
-            cacheOut: [String] = []
+            cacheOut: [String] = [],
+            statusUpdate: (@Sendable (String) async -> Void)? = nil
         ) {
             self.id = id
             self.contentStore = contentStore
@@ -63,6 +65,7 @@ extension Builder {
             self.exports = exports
             self.cacheIn = cacheIn
             self.cacheOut = cacheOut
+            self.statusUpdate = statusUpdate
         }
     }
 

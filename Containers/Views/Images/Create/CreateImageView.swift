@@ -36,11 +36,28 @@ struct CreateImageView: View {
             case .load: return "Load an image from a tar archive"
             }
         }
+
+        /// The steps the method reports, which the progress counts against.
+        var totalSteps: Int {
+            switch self {
+            case .pull: return 2
+            case .build: return 3
+            case .load: return 2
+            }
+        }
+    }
+
+    /// Where the sheet goes once the user says yes to stopping the work.
+    private enum StopIntent {
+        case goBack
+        case close
     }
 
     enum Step: Int, CaseIterable {
         case method = 0
         case configuration = 1
+        /// The work itself, so that leaving it is an ordinary step back.
+        case progress = 2
 
         var isCentered: Bool {
             switch self {
@@ -48,6 +65,8 @@ struct CreateImageView: View {
                 true
             case .configuration:
                 false
+            case .progress:
+                true
             }
         }
     }
@@ -59,8 +78,8 @@ struct CreateImageView: View {
     @SwiftUI.State private var stepTransitionDirection: Int = 1
     @SwiftUI.State private var selectedMethod: CreationMethod?
     @SwiftUI.State private var failure: ErrorAlert?
-    @SwiftUI.State private var isCreating: Bool = false
     @SwiftUI.State private var creationTask: Task<Void, Never>?
+    @SwiftUI.State private var stopIntent: StopIntent?
     @SwiftUI.State private var tarFile: URL?
     @SwiftUI.State private var forceLoad: Bool = false
     @SwiftUI.State private var contextDirectory: URL?
@@ -99,65 +118,106 @@ struct CreateImageView: View {
                 }
             },
             actions: {
-                if !isCreating {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Text("Cancel")
-                            .frame(width: .sheetButtonLabelWidth)
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button {
-                        cancelCreation()
-                    } label: {
-                        Text("Cancel")
-                            .frame(width: .sheetButtonLabelWidth)
-                    }
-                    .buttonStyle(.bordered)
+                Button {
+                    confirmStop(.close)
+                } label: {
+                    Text("Cancel")
+                        .frame(width: .sheetButtonLabelWidth)
                 }
+                .buttonStyle(.bordered)
 
                 Spacer()
 
                 Button(
-                    action: previousStep,
+                    action: { confirmStop(.goBack) },
                     label: {
                         Text("Previous")
                             .frame(width: .sheetButtonLabelWidth)
                     }
                 )
                 .buttonStyle(.bordered)
-                .disabled(
-                    (currentStep.rawValue == 0 && failure == nil) || isCreating
-                )
+                .disabled(currentStep.rawValue == 0 && failure == nil)
 
-                if !isCreating {
-                    switch currentStep {
-                    case .method:
-                        Button(
-                            action: nextStep,
-                            label: {
-                                Text("Next")
-                                    .frame(width: .sheetButtonLabelWidth)
-                            }
-                        )
-                        .defaultAction(enabled: canProceedToNextStep)
-                    case .configuration:
-                        Button(
-                            action: createImage,
-                            label: {
-                                Text("Create")
-                                    .frame(width: .sheetButtonLabelWidth)
-                            }
-                        )
-                        .defaultAction(
-                            enabled: canProceedToNextStep && failure == nil
-                        )
-                    }
+                switch currentStep {
+                case .method:
+                    Button(
+                        action: nextStep,
+                        label: {
+                            Text("Next")
+                                .frame(width: .sheetButtonLabelWidth)
+                        }
+                    )
+                    .defaultAction(enabled: canProceedToNextStep)
+                case .configuration, .progress:
+                    Button(
+                        action: createImage,
+                        label: {
+                            Text("Create")
+                                .frame(width: .sheetButtonLabelWidth)
+                        }
+                    )
+                    .defaultAction(
+                        enabled: !isCreating && canProceedToNextStep
+                            && failure == nil
+                    )
+                }
+            },
+            progress: {
+                if !imageManager.progress.detail.isEmpty {
+                    Text(imageManager.progress.detail)
+                        .font(.subheadline)
+                        .monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
                 }
             }
         )
-        .animation(.default, value: isCreating)
+        .confirmationDialog(
+            "Stop Creating Image",
+            isPresented: Binding(
+                get: { stopIntent != nil },
+                set: { presented in
+                    if !presented { stopIntent = nil }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: stopIntent
+        ) { intent in
+            Button("Stop", role: .destructive) {
+                stop(intent)
+            }
+
+            Button("Continue", role: .cancel) {}
+        } message: { _ in
+            Text(
+                "The image hasn’t finished being created. Stopping now discards it."
+            )
+        }
+    }
+
+    /// Work under way is only stopped on purpose, so the button asks first.
+    private func confirmStop(_ intent: StopIntent) {
+        guard isCreating else {
+            stop(intent)
+            return
+        }
+
+        stopIntent = intent
+    }
+
+    private func stop(_ intent: StopIntent) {
+        switch intent {
+        case .goBack:
+            previousStep()
+        case .close:
+            cancelCreation()
+            dismiss()
+        }
+    }
+
+    /// The work is a step, so nothing else has to be asked whether it runs.
+    private var isCreating: Bool {
+        currentStep == .progress
     }
 
     private func paneTitle(for step: Step) -> String? {
@@ -199,6 +259,8 @@ struct CreateImageView: View {
                 tarFile: $tarFile,
                 forceLoad: $forceLoad
             )
+        case .progress:
+            EmptyView()
         }
     }
 
@@ -216,6 +278,9 @@ struct CreateImageView: View {
     }
 
     private var progressMessage: String {
+        let step = imageManager.progress.description
+
+        guard step.isEmpty else { return step }
         guard let method = selectedMethod else { return "Processing..." }
 
         switch method {
@@ -244,7 +309,7 @@ struct CreateImageView: View {
         switch currentStep {
         case .method:
             return selectedMethod != nil
-        case .configuration:
+        case .configuration, .progress:
             switch selectedMethod {
             case .pull:
                 return !imageName.isEmpty
@@ -312,6 +377,8 @@ struct CreateImageView: View {
     }
 
     func previousStep() {
+        cancelCreation()
+
         // The failure stands in front of the step that produced it, so going
         // back leaves the failure rather than the step.
         guard failure == nil else {
@@ -342,11 +409,21 @@ struct CreateImageView: View {
     func createImage() {
         guard let method = selectedMethod else { return }
 
+        prepareStepTransition()
+        stepTransitionDirection = 1
         paneTitle = nil
 
-        creationTask = Task { @MainActor in
-            isCreating = true
+        withAnimation(Self.stepAnimation) {
+            currentStep = .progress
             failure = nil
+        }
+
+        creationTask = Task { @MainActor in
+            imageManager.progress.begin(totalTasks: method.totalSteps)
+
+            defer {
+                imageManager.progress.finish()
+            }
 
             do {
                 switch method {
@@ -362,25 +439,29 @@ struct CreateImageView: View {
                 dismiss()
 
             } catch is CancellationError {
-                isCreating = false
+                // Going back is what called this off, and it has moved on.
             } catch {
-                isCreating = false
-                failure = ErrorAlert(
-                    failureTitle(for: method),
-                    error: error,
-                    // What went wrong here reads in full, so there is nothing
-                    // to keep folded away.
-                    showsDetails: false
-                )
+                stepTransitionDirection = -1
+
+                withAnimation(Self.stepAnimation) {
+                    currentStep = .configuration
+                    failure = ErrorAlert(
+                        failureTitle(for: method),
+                        error: error,
+                        // What went wrong here reads in full, so there is
+                        // nothing to keep folded away.
+                        showsDetails: false
+                    )
+                }
             }
         }
     }
 
+    /// Stops work still in flight. Where the sheet goes next is the caller's
+    /// to say: back a step, or away altogether.
     func cancelCreation() {
         creationTask?.cancel()
         creationTask = nil
-        isCreating = false
-        paneTitle = paneTitle(for: currentStep)
     }
 
     private func failureTitle(for method: CreationMethod) -> String {

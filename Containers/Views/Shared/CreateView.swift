@@ -74,7 +74,9 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsHeader {
+            // Working, the sheet is only its progress and the buttons that
+            // answer it: the title and the steps it names are gone.
+            if showsHeader && !isProcessing {
                 Text(title)
                     .font(.headline)
                     .padding(.horizontal, 20)
@@ -83,7 +85,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
                     .background(Color(nsColor: .controlBackgroundColor))
             }
 
-            if TabBar.self != EmptyView.self {
+            if TabBar.self != EmptyView.self && !isProcessing {
                 Divider()
 
                 tabBar
@@ -104,6 +106,15 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
             footer
         }
         .frame(width: width, height: height)
+        // Centred on the sheet rather than on what is left above the buttons,
+        // and never in the way of the one button that answers it.
+        .overlay {
+            if isProcessing {
+                progressStatus
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
         .interactiveDismissDisabled(isProcessing)
         .errorAlert(error)
     }
@@ -112,19 +123,24 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         // The header sits outside the transition: it belongs to the sheet
         // rather than to the step, so it does not slide or fade with one.
         VStack(alignment: .leading, spacing: 0) {
-            if let contentTitle {
-                Text(contentTitle)
-                    .padding(.horizontal, contentPadding)
-                    .padding(.top, contentPadding)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // The step change animates the content across; the title going
+            // with it is the sheet's furniture moving, so it changes instantly.
+            Group {
+                if let contentTitle {
+                    Text(contentTitle)
+                        .padding(.horizontal, contentPadding)
+                        .padding(.top, contentPadding)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Ruled off directly under the title, so the rule belongs to
-                // it rather than to whatever the step puts below.
-                if contentTitleRule {
-                    Divider()
+                    // Ruled off directly under the title, so the rule belongs
+                    // to it rather than to whatever the step puts below.
+                    if contentTitleRule {
+                        Divider()
+                    }
                 }
             }
+            .transaction { $0.animation = nil }
 
             ZStack(alignment: contentAlignment) {
                 contentContainer
@@ -135,11 +151,6 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .opacity(isProcessing ? 0 : 1)
-        .overlay {
-            if isProcessing {
-                progressStatus
-            }
-        }
     }
 
     @ViewBuilder
@@ -170,7 +181,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
             VStack(spacing: 4) {
                 if let progressTitle {
                     Text(progressTitle)
-                        .font(.subheadline)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
 

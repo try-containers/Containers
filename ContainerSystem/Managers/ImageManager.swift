@@ -28,6 +28,12 @@ public final class ImageManager {
 
     private let logger: Logger
 
+    /// Observable state for progress during long-running operations
+    /// This mirrors the runtime's progress reporter
+    public var progress: ProgressReporter {
+        runtime.progress
+    }
+
     /// Public initializer - creates instance referencing shared runtime
     public init() {
         self.runtime = ContainerRuntime.shared
@@ -152,18 +158,20 @@ public final class ImageManager {
 
         logger.info("Pulling image: \(processedReference)")
 
+        progress.step("Fetching image", itemsName: "blobs")
         let imageDescription = try await service.pull(
             reference: processedReference,
             platform: platform,
             insecure: insecure,
-            progressUpdate: { _ in }
+            progressUpdate: progress.handler()
         )
 
         logger.info("Unpacking image")
+        progress.step("Unpacking image", itemsName: "entries")
         try await service.unpack(
             description: imageDescription,
             platform: platform,
-            progressUpdate: { _ in }
+            progressUpdate: progress.handler()
         )
 
         logger.info("Image pulled successfully: \(processedReference)")
@@ -244,6 +252,7 @@ public final class ImageManager {
         // STEP 2: Start/restart the builder NOW with the directory already in place
         let builderController = BuilderController()
 
+        progress.step("Dialing builder")
         try await builderController.restart(cpus: cpus, memory: memory)
 
         // STEP 3: Connect to the (re)started builder
@@ -402,12 +411,17 @@ public final class ImageManager {
             quiet: quiet,
             exports: exports,
             cacheIn: cacheIn,
-            cacheOut: cacheOut
+            cacheOut: cacheOut,
+            statusUpdate: { [progress] line in
+                await MainActor.run { progress.report(line) }
+            }
         )
 
         logger.info(
             "Starting sandboxed build with config: buildID=\(id), contextDir=\(tempContextDir.path)"
         )
+
+        progress.step("Building image")
 
         // Use sandboxed builder which handles image resolution without XPC
         try await builder.build(config)
@@ -447,14 +461,14 @@ public final class ImageManager {
                     force: false
                 )
 
+                progress.step("Unpacking built image", itemsName: "entries")
                 for imageDesc in imageDescriptions {
                     try Task.checkCancellation()
 
                     try await imagesService.unpack(
                         description: imageDesc,
                         platform: Platform?.none,
-                        progressUpdate: { events in
-                        }
+                        progressUpdate: progress.handler()
                     )
                 }
 
@@ -600,15 +614,17 @@ public final class ImageManager {
             }
         }
 
+        progress.step("Loading tar archive")
         let loaded = try await service.load(from: source, force: force)
 
         logger.info("Unpacking images")
 
+        progress.step("Unpacking image", itemsName: "entries")
         for imageDescription in loaded.0 {
             try await service.unpack(
                 description: imageDescription,
                 platform: Platform?.none,
-                progressUpdate: { _ in }
+                progressUpdate: progress.handler()
             )
         }
 

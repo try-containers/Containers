@@ -28,9 +28,9 @@ struct FormPicker<Option: Hashable & CustomStringConvertible>: NSViewRepresentab
 
     let placeholder: String
     let options: [Option]
-    
+
     @Binding var selection: Option
-    
+
     var fillsAvailableWidth: Bool = true
     var actionTitle: String?
     var onAction: (() -> Void)?

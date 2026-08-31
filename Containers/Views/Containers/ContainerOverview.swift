@@ -26,17 +26,19 @@ struct ContainerOverview: View {
                     label: "Arch",
                     value: snapshot.configuration.platform.architecture
                 )
-                InfoRow(label: "Command", value: commandSummary)
-                InfoRow(label: "Last Started", value: startedAtSummary)
-            }
 
-            if portsSummary.count > 0 {
-                InfoSection {
+                if let commandSummary {
+                    InfoRow(label: "Command", value: commandSummary)
+                }
+
+                if let startedAtSummary {
+                    InfoRow(label: "Last Started", value: startedAtSummary)
+                }
+
+                if let portsSummary {
                     InfoRow(label: "Ports", value: portsSummary)
                 }
-            }
 
-            InfoSection {
                 InfoRow(
                     label: "Root Filesystem",
                     value: snapshot.configuration.readOnly
@@ -76,7 +78,7 @@ struct ContainerOverview: View {
         snapshot.configuration.platform.os.localizedCapitalized
     }
 
-    private var commandSummary: String {
+    private var commandSummary: String? {
         let process = snapshot.configuration.initProcess
         let executable = process.executable.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -88,21 +90,21 @@ struct ContainerOverview: View {
         return ([executable] + arguments)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-            .nilIfEmpty ?? "N/A"
+            .nilIfEmpty
     }
 
-    private var portsSummary: String {
+    private var portsSummary: String? {
         let ports = snapshot.configuration.publishedPorts.map(\.description)
         let sockets = snapshot.configuration.publishedSockets.map {
             "\($0.hostPath) -> \($0.containerPath)"
         }
 
-        return (ports + sockets).joined(separator: ", ").nilIfEmpty ?? "N/A"
+        return (ports + sockets).joined(separator: ", ").nilIfEmpty
     }
 
-    private var startedAtSummary: String {
+    private var startedAtSummary: String? {
         guard let startedDate = snapshot.startedDate else {
-            return "N/A"
+            return nil
         }
 
         return Self.relativeFormatter.localizedString(

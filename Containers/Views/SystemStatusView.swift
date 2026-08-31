@@ -14,7 +14,12 @@ struct SystemStatusView: View {
     var body: some View {
         switch system.status {
         case .starting:
-            progress("Starting the container system…")
+            progress(
+                system.progress.description.isEmpty
+                    ? "Starting the container system…"
+                    : system.progress.description,
+                detail: system.progress.detail
+            )
         case .stopping:
             progress("Stopping the container system…")
         case .failed:
@@ -28,14 +33,27 @@ struct SystemStatusView: View {
 
     /// Work under way is not missing content: it is a spinner and a line
     /// saying what is happening, not an unavailable-content view.
-    private func progress(_ title: String) -> some View {
+    private func progress(
+        _ title: String,
+        detail: String = ""
+    ) -> some View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.large)
 
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(spacing: 4) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.subheadline)
+                        .monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

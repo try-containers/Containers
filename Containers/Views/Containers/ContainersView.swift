@@ -25,6 +25,9 @@ struct ContainersView: View {
     @State private var errorAlert: ErrorAlert?
     @State private var showDeleteConfirmation = false
     @State private var showCreateContainerView = false
+    /// Containers whose start or stop is still in flight, so the row's button
+    /// cannot be pressed again while it runs.
+    @State private var runningContainerIDs: Set<String> = []
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -120,55 +123,25 @@ struct ContainersView: View {
                     switch container.status {
                     case .running:
                         Button(
-                            action: {
-                                Task {
-                                    do {
-                                        try await containerManager.stop(
-                                            ids: [container.id],
-                                            timeoutSeconds: Int32(
-                                                UserDefaults
-                                                    .stopContainerTimeoutSeconds
-                                            )
-                                        )
-                                    } catch (let err) {
-                                        self.errorAlert = ErrorAlert(
-                                            "The container couldn’t be stopped.",
-                                            error: err
-                                        )
-                                    }
-                                }
-                            },
+                            action: { stopContainer(container) },
                             label: {
                                 Image(systemName: "stop.fill")
                                     .foregroundStyle(.gray)
                             }
                         )
                         .buttonStyle(.plain)
+                        .disabled(runningContainerIDs.contains(container.id))
 
                     case .stopped:
                         Button(
-                            action: {
-                                Task {
-                                    do {
-                                        try await containerManager.run(
-                                            id: container.id,
-                                            attachStdout: false,
-                                            attachStdin: false
-                                        )
-                                    } catch (let err) {
-                                        self.errorAlert = ErrorAlert(
-                                            "The container couldn’t be started.",
-                                            error: err
-                                        )
-                                    }
-                                }
-                            },
+                            action: { startContainer(container) },
                             label: {
                                 Image(systemName: "play.fill")
                                     .foregroundStyle(.blue)
                             }
                         )
                         .buttonStyle(.plain)
+                        .disabled(runningContainerIDs.contains(container.id))
 
                     case .stopping, .unknown:
                         Image(systemName: "slash.circle")
@@ -253,6 +226,45 @@ struct ContainersView: View {
         case .stopping: return .orange
         case .stopped: return .red
         case .unknown: return .secondary
+        }
+    }
+
+    private func startContainer(_ container: ContainerViewModel) {
+        runningContainerIDs.insert(container.id)
+
+        Task {
+            defer { runningContainerIDs.remove(container.id) }
+
+            do {
+                try await containerManager.run(id: container.id)
+            } catch (let err) {
+                self.errorAlert = ErrorAlert(
+                    "The container couldn’t be started.",
+                    error: err
+                )
+            }
+        }
+    }
+
+    private func stopContainer(_ container: ContainerViewModel) {
+        runningContainerIDs.insert(container.id)
+
+        Task {
+            defer { runningContainerIDs.remove(container.id) }
+
+            do {
+                try await containerManager.stop(
+                    ids: [container.id],
+                    timeoutSeconds: Int32(
+                        UserDefaults.stopContainerTimeoutSeconds
+                    )
+                )
+            } catch (let err) {
+                self.errorAlert = ErrorAlert(
+                    "The container couldn’t be stopped.",
+                    error: err
+                )
+            }
         }
     }
 

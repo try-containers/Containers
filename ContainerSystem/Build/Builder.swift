@@ -295,6 +295,7 @@ private actor BuildPipeline {
                         .isEmpty
                 {
                     logger.info("\(message)")
+                    await config.statusUpdate?(message)
                 }
             case .buildError(let error):
                 logger.error("Build error: \(error.message)")

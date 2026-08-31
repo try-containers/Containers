@@ -10,6 +10,8 @@ import SwiftUI
 /// A labelled row in a `FormStack`, with the control column's width and the
 /// caption that can sit under it.
 struct FormRow<Content: View>: View {
+    @Environment(\.formLabelWidth) private var labelWidth
+
     var title: String?
     var description: String?
     @ViewBuilder var content: Content
@@ -20,6 +22,10 @@ struct FormRow<Content: View>: View {
                 column
             } label: {
                 Text("\(title):")
+                    .frame(
+                        width: labelWidth > 0 ? labelWidth : nil,
+                        alignment: .trailing
+                    )
             }
         } else {
             column

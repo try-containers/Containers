@@ -179,11 +179,6 @@ public struct Bundle: Sendable {
         (try? load(filename: Self.stateFilename)) ?? State()
     }
 
-    /// Persist an updated container configuration to disk.
-    public func setConfiguration(_ configuration: ContainerConfiguration) throws {
-        try write(filename: Self.configFilename, value: configuration)
-    }
-
     public func setState(_ state: State) throws {
         try write(filename: Self.stateFilename, value: state)
     }

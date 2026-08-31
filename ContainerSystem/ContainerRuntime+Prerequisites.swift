@@ -20,15 +20,26 @@ extension ContainerRuntime {
 
     /// Install system prerequisites (init image and kernel)
     func installPrerequisites() async throws {
-        // Check and install init filesystem if needed
         let initExists = await initImageExists()
+        let kernelExistsResult = await kernelExists()
+
+        // What a first run has to fetch is known before it starts, so the
+        // steps count against what will actually be done.
+        let steps = (initExists ? 0 : 2) + (kernelExistsResult ? 0 : 2)
+
+        guard steps > 0 else { return }
+
+        progress.begin(totalTasks: steps)
+
+        defer {
+            progress.finish()
+        }
+
         if !initExists {
             logger.info("Installing base container filesystem...")
             try await installInitialFilesystem()
         }
 
-        // Check and install default kernel if needed
-        let kernelExistsResult = await kernelExists()
         if !kernelExistsResult {
             logger.info("Installing default kernel...")
             try await installDefaultKernel()
@@ -43,17 +54,19 @@ extension ContainerRuntime {
 
         let service = try await getImagesService()
 
+        progress.step("Fetching init image", itemsName: "blobs")
         let imageDescription = try await service.pull(
             reference: initFsRef,
             platform: .current,
             insecure: false,
-            progressUpdate: { _ in }
+            progressUpdate: progress.handler()
         )
 
+        progress.step("Unpacking init image", itemsName: "entries")
         try await service.unpack(
             description: imageDescription,
             platform: .current,
-            progressUpdate: { _ in }
+            progressUpdate: progress.handler()
         )
     }
 
@@ -98,9 +111,11 @@ extension ContainerRuntime {
 
         logger.info("Downloading from: \(sourceURL) to: \(tarFile.path)")
 
-        let (tempDownloadURL, response) = try await URLSession.shared.download(
-            from: sourceURL
-        )
+        progress.step("Downloading kernel")
+        let response = try await FileDownloader(
+            destination: tarFile,
+            progress: progress
+        ).download(from: sourceURL)
 
         if let httpResponse = response as? HTTPURLResponse {
             logger.info(
@@ -115,12 +130,10 @@ extension ContainerRuntime {
             }
         }
 
-        // Move downloaded file to our temp directory
-        try FileManager.default.moveItem(at: tempDownloadURL, to: tarFile)
-
         logger.info("Downloaded to: \(tarFile.path)")
 
         // Extract the kernel using ArchiveReader (same as Apple Container CLI)
+        progress.step("Unpacking kernel")
         let kernelFile = try extractKernelFromArchive(
             tarFile: tarFile,
             kernelPath: defaultKernelBinaryPath,

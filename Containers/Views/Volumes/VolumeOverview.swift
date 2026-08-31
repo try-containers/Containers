@@ -20,7 +20,11 @@ struct VolumeOverview: View {
                     label: "State",
                     value: volume.inUse ? "In use" : "Unused"
                 )
-                InfoRow(label: "Size", value: volume.formattedSize ?? "N/A")
+
+                if let formattedSize = volume.formattedSize {
+                    InfoRow(label: "Size", value: formattedSize)
+                }
+
                 InfoRow(label: "Created", value: volume.formattedCreated)
                 InfoRow(label: "Driver", value: volume.driver)
                 InfoRow(label: "Format", value: volume.format)

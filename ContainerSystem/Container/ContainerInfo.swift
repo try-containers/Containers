@@ -36,6 +36,7 @@ public struct ContainerInfo: Sendable {
     // MARK: FLAGS
 
     public var deleteOnTermination = false
+    public var detach = false
     public var virtualization: Bool = false
     public var ssh = false
     public var readOnly = false

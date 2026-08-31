@@ -29,10 +29,10 @@ public final class ContainerManager {
         runtime.lastContainerStateChange
     }
 
-    /// Observable property for progress messages during long-running operations
-    /// This mirrors the runtime's progressMessage property
-    public var progressMessage: String {
-        runtime.progressMessage
+    /// Observable state for progress during long-running operations
+    /// This mirrors the runtime's progress reporter
+    public var progress: ProgressReporter {
+        runtime.progress
     }
 
     /// Public initializer - creates instance referencing shared runtime
@@ -94,6 +94,9 @@ public final class ContainerManager {
             registryScheme: registryScheme
         )
 
+        try Task.checkCancellation()
+        progress.step("Creating container")
+
         let options = ContainerCreateOptions(
             autoRemove: container.deleteOnTermination
         )
@@ -104,6 +107,13 @@ public final class ContainerManager {
             options: options
         )
 
+        // A container whose creation was called off while the service was
+        // writing it is taken back out, so that cancelling leaves nothing.
+        if Task.isCancelled {
+            try? await service.delete(id: configuration.id)
+            throw CancellationError()
+        }
+
         if !container.cidfile.isEmpty {
             try writeCIDFile(path: container.cidfile, id: configuration.id)
         }
@@ -111,12 +121,15 @@ public final class ContainerManager {
         return configuration.id
     }
 
+    /// Starts a container, returning its exit code when attached to it and
+    /// `nil` when detached from it.
+    @discardableResult
     public func run(
         id: String,
-        attachStdout: Bool = false,
-        attachStdin: Bool = false
-    ) async throws {
+        detach: Bool = true
+    ) async throws -> Int32? {
         logger.info("Starting container", metadata: ["id": "\(id)"])
+        progress.step("Starting container")
         let service = try await runtime.getContainersService()
 
         do {
@@ -134,6 +147,12 @@ public final class ContainerManager {
                 message: "failed to start container: \(error)"
             )
         }
+
+        guard !detach else {
+            return nil
+        }
+
+        return try await service.wait(id: id)
     }
 
     public func list() async throws -> [ContainerSnapshot] {
@@ -218,71 +237,6 @@ public final class ContainerManager {
             ids: snapshots.map(\.configuration.id),
             timeoutSeconds: timeoutSeconds
         )
-    }
-
-    public func mountVolume(
-        id: String,
-        volume: Volume,
-        destination: String
-    ) async throws {
-        logger.info(
-            "Mounting volume",
-            metadata: [
-                "container": "\(id)", "volume": "\(volume.name)",
-                "destination": "\(destination)",
-            ]
-        )
-        let service = try await runtime.getContainersService()
-        let snapshots = await service.list()
-
-        guard
-            let snapshot = snapshots.first(where: {
-                $0.configuration.id == id
-            })
-        else {
-            throw ContainerizationError(
-                .notFound,
-                message: "Container not found: \(id)"
-            )
-        }
-
-        guard snapshot.status == .stopped else {
-            throw ContainerizationError(
-                .invalidState,
-                message:
-                    "container must be stopped before changing volume mounts"
-            )
-        }
-
-        let trimmedDestination = destination.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        guard trimmedDestination.hasPrefix("/") else {
-            throw ContainerizationError(
-                .invalidArgument,
-                message: "Volume mount path must be an absolute container path"
-            )
-        }
-
-        var mounts = snapshot.configuration.mounts
-        guard !mounts.contains(where: { $0.destination == trimmedDestination })
-        else {
-            throw ContainerizationError(
-                .exists,
-                message: "a mount already exists at \(trimmedDestination)"
-            )
-        }
-
-        mounts.append(
-            Filesystem.volume(
-                name: volume.name,
-                format: volume.format,
-                source: volume.source,
-                destination: trimmedDestination
-            )
-        )
-
-        try await service.updateMounts(id: id, mounts: mounts)
     }
 
     public func delete(ids: [String], force: Bool) async throws {
@@ -421,16 +375,11 @@ public final class ContainerManager {
         if let existing = existingImages.first(where: {
             $0.reference == reference
         }) {
+            progress.step("Unpacking image", itemsName: "entries")
             try await imagesService.unpack(
                 description: existing,
                 platform: platform,
-                progressUpdate: { events in
-                    Task { @MainActor in
-                        self.runtime.progressMessage = events.map {
-                            String(describing: $0)
-                        }.joined(separator: "\n")
-                    }
-                }
+                progressUpdate: progress.handler()
             )
             return existing
         }
@@ -446,16 +395,11 @@ public final class ContainerManager {
         }
 
         if let existing = matchingByDigest {
+            progress.step("Unpacking image", itemsName: "entries")
             try await imagesService.unpack(
                 description: existing,
                 platform: platform,
-                progressUpdate: { events in
-                    Task { @MainActor in
-                        self.runtime.progressMessage = events.map {
-                            String(describing: $0)
-                        }.joined(separator: "\n")
-                    }
-                }
+                progressUpdate: progress.handler()
             )
             return existing
         }
@@ -489,16 +433,11 @@ public final class ContainerManager {
             }
 
             if let existing = matchingImage {
+                progress.step("Unpacking image", itemsName: "entries")
                 try await imagesService.unpack(
                     description: existing,
                     platform: platform,
-                    progressUpdate: { events in
-                        Task { @MainActor in
-                            self.runtime.progressMessage = events.map {
-                                String(describing: $0)
-                            }.joined(separator: "\n")
-                        }
-                    }
+                    progressUpdate: progress.handler()
                 )
                 return existing
             }
@@ -508,25 +447,15 @@ public final class ContainerManager {
             reference: reference,
             platform: platform,
             insecure: insecure,
-            progressUpdate: { events in
-                Task { @MainActor in
-                    self.runtime.progressMessage = events.map {
-                        String(describing: $0)
-                    }.joined(separator: "\n")
-                }
-            }
+            progressUpdate: progress.handler()
         )
 
+        try Task.checkCancellation()
+        progress.step("Unpacking image", itemsName: "entries")
         try await imagesService.unpack(
             description: imageDescription,
             platform: platform,
-            progressUpdate: { events in
-                Task { @MainActor in
-                    self.runtime.progressMessage = events.map {
-                        String(describing: $0)
-                    }.joined(separator: "\n")
-                }
-            }
+            progressUpdate: progress.handler()
         )
 
         return imageDescription
@@ -560,6 +489,8 @@ public final class ContainerManager {
         let imagesService = try await runtime.getImagesService()
 
         // Resolve image - check local first, then pull if needed
+        try Task.checkCancellation()
+        progress.step("Fetching image", itemsName: "blobs")
         let imageDescription = try await resolveImage(
             reference: processedReference,
             platform: platform,
@@ -567,31 +498,25 @@ public final class ContainerManager {
             imagesService: imagesService
         )
 
+        try Task.checkCancellation()
+        progress.step("Fetching kernel", itemsName: "binary")
         let kernel = try await getKernel(container: container)
 
+        try Task.checkCancellation()
+        progress.step("Fetching init image", itemsName: "blobs")
         let initImageDescription = try await imagesService.pull(
             reference: ClientImage.initImageRef,
             platform: .current,
             insecure: insecure,
-            progressUpdate: { events in
-                Task { @MainActor in
-                    self.runtime.progressMessage = events.map {
-                        String(describing: $0)
-                    }.joined(separator: "\n")
-                }
-            }
+            progressUpdate: progress.handler()
         )
 
+        try Task.checkCancellation()
+        progress.step("Unpacking init image", itemsName: "entries")
         try await imagesService.unpack(
             description: initImageDescription,
             platform: platform,
-            progressUpdate: { events in
-                Task { @MainActor in
-                    self.runtime.progressMessage = events.map {
-                        String(describing: $0)
-                    }.joined(separator: "\n")
-                }
-            }
+            progressUpdate: progress.handler()
         )
 
         // Get image config - we need to use the lower level ImageStore for this

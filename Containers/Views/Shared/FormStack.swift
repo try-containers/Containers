@@ -16,8 +16,27 @@ import SwiftUI
 /// The header sits outside the form so it can span both columns; a row inside
 /// one only ever occupies the control column.
 struct FormStack<Header: View, Content: View>: View {
+    /// Where the fields begin, as a share of the width the sheet gives the
+    /// form, and how much of that the labels before them take. Proportions
+    /// rather than measures keep every tab's fields in one place, whatever a
+    /// tab happens to call its rows.
+    private static var fieldStartRatio: CGFloat { 1 / 3 }
+    private static var labelWidthRatio: CGFloat { 1 / 6 }
+
     @ViewBuilder var header: Header
     @ViewBuilder var content: Content
+
+    @State private var availableWidth: CGFloat = .zero
+
+    /// What stands before the label column, so the fields start where they
+    /// should.
+    private var formLeading: CGFloat {
+        max(
+            0,
+            availableWidth * Self.fieldStartRatio
+                - availableWidth * Self.labelWidthRatio
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -30,8 +49,25 @@ struct FormStack<Header: View, Content: View>: View {
             .formStyle(.columns)
         }
         .fixedSize(horizontal: true, vertical: false)
-        .frame(maxWidth: .infinity)
+        // The form is placed by where its fields should fall rather than by
+        // its own width, which is what centring it made of them.
+        .padding(.leading, formLeading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Measured after the fill, so it is the room the sheet gives the form
+        // rather than the room the form asked for.
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            availableWidth = width
+        }
+        .environment(\.formLabelWidth, availableWidth * Self.labelWidthRatio)
     }
+}
+
+extension EnvironmentValues {
+    /// The width every row gives its label, so that the fields line up in the
+    /// same place whatever a tab happens to call them.
+    @Entry var formLabelWidth: CGFloat = 0
 }
 
 extension FormStack where Header == EmptyView {

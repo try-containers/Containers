@@ -62,9 +62,10 @@ struct CreateVolumeView: View {
                         .frame(width: .sheetButtonLabelWidth)
                 }
                 .defaultAction(
-                    enabled: !name.trimmingCharacters(
-                        in: .whitespacesAndNewlines
-                    ).isEmpty
+                    enabled: !showProgressView
+                        && !name.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty
                 )
             }
         )

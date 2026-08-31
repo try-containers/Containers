@@ -72,12 +72,17 @@ struct CreateContainerView: View {
     @SwiftUI.State private var resource: ContainerConfiguration.Resources = .init()
     @SwiftUI.State private var registryScheme: String = RequestScheme.auto.rawValue
     @SwiftUI.State private var platformString: String = Platform.current.description
-    @SwiftUI.State private var shmSizeInMiB: Int = 0
+    @SwiftUI.State private var shmSize: String = ""
     @SwiftUI.State private var capabilities: [Capability] = []
     @SwiftUI.State private var errorAlert: ErrorAlert?
     @SwiftUI.State private var localImages: [ImageDescription] = []
     @SwiftUI.State private var availableVolumes: [Volume] = []
     @SwiftUI.State private var showProgressView: Bool = false
+    @SwiftUI.State private var creationTask: Task<Void, Never>?
+    @SwiftUI.State private var stepTransitionDirection: Int = 1
+    @SwiftUI.State private var showStopConfirmation: Bool = false
+    @SwiftUI.State private var optionsWidth: CGFloat = .zero
+    @SwiftUI.State private var flagsStart: CGFloat = .zero
     @SwiftUI.State private var showPickLocalImage: Bool = false
     @SwiftUI.State private var selectedTab: Tab = .info
 
@@ -91,11 +96,15 @@ struct CreateContainerView: View {
             title: mode.title,
             error: $errorAlert,
             isProcessing: showProgressView,
-            progressTitle: mode.progressTitle,
-            width: 660,
+            progressTitle: containerManager.progress.description.isEmpty
+                ? mode.progressTitle : containerManager.progress.description,
+            width: Self.sheetWidth,
             height: 460,
             scrollsContent: selectedTab == .options,
             contentPadding: selectedTab == .info ? 20 : 0,
+            contentID: showProgressView
+                ? AnyHashable("progress") : AnyHashable(selectedTab),
+            contentTransition: stepTransition,
             tabBar: {
                 CreateViewTabBar(selection: $selectedTab)
             },
@@ -105,7 +114,7 @@ struct CreateContainerView: View {
             actions: {
                 Spacer()
                 Button {
-                    dismiss()
+                    confirmStop()
                 } label: {
                     Text("Cancel")
                         .frame(width: .sheetButtonLabelWidth)
@@ -119,15 +128,17 @@ struct CreateContainerView: View {
                         .frame(width: .sheetButtonLabelWidth)
                 }
                 .defaultAction(
-                    enabled: !imageReference.trimmingCharacters(
-                        in: .whitespacesAndNewlines
-                    ).isEmpty
+                    enabled: !showProgressView
+                        && !imageReference.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty
                 )
             },
             progress: {
-                if !containerManager.progressMessage.isEmpty {
-                    Text(containerManager.progressMessage)
-                        .font(.caption)
+                if !containerManager.progress.detail.isEmpty {
+                    Text(containerManager.progress.detail)
+                        .font(.subheadline)
+                        .monospacedDigit()
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
                 }
@@ -146,6 +157,22 @@ struct CreateContainerView: View {
                 )
             }
         )
+        .confirmationDialog(
+            mode == .run ? "Stop Running Container" : "Stop Creating Container",
+            isPresented: $showStopConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Stop", role: .destructive) {
+                cancelCreation()
+                dismiss()
+            }
+
+            Button("Continue", role: .cancel) {}
+        } message: {
+            Text(
+                "The container hasn’t finished being \(mode == .run ? "started" : "created"). Stopping now discards it."
+            )
+        }
         .task {
             await preloadLocalImages()
             await preloadVolumes()
@@ -153,6 +180,16 @@ struct CreateContainerView: View {
         .onDisappear {
             self.showProgressView = false
         }
+    }
+
+    /// Work under way is only stopped on purpose, so the button asks first.
+    private func confirmStop() {
+        guard showProgressView else {
+            dismiss()
+            return
+        }
+
+        showStopConfirmation = true
     }
 
     private static var platformOptions: [String] {
@@ -169,13 +206,11 @@ struct CreateContainerView: View {
     @ViewBuilder
     private var imageSelectionField: some View {
         if mode == .run {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Image:")
+            FormRow(title: "Image") {
                 Text(imageReference)
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .fieldControl()
             }
         } else {
             FormRow(title: "Image") {
@@ -263,7 +298,7 @@ struct CreateContainerView: View {
             FormStack {
                 FormRow(
                     title: "Entrypoint",
-                    description: "Overrides the image's default entrypoint."
+                    description: "Override the entrypoint of the image."
                 ) {
                     FormField(
                         placeholder: "/bin/sh -c \"echo hello\"",
@@ -339,11 +374,21 @@ struct CreateContainerView: View {
                     )
                 }
 
+                FormRow(
+                    title: "Shared Memory",
+                    description: "Size of /dev/shm (e.g. 64M, 1G)"
+                ) {
+                    FormField(
+                        placeholder: "64M",
+                        value: $shmSize
+                    )
+                }
+
                 FormRow(title: "Management") {
                     VStack(alignment: .leading) {
                         Toggle(
-                            "Mount the root filesystem as read-only",
-                            isOn: $container.readOnly
+                            "Run the container and detach from the process",
+                            isOn: $container.detach
                         )
 
                         Toggle(
@@ -352,26 +397,46 @@ struct CreateContainerView: View {
                         )
 
                         Toggle(
-                            "Expose virtualization capabilities",
-                            isOn: $container.virtualization
+                            "Mount the container’s root filesystem as read-only",
+                            isOn: $container.readOnly
                         )
+
+                        Toggle(isOn: $container.virtualization) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(
+                                    "Expose virtualization capabilities to the container"
+                                )
+
+                                Text(
+                                    Self.supportsNestedVirtualization
+                                        ? "Requires host and guest support."
+                                        : "Nested virtualization needs an Apple silicon M3 chip or later."
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
                         .disabled(!Self.supportsNestedVirtualization)
 
-                        if !Self.supportsNestedVirtualization {
-                            Text(
-                                "Nested virtualization needs an Apple silicon M3 chip or later."
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-
                         Toggle(
-                            "Forward the SSH agent socket",
+                            "Forward SSH agent socket to container",
                             isOn: $container.ssh
                         )
                     }
                     .toggleStyle(.checkbox)
+                    .frame(width: flagsWidth, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.frame(in: .named(Self.optionsSpace)).minX
+                    } action: { start in
+                        flagsStart = start
+                    }
                 }
+            }
+            .coordinateSpace(.named(Self.optionsSpace))
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                optionsWidth = width
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -473,6 +538,37 @@ struct CreateContainerView: View {
         availableVolumes = (try? await volumeManager.list()) ?? []
     }
 
+    /// Stops work still in flight, so that closing the sheet leaves nothing
+    /// running behind it.
+    /// What the flags have to wrap in: everything from where their column
+    /// starts to the far side of the form, which is the sheet's own padding.
+    private var flagsWidth: CGFloat {
+        max(.fieldControlWidth, optionsWidth - flagsStart)
+    }
+
+    private static let optionsSpace = "container-options"
+    private static let sheetWidth: CGFloat = 660
+    private static let stepAnimation: Animation = .easeOut(duration: 0.2)
+
+    private var stepTransition: AnyTransition {
+        let distance = Self.sheetWidth / 3
+        let shift = stepTransitionDirection > 0 ? distance : -distance
+
+        return .asymmetric(
+            insertion: .opacity.combined(with: .offset(x: shift)),
+            removal: .identity
+        )
+    }
+
+    private func cancelCreation() {
+        guard showProgressView else { return }
+
+        creationTask?.cancel()
+        creationTask = nil
+        showProgressView = false
+        containerManager.progress.finish()
+    }
+
     private func createContainer() {
         let trimmedReference = imageReference.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -486,8 +582,36 @@ struct CreateContainerView: View {
             return
         }
 
-        Task {
+        let trimmedShmSize = shmSize.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        var shmSizeInBytes: UInt64?
+
+        if !trimmedShmSize.isEmpty {
+            guard let bytes = try? Parser.memoryInBytes(from: trimmedShmSize)
+            else {
+                self.errorAlert = ErrorAlert(
+                    "The shared memory size isn’t valid.",
+                    message: "Enter a size such as 64M or 1G."
+                )
+                return
+            }
+
+            shmSizeInBytes = bytes
+        }
+
+        stepTransitionDirection = 1
+
+        withAnimation(Self.stepAnimation) {
             self.showProgressView = true
+        }
+
+        creationTask = Task {
+            containerManager.progress.begin(totalTasks: mode == .run ? 7 : 6)
+
+            defer {
+                containerManager.progress.finish()
+            }
 
             do {
                 let mounts = try await ContainerFilesystems(
@@ -502,9 +626,7 @@ struct CreateContainerView: View {
                 self.container.platform = try Platform(
                     from: self.platformString
                 )
-                self.container.shmSize =
-                    self.shmSizeInMiB > 0
-                    ? UInt64(self.shmSizeInMiB) * 1024 * 1024 : nil
+                self.container.shmSize = shmSizeInBytes
                 self.container.capabilities = self.capabilities.names
 
                 let validPorts = self.ports.filter({
@@ -543,12 +665,27 @@ struct CreateContainerView: View {
                     registryScheme: registryScheme
                 )
 
+                var exitCode: Int32?
+
                 if mode == .run {
-                    try await containerManager.run(id: containerID)
+                    exitCode = try await containerManager.run(
+                        id: containerID,
+                        detach: container.detach
+                    )
                 }
 
-                dismiss()
+                if let exitCode, exitCode != 0 {
+                    self.errorAlert = ErrorAlert(
+                        "The container exited with status \(exitCode).",
+                        message:
+                            "Check the container’s logs for what went wrong."
+                    )
+                } else {
+                    dismiss()
+                }
 
+            } catch is CancellationError {
+                // The sheet was closed on purpose; there is nothing to report.
             } catch (let error) {
                 self.errorAlert = ErrorAlert(
                     mode == .run
@@ -561,7 +698,11 @@ struct CreateContainerView: View {
                 )
             }
 
-            self.showProgressView = false
+            self.stepTransitionDirection = -1
+
+            withAnimation(Self.stepAnimation) {
+                self.showProgressView = false
+            }
         }
     }
 }

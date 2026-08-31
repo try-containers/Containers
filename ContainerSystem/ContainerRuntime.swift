@@ -64,8 +64,9 @@ class ContainerRuntime {
     /// All ContainerManager instances observe this property
     var lastContainerStateChange: Date = Date()
 
-    /// Progress message for long-running operations (image unpacking, etc.)
-    var progressMessage: String = ""
+    /// What a long-running operation (pull, build, unpack) is doing, which
+    /// every manager reports into and every sheet reads from.
+    let progress = ProgressReporter()
 
     // Plugin processes storage (used by ContainerRuntime+Plugins extension)
     var pluginProcesses: [String: PluginProcessInfo] = [:]

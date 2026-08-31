@@ -275,7 +275,7 @@ public enum Parser {
     // MARK: - Memory Parsing
 
     /// Parse a human-readable memory string into bytes.
-    /// Supports: "512m", "1g", "1024k", "1073741824", "2.5g"
+    /// Supports: "512m", "1g", "1024k", "1073741824", "2.5g", "64mib"
     public static func memoryInBytes(from spec: String) throws -> UInt64 {
         let trimmed = spec.trimmingCharacters(in: .whitespaces).lowercased()
 
@@ -289,7 +289,9 @@ public enum Parser {
         }
 
         // Extract numeric part and suffix
-        let suffixChars: Set<Character> = ["k", "m", "g", "t", "b"]
+        let suffixChars: Set<Character> = [
+            "k", "m", "g", "t", "p", "b", "i",
+        ]
         var numericPart = trimmed
         var suffix = ""
 
@@ -304,16 +306,20 @@ public enum Parser {
             )
         }
 
+        // Every unit is a binary one, so "m", "mb" and "mib" all name the
+        // same size, the way the container CLI reads them.
         let multiplier: Double
         switch suffix {
-        case "k", "kb":
+        case "k", "kb", "kib":
             multiplier = 1024
-        case "m", "mb":
+        case "m", "mb", "mib":
             multiplier = 1024 * 1024
-        case "g", "gb":
+        case "g", "gb", "gib":
             multiplier = 1024 * 1024 * 1024
-        case "t", "tb":
+        case "t", "tb", "tib":
             multiplier = 1024 * 1024 * 1024 * 1024
+        case "p", "pb", "pib":
+            multiplier = 1024 * 1024 * 1024 * 1024 * 1024
         case "b", "":
             multiplier = 1
         default:
@@ -322,7 +328,15 @@ public enum Parser {
             )
         }
 
-        return UInt64(value * multiplier)
+        let bytes = value * multiplier
+
+        guard bytes < Double(UInt64.max) else {
+            throw ParserError.invalidMemorySpec(
+                "memory value out of range: \(spec)"
+            )
+        }
+
+        return UInt64(bytes)
     }
 
     // MARK: - Rlimit Parsing
