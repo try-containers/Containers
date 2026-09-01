@@ -154,7 +154,8 @@ final class BuilderController {
 
         logger.info("Pulling builder image: \(builderImage)")
 
-        await runtime.progress.step("Fetching builder image", itemsName: "blobs")
+        runtime.progress.step("Fetching builder image", itemsName: "blobs")
+
         let imageDescription = try await imagesService.pull(
             reference: builderImage,
             platform: builderPlatform,
@@ -163,7 +164,9 @@ final class BuilderController {
         )
 
         logger.info("Unpacking builder image")
-        await runtime.progress.step("Unpacking builder image", itemsName: "entries")
+
+        runtime.progress.step("Unpacking builder image", itemsName: "entries")
+
         try await imagesService.unpack(
             description: imageDescription,
             platform: builderPlatform,

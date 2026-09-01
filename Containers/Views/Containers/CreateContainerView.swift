@@ -81,8 +81,6 @@ struct CreateContainerView: View {
     @SwiftUI.State private var creationTask: Task<Void, Never>?
     @SwiftUI.State private var stepTransitionDirection: Int = 1
     @SwiftUI.State private var showStopConfirmation: Bool = false
-    @SwiftUI.State private var optionsWidth: CGFloat = .zero
-    @SwiftUI.State private var flagsStart: CGFloat = .zero
     @SwiftUI.State private var showPickLocalImage: Bool = false
     @SwiftUI.State private var selectedTab: Tab = .info
 
@@ -387,7 +385,7 @@ struct CreateContainerView: View {
                 FormRow(title: "Management") {
                     VStack(alignment: .leading) {
                         Toggle(
-                            "Run the container and detach from the process",
+                            "Run detached from the process",
                             isOn: $container.detach
                         )
 
@@ -397,7 +395,7 @@ struct CreateContainerView: View {
                         )
 
                         Toggle(
-                            "Mount the container’s root filesystem as read-only",
+                            "Mount the root filesystem as read-only",
                             isOn: $container.readOnly
                         )
 
@@ -424,19 +422,8 @@ struct CreateContainerView: View {
                         )
                     }
                     .toggleStyle(.checkbox)
-                    .frame(width: flagsWidth, alignment: .leading)
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                        proxy.frame(in: .named(Self.optionsSpace)).minX
-                    } action: { start in
-                        flagsStart = start
-                    }
+                    .fieldProse()
                 }
-            }
-            .coordinateSpace(.named(Self.optionsSpace))
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.width
-            } action: { width in
-                optionsWidth = width
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -538,15 +525,6 @@ struct CreateContainerView: View {
         availableVolumes = (try? await volumeManager.list()) ?? []
     }
 
-    /// Stops work still in flight, so that closing the sheet leaves nothing
-    /// running behind it.
-    /// What the flags have to wrap in: everything from where their column
-    /// starts to the far side of the form, which is the sheet's own padding.
-    private var flagsWidth: CGFloat {
-        max(.fieldControlWidth, optionsWidth - flagsStart)
-    }
-
-    private static let optionsSpace = "container-options"
     private static let sheetWidth: CGFloat = 660
     private static let stepAnimation: Animation = .easeOut(duration: 0.2)
 
@@ -560,6 +538,8 @@ struct CreateContainerView: View {
         )
     }
 
+    /// Stops work still in flight, so that closing the sheet leaves nothing
+    /// running behind it.
     private func cancelCreation() {
         guard showProgressView else { return }
 

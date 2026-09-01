@@ -75,7 +75,7 @@ struct SystemStatusView: View {
 
     private var stoppedView: some View {
         ContentUnavailableView {
-            Label("Container System Stopped", image: "server.pause")
+            Label("Container System Stopped", image: "system.pause")
         } description: {
             Text("Start it to work with your containers, images and volumes.")
         } actions: {

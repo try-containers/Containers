@@ -21,6 +21,9 @@ struct ContainerViewModel: Identifiable, Hashable, Equatable {
     var os: String
     var arch: String
     var startedDate: Date?
+    /// Whether the row is working, which is part of the row: a table only
+    /// rebuilds a cell when the row it draws has changed.
+    var isBusy: Bool = false
 
     init(_ snapshot: ContainerSnapshot) {
         self.id = snapshot.configuration.id
@@ -48,6 +51,7 @@ struct ContainerViewModel: Identifiable, Hashable, Equatable {
 
     static func == (lhs: ContainerViewModel, rhs: ContainerViewModel) -> Bool {
         lhs.id == rhs.id && lhs.status == rhs.status
+            && lhs.isBusy == rhs.isBusy
     }
 }
 
@@ -84,12 +88,12 @@ extension ContainerViewModel {
         return formatter.string(from: startedDate)
     }
 
-    var formattedUptime: String {
+    func formattedUptime(at date: Date = Date()) -> String {
         guard status == .running, let startedDate else {
             return "-"
         }
 
-        let interval = max(0, Date().timeIntervalSince(startedDate))
+        let interval = max(0, date.timeIntervalSince(startedDate))
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.day, .hour, .minute]
         formatter.maximumUnitCount = 2

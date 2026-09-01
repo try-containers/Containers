@@ -27,7 +27,7 @@ struct ErrorAlert: Identifiable, Equatable {
     /// The title says what failed; the error says why, in the only part of it
     /// written for a person to read.
     ///
-    /// - Parameter showsDetails: Whether the raw error is kept behind a
+    /// - Parameters showsDetails: Whether the raw error is kept behind a
     ///   disclosure. Turn it off where the message is the whole account and
     ///   there is nothing worth unfolding.
     init(_ title: String, error: Error, showsDetails: Bool = true) {

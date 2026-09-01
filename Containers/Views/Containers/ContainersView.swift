@@ -25,8 +25,6 @@ struct ContainersView: View {
     @State private var errorAlert: ErrorAlert?
     @State private var showDeleteConfirmation = false
     @State private var showCreateContainerView = false
-    /// Containers whose start or stop is still in flight, so the row's button
-    /// cannot be pressed again while it runs.
     @State private var runningContainerIDs: Set<String> = []
 
     private var trimmedText: String {
@@ -35,8 +33,10 @@ struct ContainersView: View {
 
     private var filteredContainers: [ContainerViewModel] {
         if trimmedText.isEmpty {
-            return runningContainersOnly
-                ? containers.filter({ $0.status == .running }) : containers
+            return marked(
+                runningContainersOnly
+                    ? containers.filter({ $0.status == .running }) : containers
+            )
         }
 
         let filtered = self.containers.filter({
@@ -46,8 +46,22 @@ struct ContainersView: View {
                 || $0.formattedIPAddress.contains(trimmedText) == true
         })
 
-        return runningContainersOnly
-            ? filtered.filter({ $0.status == .running }) : filtered
+        return marked(
+            runningContainersOnly
+                ? filtered.filter({ $0.status == .running }) : filtered
+        )
+    }
+
+    /// Says which rows are working, so that a row whose buttons have to change
+    /// is a row the table can see has changed.
+    private func marked(
+        _ containers: [ContainerViewModel]
+    ) -> [ContainerViewModel] {
+        containers.map { container in
+            var container = container
+            container.isBusy = runningContainerIDs.contains(container.id)
+            return container
+        }
     }
 
     var body: some View {
@@ -108,13 +122,15 @@ struct ContainersView: View {
             .width(min: 100, ideal: 120, max: 140)
 
             TableColumn("Uptime") { container in
-                Text(container.formattedUptime)
-                    .lineLimit(1)
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(
-                        container.status == .running
-                            ? .primary : .secondary
-                    )
+                TimelineView(.periodic(from: .now, by: 15)) { context in
+                    Text(container.formattedUptime(at: context.date))
+                        .lineLimit(1)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(
+                            container.status == .running
+                                ? .primary : .secondary
+                        )
+                }
             }
             .width(min: 80, ideal: 100, max: 140)
 
@@ -122,43 +138,38 @@ struct ContainersView: View {
                 HStack(spacing: 12) {
                     switch container.status {
                     case .running:
-                        Button(
-                            action: { stopContainer(container) },
-                            label: {
-                                Image(systemName: "stop.fill")
-                                    .foregroundStyle(.gray)
-                            }
-                        )
-                        .buttonStyle(.plain)
-                        .disabled(runningContainerIDs.contains(container.id))
+                        RowActionButton(
+                            icon: "stop.fill",
+                            tint: .gray,
+                            isEnabled: !container.isBusy
+                        ) {
+                            stopContainer(container)
+                        }
 
                     case .stopped:
-                        Button(
-                            action: { startContainer(container) },
-                            label: {
-                                Image(systemName: "play.fill")
-                                    .foregroundStyle(.blue)
-                            }
-                        )
-                        .buttonStyle(.plain)
-                        .disabled(runningContainerIDs.contains(container.id))
+                        RowActionButton(
+                            icon: "play.fill",
+                            tint: .blue,
+                            isEnabled: !container.isBusy
+                        ) {
+                            startContainer(container)
+                        }
 
                     case .stopping, .unknown:
                         Image(systemName: "slash.circle")
                             .foregroundStyle(.secondary)
                     }
 
-                    Button(
-                        action: {
-                            selectedContainer = container
-                            showDeleteConfirmation = true
-                        },
-                        label: {
-                            Image(systemName: "trash.fill")
-                                .foregroundStyle(.red)
-                        }
-                    )
-                    .buttonStyle(.plain)
+                    // Only the actions answer for the work: the row stays
+                    // live, so its detail is a click away while it runs.
+                    RowActionButton(
+                        icon: "trash.fill",
+                        tint: .red,
+                        isEnabled: !container.isBusy
+                    ) {
+                        selectedContainer = container
+                        showDeleteConfirmation = true
+                    }
                 }
                 .padding(.horizontal, 8)
             }
@@ -192,21 +203,7 @@ struct ContainersView: View {
                     return
                 }
 
-                Task {
-                    do {
-                        try await containerManager.delete(
-                            ids: [container.id],
-                            force: true
-                        )
-                        await refreshContainers()
-                    } catch (let err) {
-                        self.errorAlert = ErrorAlert(
-                            "The container couldn’t be deleted.",
-                            error: err
-                        )
-                    }
-                }
-
+                deleteContainer(container)
                 selectedContainer = nil
             }
 
@@ -262,6 +259,27 @@ struct ContainersView: View {
             } catch (let err) {
                 self.errorAlert = ErrorAlert(
                     "The container couldn’t be stopped.",
+                    error: err
+                )
+            }
+        }
+    }
+
+    private func deleteContainer(_ container: ContainerViewModel) {
+        runningContainerIDs.insert(container.id)
+
+        Task {
+            defer { runningContainerIDs.remove(container.id) }
+
+            do {
+                try await containerManager.delete(
+                    ids: [container.id],
+                    force: true
+                )
+                await refreshContainers()
+            } catch (let err) {
+                self.errorAlert = ErrorAlert(
+                    "The container couldn’t be deleted.",
                     error: err
                 )
             }

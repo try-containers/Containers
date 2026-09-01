@@ -33,6 +33,9 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
     var manifestDigest: String
     var inUse: Bool
     var imageDescription: ImageDescription
+    /// Whether the row is working, which is part of the row: a table only
+    /// rebuilds a cell when the row it draws has changed.
+    var isBusy: Bool = false
 
     var id: String {
         indexDigest + manifestDigest + createdDate.description
@@ -91,7 +94,9 @@ struct ImageViewModel: Identifiable, Hashable, Equatable {
 
     // Equatable conformance
     static func == (lhs: ImageViewModel, rhs: ImageViewModel) -> Bool {
-        lhs.indexDigest == rhs.indexDigest && lhs.manifestDigest == rhs.manifestDigest
+        lhs.indexDigest == rhs.indexDigest
+            && lhs.manifestDigest == rhs.manifestDigest
+            && lhs.isBusy == rhs.isBusy
     }
 }
 

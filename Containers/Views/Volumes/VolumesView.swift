@@ -21,6 +21,7 @@ struct VolumesView: View {
     @State private var showCreateVolumeView: Bool = false
     @State private var showDeleteConfirmation: Bool = false
     @State private var errorAlert: ErrorAlert?
+    @State private var busyVolumeIDs: Set<String> = []
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -28,13 +29,23 @@ struct VolumesView: View {
 
     private var filteredVolumes: [VolumeViewModel] {
         if trimmedText.isEmpty {
-            return volumes
+            return marked(volumes)
         }
         let filtered = self.volumes.filter({
             $0.name.contains(trimmedText)
         })
 
-        return filtered
+        return marked(filtered)
+    }
+
+    /// Says which rows are working, so that a row whose buttons have to change
+    /// is a row the table can see has changed.
+    private func marked(_ volumes: [VolumeViewModel]) -> [VolumeViewModel] {
+        volumes.map { volume in
+            var volume = volume
+            volume.isBusy = busyVolumeIDs.contains(volume.id)
+            return volume
+        }
     }
 
     var body: some View {
@@ -122,20 +133,17 @@ struct VolumesView: View {
 
             TableColumn("Actions") { volume in
                 HStack(spacing: 12) {
-                    Button(
-                        action: {
-                            volumeToDelete = volume
-                            showDeleteConfirmation = true
-                        },
-                        label: {
-                            Image(systemName: "trash.fill")
-                                .foregroundStyle(
-                                    volume.inUse ? .secondary : Color.red
-                                )
-                        }
-                    )
-                    .disabled(volume.inUse)
-                    .buttonStyle(.plain)
+                    // A volume a container is holding is not the row's to
+                    // delete, whatever else the row is doing.
+                    RowActionButton(
+                        icon: "trash.fill",
+                        tint: .red,
+                        isEnabled: !volume.isBusy && !volume.inUse
+                    ) {
+                        volumeToDelete = volume
+                        showDeleteConfirmation = true
+                    }
+                    .help("Delete volume")
                 }
                 .padding(.horizontal, 8)
             }
@@ -163,18 +171,7 @@ struct VolumesView: View {
                     return
                 }
 
-                Task {
-                    do {
-                        try await volumeManager.delete(volumes: [volume.volume])
-                        await self.listVolumes()
-                    } catch (let err) {
-                        self.errorAlert = ErrorAlert(
-                            "The volume couldn’t be deleted.",
-                            error: err
-                        )
-                    }
-                }
-
+                deleteVolume(volume)
                 volumeToDelete = nil
             }
 
@@ -184,6 +181,24 @@ struct VolumesView: View {
         } message: {
             if let volume = volumeToDelete {
                 Text("Delete \(volume.name)? This cannot be undone.")
+            }
+        }
+    }
+
+    private func deleteVolume(_ volume: VolumeViewModel) {
+        busyVolumeIDs.insert(volume.id)
+
+        Task {
+            defer { busyVolumeIDs.remove(volume.id) }
+
+            do {
+                try await volumeManager.delete(volumes: [volume.volume])
+                await self.listVolumes()
+            } catch (let err) {
+                self.errorAlert = ErrorAlert(
+                    "The volume couldn’t be deleted.",
+                    error: err
+                )
             }
         }
     }

@@ -12,6 +12,9 @@ import Foundation
 struct VolumeViewModel: Identifiable, Hashable, Equatable {
     var volume: Volume
     var inUse: Bool
+    /// Whether the row is working, which is part of the row: a table only
+    /// rebuilds a cell when the row it draws has changed.
+    var isBusy: Bool = false
 
     var volumeType: VolumeType {
         self.volume.isAnonymous ? .anonymous : .named
@@ -47,7 +50,7 @@ struct VolumeViewModel: Identifiable, Hashable, Equatable {
     // Equatable conformance
     static func == (lhs: VolumeViewModel, rhs: VolumeViewModel) -> Bool {
         lhs.volume.id == rhs.volume.id && lhs.volume.name == rhs.volume.name
-            && lhs.inUse == rhs.inUse
+            && lhs.inUse == rhs.inUse && lhs.isBusy == rhs.isBusy
     }
 
 }

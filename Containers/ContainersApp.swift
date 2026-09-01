@@ -88,7 +88,7 @@ struct ContainersApp: App {
                     .environment(systemManager)
             },
             label: {
-                Image(systemManager.status == .running ? "server.play" : "server.pause")
+                Image(systemManager.status == .running ? "system.play" : "system.pause")
             }
         )
         .menuBarExtraStyle(.menu)

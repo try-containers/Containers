@@ -49,8 +49,6 @@ struct FormStack<Header: View, Content: View>: View {
             .formStyle(.columns)
         }
         .fixedSize(horizontal: true, vertical: false)
-        // The form is placed by where its fields should fall rather than by
-        // its own width, which is what centring it made of them.
         .padding(.leading, formLeading)
         .frame(maxWidth: .infinity, alignment: .leading)
         // Measured after the fill, so it is the room the sheet gives the form
@@ -61,6 +59,7 @@ struct FormStack<Header: View, Content: View>: View {
             availableWidth = width
         }
         .environment(\.formLabelWidth, availableWidth * Self.labelWidthRatio)
+        .environment(\.formProseWidth, availableWidth * (1 - Self.fieldStartRatio))
     }
 }
 
@@ -68,6 +67,10 @@ extension EnvironmentValues {
     /// The width every row gives its label, so that the fields line up in the
     /// same place whatever a tab happens to call them.
     @Entry var formLabelWidth: CGFloat = 0
+
+    /// What a row of prose may fill: everything from where the fields begin
+    /// to the far side of the form.
+    @Entry var formProseWidth: CGFloat = 0
 }
 
 extension FormStack where Header == EmptyView {
@@ -81,5 +84,25 @@ extension View {
     /// Marks this view as a form row's control.
     func fieldControl() -> some View {
         frame(width: .fieldControlWidth, alignment: .leading)
+    }
+
+    /// Marks this view as a form row's prose, which wraps in what the form
+    /// leaves to the right of its fields rather than in a field's width.
+    func fieldProse() -> some View {
+        modifier(FieldProse())
+    }
+}
+
+/// The row keeps the width the form gave it, so the fields stay where they
+/// are; the prose inside runs on into what the form leaves beside them.
+private struct FieldProse: ViewModifier {
+    @Environment(\.formProseWidth) private var proseWidth
+
+    func body(content: Content) -> some View {
+        content
+            .frame(
+                width: max(.fieldControlWidth, proseWidth),
+                alignment: .leading
+            )
     }
 }

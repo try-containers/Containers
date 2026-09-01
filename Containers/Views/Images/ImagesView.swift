@@ -29,6 +29,7 @@ struct ImagesView: View {
     @SwiftUI.State private var errorAlert: ErrorAlert?
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
     @SwiftUI.State private var showInUseContainerForImage: ImageViewModel?
+    @SwiftUI.State private var busyImageIDs: Set<String> = []
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,14 +37,24 @@ struct ImagesView: View {
 
     private var filteredImages: [ImageViewModel] {
         if trimmedText.isEmpty {
-            return images
+            return marked(images)
         }
 
         let filtered = self.images.filter({
             $0.name.contains(trimmedText) || $0.tag.contains(trimmedText)
         })
 
-        return filtered
+        return marked(filtered)
+    }
+
+    /// Says which rows are working, so that a row whose buttons have to change
+    /// is a row the table can see has changed.
+    private func marked(_ images: [ImageViewModel]) -> [ImageViewModel] {
+        images.map { image in
+            var image = image
+            image.isBusy = busyImageIDs.contains(image.id)
+            return image
+        }
     }
 
     var body: some View {
@@ -126,37 +137,28 @@ struct ImagesView: View {
 
             TableColumn("Actions") { image in
                 HStack(spacing: 12) {
-                    Button(
-                        action: {
-                            runContainerTip.invalidate(reason: .actionPerformed)
-                            self.createContainerForImage = image
-                        },
-                        label: {
-                            Image(systemName: "play.fill")
-                                .foregroundStyle(.blue)
-                        }
-                    )
-                    .buttonStyle(.plain)
+                    RowActionButton(
+                        icon: "play.fill",
+                        tint: .blue,
+                        isEnabled: !image.isBusy
+                    ) {
+                        runContainerTip.invalidate(reason: .actionPerformed)
+                        self.createContainerForImage = image
+                    }
                     .help("Run container from image")
                     .popoverTip(
                         runContainerTip,
                         when: image.id == filteredImages.first?.id
                     )
 
-                    Button(
-                        action: {
-                            imageToDelete = image
-                            showDeleteConfirmation = true
-                        },
-                        label: {
-                            Image(systemName: "trash.fill")
-                                .foregroundStyle(
-                                    image.inUse ? .secondary : Color.red
-                                )
-                        }
-                    )
-                    .disabled(image.inUse)
-                    .buttonStyle(.plain)
+                    RowActionButton(
+                        icon: "trash.fill",
+                        tint: .red,
+                        isEnabled: !image.isBusy && !image.inUse
+                    ) {
+                        imageToDelete = image
+                        showDeleteConfirmation = true
+                    }
                     .help("Delete image")
                 }
                 .padding(.horizontal, 8)
@@ -188,21 +190,7 @@ struct ImagesView: View {
                     return
                 }
 
-                Task {
-                    do {
-                        try await imageManager.delete(images: [
-                            image.imageDescription
-                        ])
-
-                        await self.listImages()
-                    } catch (let err) {
-                        self.errorAlert = ErrorAlert(
-                            "The image couldn’t be deleted.",
-                            error: err
-                        )
-                    }
-                }
-
+                deleteImage(image)
                 imageToDelete = nil
             }
 
@@ -213,6 +201,24 @@ struct ImagesView: View {
             if let image = imageToDelete {
                 Text(
                     "Delete \(image.name):\(image.tag)? This cannot be undone."
+                )
+            }
+        }
+    }
+
+    private func deleteImage(_ image: ImageViewModel) {
+        busyImageIDs.insert(image.id)
+
+        Task {
+            defer { busyImageIDs.remove(image.id) }
+
+            do {
+                try await imageManager.delete(images: [image.imageDescription])
+                await self.listImages()
+            } catch (let err) {
+                self.errorAlert = ErrorAlert(
+                    "The image couldn’t be deleted.",
+                    error: err
                 )
             }
         }
