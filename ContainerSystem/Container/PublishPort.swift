@@ -65,9 +65,11 @@ extension Array where Element == PublishPort {
     public func hasOverlaps() -> Bool {
         var seen = Set<String>()
         for port in self {
-            for i in 0..<port.count {
+            // Counted in Int: a range reaching the top of the port range
+            // would overflow UInt16 and trap on the way there.
+            for offset in 0..<Int(port.count) {
                 let key =
-                    "\(port.hostAddress):\(port.hostPort + i)/\(port.proto.rawValue)"
+                    "\(port.hostAddress):\(Int(port.hostPort) + offset)/\(port.proto.rawValue)"
                 if seen.contains(key) {
                     return true
                 }

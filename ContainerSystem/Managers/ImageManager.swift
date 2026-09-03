@@ -8,7 +8,6 @@
 //
 
 import Containerization
-import ContainerizationArchive
 import ContainerizationError
 import ContainerizationOCI
 import ContainerizationOS
@@ -218,7 +217,9 @@ public final class ImageManager {
         let tag = tag.isEmpty ? UUID().uuidString.lowercased() : tag
 
         // STEP 1: Generate buildID and create export directory FIRST
-        let dockerFileData = try Data(contentsOf: dockerFile)
+        let dockerFileData = try await FileIO.shared.contents(
+            of: dockerFile
+        )
         let exportPath = appRoot.appendingPathComponent(".build")
         let id = UUID().uuidString
 
@@ -354,7 +355,7 @@ public final class ImageManager {
         logger.info("Copying context directory to: \(tempContextDir.path)")
 
         do {
-            try FileManager.default.copyItem(
+            try await FileIO.shared.copyItem(
                 at: contextDirectory,
                 to: tempContextDir
             )
@@ -451,8 +452,8 @@ public final class ImageManager {
                 let extractedLayoutDirectory =
                     buildSessionDir
                     .appendingPathComponent("oci-layout")
-                let archiveReader = try ArchiveReader(file: dest)
-                _ = try archiveReader.extractContents(
+                try await FileIO.shared.extractArchive(
+                    at: dest,
                     to: extractedLayoutDirectory
                 )
 
@@ -482,7 +483,10 @@ public final class ImageManager {
 
                 let tarURL = exportDestination
 
-                try FileManager.default.moveItem(at: tarURL, to: dest)
+                try await FileIO.shared.moveItem(
+                    at: tarURL,
+                    to: dest
+                )
 
             case BuildImageOutputConfiguration.BuildType.local.rawValue:
                 guard let dest = exp.destination else {
@@ -502,7 +506,10 @@ public final class ImageManager {
                     )
                 }
 
-                try FileManager.default.copyItem(at: localDir, to: dest)
+                try await FileIO.shared.copyItem(
+                    at: localDir,
+                    to: dest
+                )
             default:
                 throw ContainerizationError(
                     .invalidArgument,
@@ -540,13 +547,10 @@ public final class ImageManager {
             platform: platform
         )
 
-        let writer = try ArchiveWriter(
-            format: .pax,
-            filter: .none,
-            file: outputURL
+        try await FileIO.shared.writeArchive(
+            directory: stagingDirectory,
+            to: outputURL
         )
-        try writer.archiveDirectory(stagingDirectory)
-        try writer.finishEncoding()
 
         logger.info("Saved \(images.count) image(s)")
     }
@@ -589,10 +593,8 @@ public final class ImageManager {
                 withIntermediateDirectories: true
             )
 
-            let reader = try ArchiveReader(file: tar)
-            let rejectedMembers = try reader.extractContents(
-                to: extractedDirectory
-            )
+            let rejectedMembers = try await FileIO.shared
+                .extractArchive(at: tar, to: extractedDirectory)
 
             if !rejectedMembers.isEmpty && !force {
                 try? FileManager.default.removeItem(at: extractedDirectory)

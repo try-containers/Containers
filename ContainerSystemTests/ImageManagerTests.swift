@@ -30,7 +30,7 @@ struct ImageManagerTests {
 
     // MARK: - List Images Tests
 
-    @Test("List images returns array")
+    @Test("A fresh store lists no images")
     @MainActor
     func testListImages() async throws {
         let (_, testRuntime) = try await setupTestSystem()
@@ -38,7 +38,20 @@ struct ImageManagerTests {
         let manager = ImageManager(testRuntime: testRuntime)
         let images = try await manager.list()
 
-        #expect(type(of: images) == [ImageDescription].self)
+        #expect(images.isEmpty)
+    }
+
+    @Test("Listing fails once the system has been stopped")
+    @MainActor
+    func testListAfterStopFails() async throws {
+        let (_, testRuntime) = try await setupTestSystem()
+
+        let manager = ImageManager(testRuntime: testRuntime)
+        try await testRuntime.stop()
+
+        await #expect(throws: (any Error).self) {
+            _ = try await manager.list()
+        }
     }
 
     @Test("List images filters infrastructure images")
@@ -76,7 +89,7 @@ struct ImageManagerTests {
         try await manager.save(
             images: [],
             platform: .current,
-            outputDirectory: tempDir
+            outputURL: tempDir.appendingPathComponent("images.tar")
         )
 
         // Cleanup
@@ -103,7 +116,7 @@ struct ImageManagerTests {
         try await manager.save(
             images: [],
             platform: .current,
-            outputDirectory: tempDir
+            outputURL: tempDir.appendingPathComponent("images.tar")
         )
 
         // Cleanup

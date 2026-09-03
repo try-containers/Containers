@@ -20,8 +20,12 @@ struct FormStack<Header: View, Content: View>: View {
     /// form, and how much of that the labels before them take. Proportions
     /// rather than measures keep every tab's fields in one place, whatever a
     /// tab happens to call its rows.
+    ///
+    /// The labels take the larger share of the two: the longest of them has
+    /// to read on one line, and the room comes out of the margin before them
+    /// rather than out of where the fields start.
     private static var fieldStartRatio: CGFloat { 1 / 3 }
-    private static var labelWidthRatio: CGFloat { 1 / 6 }
+    private static var labelWidthRatio: CGFloat { 1 / 5 }
 
     @ViewBuilder var header: Header
     @ViewBuilder var content: Content

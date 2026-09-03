@@ -7,12 +7,13 @@
 
 import SwiftUI
 
-struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
-    View
-{
+struct CreateView<
+    Content: View, Actions: View, Progress: View, TabBar: View, Failure: View
+>: View {
     let title: String
     let error: Binding<ErrorAlert?>
     let isProcessing: Bool
+    let isFailed: Bool
     let progressTitle: String?
     let width: CGFloat
     let height: CGFloat
@@ -29,11 +30,13 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
     let content: Content
     let actions: Actions
     let progress: Progress
+    let failure: Failure
 
     init(
         title: String,
         error: Binding<ErrorAlert?> = .constant(nil),
         isProcessing: Bool = false,
+        isFailed: Bool = false,
         progressTitle: String? = nil,
         width: CGFloat,
         height: CGFloat,
@@ -49,11 +52,13 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         @ViewBuilder tabBar: () -> TabBar = { EmptyView() },
         @ViewBuilder content: () -> Content,
         @ViewBuilder actions: () -> Actions,
-        @ViewBuilder progress: () -> Progress = { EmptyView() }
+        @ViewBuilder progress: () -> Progress = { EmptyView() },
+        @ViewBuilder failure: () -> Failure = { EmptyView() }
     ) {
         self.title = title
         self.error = error
         self.isProcessing = isProcessing
+        self.isFailed = isFailed
         self.progressTitle = progressTitle
         self.width = width
         self.height = height
@@ -70,6 +75,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         self.content = content()
         self.actions = actions()
         self.progress = progress()
+        self.failure = failure()
     }
 
     var body: some View {
@@ -98,6 +104,20 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
             }
 
             contentArea
+                // Centred on what is left above the buttons rather than on the
+                // whole sheet, so the footer's height is taken off the room
+                // being centred in and the mark rides up by half of it. What
+                // stands in for a step is read here — the progress, and the
+                // failure that may end it — so the two land in one place.
+                .overlay {
+                    if isProcessing {
+                        progressStatus
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    } else if isFailed {
+                        failure
+                    }
+                }
 
             if showsFooterDivider {
                 Divider()
@@ -106,15 +126,6 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
             footer
         }
         .frame(width: width, height: height)
-        // Centred on the sheet rather than on what is left above the buttons,
-        // and never in the way of the one button that answers it.
-        .overlay {
-            if isProcessing {
-                progressStatus
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-            }
-        }
         .interactiveDismissDisabled(isProcessing)
         .errorAlert(error)
     }
@@ -150,7 +161,7 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
-        .opacity(isProcessing ? 0 : 1)
+        .opacity(isProcessing || isFailed ? 0 : 1)
     }
 
     @ViewBuilder
@@ -174,22 +185,31 @@ struct CreateView<Content: View, Actions: View, Progress: View, TabBar: View>:
         }
     }
 
+    /// The spinner sits on the sheet's centre line, and what it is doing
+    /// hangs under it as an overlay: an overlay takes no part in laying out
+    /// what it is attached to, so the writing cannot carry the spinner up
+    /// however many lines of it there are.
     private var progressStatus: some View {
-        VStack(spacing: 12) {
-            ProgressView()
+        ProgressView()
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 4) {
+                    if let progressTitle {
+                        Text(progressTitle)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
 
-            VStack(spacing: 4) {
-                if let progressTitle {
-                    Text(progressTitle)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
+                    progress
                 }
-
-                progress
+                .multilineTextAlignment(.center)
+                .frame(width: width - 40)
+                // Hung from the spinner's foot rather than sharing its bottom
+                // edge, which is what puts the writing below it.
+                .alignmentGuide(VerticalAlignment.bottom) { _ in
+                    -CGFloat.sheetMarkSpacing
+                }
             }
-            .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var footer: some View {

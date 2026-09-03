@@ -375,13 +375,13 @@ struct DashboardView: View {
     private var statusMessage: String {
         switch system.status {
         case .running:
-            return "System is running"
+            return "System running"
         case .starting:
             return "Starting system..."
         case .stopping:
             return "Stopping system..."
         case .notStarted:
-            return "System is not started"
+            return "System stopped"
         case .failed:
             return "System failed to start"
         }

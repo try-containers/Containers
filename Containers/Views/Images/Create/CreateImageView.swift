@@ -98,24 +98,21 @@ struct CreateImageView: View {
         CreateView(
             title: "Create Image",
             isProcessing: isCreating,
+            isFailed: failure != nil,
             progressTitle: progressMessage,
             width: Self.sheetWidth,
             height: 480,
             showsHeader: false,
             contentAlignment: .center,
             showsFooterDivider: false,
-            contentID: failure == nil ? AnyHashable(currentStep) : "failure",
+            contentID: AnyHashable(currentStep),
             contentTransition: stepTransition,
             contentTitle: paneTitle,
             // Only the suggestions are ruled off into their own section.
             contentTitleRule: selectedMethod == .pull,
             content: {
-                if let failure {
-                    CreateImageFailure(failure: failure)
-                } else {
-                    currentStepContent
-                        .multilineTextAlignment(.leading)
-                }
+                currentStepContent
+                    .multilineTextAlignment(.leading)
             },
             actions: {
                 Button {
@@ -169,6 +166,11 @@ struct CreateImageView: View {
                         .monospacedDigit()
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
+                }
+            },
+            failure: {
+                if let failure {
+                    CreateImageFailure(failure: failure)
                 }
             }
         )
@@ -441,18 +443,17 @@ struct CreateImageView: View {
             } catch is CancellationError {
                 // Going back is what called this off, and it has moved on.
             } catch {
+                // Failing is not a step being turned to: the message takes the
+                // place the progress held, without the assistant's slide.
                 stepTransitionDirection = -1
-
-                withAnimation(Self.stepAnimation) {
-                    currentStep = .configuration
-                    failure = ErrorAlert(
-                        failureTitle(for: method),
-                        error: error,
-                        // What went wrong here reads in full, so there is
-                        // nothing to keep folded away.
-                        showsDetails: false
-                    )
-                }
+                currentStep = .configuration
+                failure = ErrorAlert(
+                    failureTitle(for: method),
+                    error: error,
+                    // What went wrong here reads in full, so there is
+                    // nothing to keep folded away.
+                    showsDetails: false
+                )
             }
         }
     }

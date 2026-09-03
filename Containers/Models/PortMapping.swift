@@ -12,20 +12,31 @@ import ContainerizationOCI
 import Foundation
 
 struct PortMapping: Identifiable {
+    /// The numbers a TCP or UDP port can carry.
+    static let range = 1...65535
+
     let id: UUID = UUID()
     var hostAddress: String = "127.0.0.1"
     var host: Int = 0
     var container: Int = 0
     var publishProtocol: PublishProtocol = .tcp
 
-    var publishedPort: PublishPort {
+    /// The port to publish, or nil for a row that cannot make one: the zeroes
+    /// it starts life with, or a number no port can take.
+    ///
+    /// The range is checked before the conversion rather than after, because
+    /// `UInt16` traps on what it cannot hold instead of reporting it.
+    var publishedPort: PublishPort? {
+        guard Self.range.contains(self.host),
+            Self.range.contains(self.container),
+            let fallbackAddress = try? IPAddress("127.0.0.1")
+        else {
+            return nil
+        }
+
         let address = try? IPAddress(
             hostAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         )
-
-        guard let fallbackAddress = try? IPAddress("127.0.0.1") else {
-            fatalError("Invalid fallback IP Addres")
-        }
 
         return .init(
             hostAddress: address ?? fallbackAddress,

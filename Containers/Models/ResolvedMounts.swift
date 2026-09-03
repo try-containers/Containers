@@ -1,5 +1,5 @@
 //
-//  ContainerFilesystems.swift
+//  ResolvedMounts.swift
 //  Containers
 //
 //  Created by Axel Martinez on 03/08/2026.
@@ -9,14 +9,13 @@ import ContainerSystem
 import Containerization
 import Foundation
 
-/// The filesystems a container is created with, resolved from what the create
+/// The mounts a container is created with, resolved from what the create
 /// sheet drafted. Volumes that do not exist yet are created along the way.
-struct ContainerFilesystems {
-    var bindMounts: [Filesystem] = []
-    var temporaryFileSystems: [Filesystem] = []
-    var volumes: [Filesystem] = []
-
-    init() {}
+struct ResolvedMounts {
+    /// The mounts in the order the guest takes them: what the host binds in,
+    /// then the temporary filesystems, then the volumes. A volume nested under
+    /// a bind mount has to follow it, or the bind covers it over.
+    private(set) var mounts: [Filesystem] = []
 
     @MainActor
     init(
@@ -24,6 +23,10 @@ struct ContainerFilesystems {
         volumes: [VolumeMount],
         using volumeManager: VolumeManager
     ) async throws {
+        var bindMounts: [Filesystem] = []
+        var temporaryFileSystems: [Filesystem] = []
+        var resolvedVolumes: [Filesystem] = []
+
         var takenTargets = Set<String>()
         let options: [String] = []
         let existingVolumes = try await volumeManager.list()
@@ -89,7 +92,7 @@ struct ContainerFilesystems {
                 among: existingVolumes
             )
 
-            self.volumes.append(
+            resolvedVolumes.append(
                 .volume(
                     name: volume.name,
                     format: volume.format,
@@ -99,5 +102,7 @@ struct ContainerFilesystems {
                 )
             )
         }
+
+        self.mounts = bindMounts + temporaryFileSystems + resolvedVolumes
     }
 }

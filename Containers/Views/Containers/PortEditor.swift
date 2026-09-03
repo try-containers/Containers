@@ -10,6 +10,18 @@ import SwiftUI
 
 /// The editors the create sheet's lists open for one drafted item at a time.
 struct PortEditor: View {
+    /// Refuses a number outside the port range, so one that no port could
+    /// take never reaches the mapping.
+    private static let portFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+
+        formatter.allowsFloats = false
+        formatter.minimum = PortMapping.range.lowerBound as NSNumber
+        formatter.maximum = PortMapping.range.upperBound as NSNumber
+
+        return formatter
+    }()
+
     @Binding var port: PortMapping
 
     var body: some View {
@@ -18,12 +30,16 @@ struct PortEditor: View {
                 .textFieldStyle(.roundedBorder)
 
             HStack(spacing: 8) {
-                TextField("Host Port", value: $port.host, format: .number)
-                    .textFieldStyle(.roundedBorder)
+                TextField(
+                    "Host Port",
+                    value: $port.host,
+                    formatter: Self.portFormatter
+                )
+                .textFieldStyle(.roundedBorder)
                 TextField(
                     "Container Port",
                     value: $port.container,
-                    format: .number
+                    formatter: Self.portFormatter
                 )
                 .textFieldStyle(.roundedBorder)
             }

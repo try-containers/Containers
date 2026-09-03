@@ -545,11 +545,7 @@ public final class ContainerManager {
         config.shmSize = container.shmSize
         config.stopSignal = container.stopSignal ?? imageConfig?.stopSignal
 
-        let resolvedMounts: [Filesystem] =
-            container.virtualFileSystem + container.temporaryFileSystem
-            + container.volumes
-
-        config.mounts = resolvedMounts
+        config.mounts = container.mounts
         config.virtualization = container.virtualization
         config.readOnly = container.readOnly
         config.networks = try Self.getAttachmentConfigurations(

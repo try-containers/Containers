@@ -24,7 +24,7 @@ struct ContainersServiceTests {
 
         try await system.start(appRoot: appRoot)
 
-        #expect(system.isRunning == true)
+        #expect(system.status == .running)
 
         try await system.stop()
     }
@@ -39,10 +39,10 @@ struct ContainersServiceTests {
         let system = SystemManager(testRuntime: testRuntime)
         try await system.start(appRoot: appRoot)
 
-        #expect(system.isRunning == true)
+        #expect(system.status == .running)
 
         try await system.stop()
 
-        #expect(system.isRunning == false)
+        #expect(system.status == .notStarted)
     }
 }

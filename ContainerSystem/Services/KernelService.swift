@@ -8,6 +8,7 @@
 //
 
 import Containerization
+import ContainerizationArchive
 import ContainerizationError
 import Foundation
 import Logging
@@ -46,9 +47,14 @@ actor KernelService {
         return Kernel(path: kernelPath, platform: platform)
     }
 
-    /// Install a kernel binary for the given platform.
-    func installKernel(
-        kernelFile: URL,
+    /// Install a kernel binary for the given platform from a tar archive.
+    ///
+    /// Reading the kernel out of the archive is tens of megabytes of blocking
+    /// I/O, so it runs on this actor rather than on the caller that asked
+    /// for it.
+    func installKernelFrom(
+        tar tarFile: URL,
+        kernelFilePath: String,
         platform: SystemPlatform,
         force: Bool = false
     ) async throws {
@@ -67,8 +73,43 @@ actor KernelService {
             try FileManager.default.removeItem(at: destination)
         }
 
-        try FileManager.default.copyItem(at: kernelFile, to: destination)
+        let kernel = try extractFile(tarFile: tarFile, at: kernelFilePath)
 
-        log.info("Kernel installed at \(destination.path)")
+        try kernel.write(to: destination, options: .atomic)
+
+        log.info(
+            "Kernel installed at \(destination.path), size: \(kernel.count) bytes"
+        )
+    }
+
+    /// Extract a file from an archive (same approach as the Apple Container
+    /// CLI), returning its bytes rather than a path.
+    private func extractFile(tarFile: URL, at path: String) throws -> Data {
+        log.info("Extracting \(path) from archive: \(tarFile.path)")
+
+        var archiveReader = try ArchiveReader(file: tarFile)
+        let (entry, extracted) = try archiveReader.extractFile(path: path)
+
+        // If the target file is a symlink, get the data for the actual file
+        guard entry.fileType == .symbolicLink,
+            let symlinkRelative = entry.symlinkTarget
+        else {
+            return extracted
+        }
+
+        // Reopen the archive to traverse from the beginning
+        archiveReader = try ArchiveReader(file: tarFile)
+
+        let symlinkTarget = URL(filePath: path)
+            .deletingLastPathComponent().appending(path: symlinkRelative)
+        let resolvedPath = symlinkTarget.standardized.relativePath
+
+        log.info(
+            "Kernel is a symlink to \(symlinkRelative), resolved: \(resolvedPath)"
+        )
+
+        let (_, targetData) = try archiveReader.extractFile(path: resolvedPath)
+
+        return targetData
     }
 }

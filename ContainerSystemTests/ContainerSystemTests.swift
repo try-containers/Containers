@@ -24,8 +24,7 @@ struct ContainerSystemTests {
 
         try await system.start(appRoot: appRoot)
 
-        #expect(system.isRunning == true)
-        #expect(system.systemStatus == .running)
+        #expect(system.status == .running)
 
         try await system.stop()
     }
@@ -40,11 +39,11 @@ struct ContainerSystemTests {
             .appendingPathComponent("test-containers-\(UUID().uuidString)")
 
         try await system.start(appRoot: appRoot)
-        #expect(system.isRunning == true)
+        #expect(system.status == .running)
 
         // Starting again should not cause error
         try await system.start(appRoot: appRoot)
-        #expect(system.isRunning == true)
+        #expect(system.status == .running)
 
         try await system.stop()
     }
@@ -60,12 +59,11 @@ struct ContainerSystemTests {
             .appendingPathComponent("test-containers-\(UUID().uuidString)")
 
         try await system.start(appRoot: appRoot)
-        #expect(system.isRunning == true)
+        #expect(system.status == .running)
 
         // Stop the system
         try await system.stop()
 
-        #expect(system.isRunning == false)
-        #expect(system.systemStatus == .notStarted)
+        #expect(system.status == .notStarted)
     }
 }

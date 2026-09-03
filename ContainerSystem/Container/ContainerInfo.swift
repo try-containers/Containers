@@ -10,11 +10,9 @@ import Foundation
 
 public struct ContainerInfo: Sendable {
     public var name = ""
-    public var virtualFileSystem: [Filesystem] = []
-    public var volumes: [Filesystem] = []
+    public var mounts: [Filesystem] = []
     public var publishPorts: [PublishPort] = []
     public var publishSockets: [PublishSocket] = []
-    public var temporaryFileSystem: [Filesystem] = []
     public var entryPoint: String?
     public var platform: Platform?
     public var kernel: String?

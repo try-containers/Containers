@@ -9,7 +9,6 @@
 //
 
 import Containerization
-import ContainerizationArchive
 import ContainerizationError
 import ContainerizationOCI
 import Foundation
@@ -132,69 +131,17 @@ extension ContainerRuntime {
 
         logger.info("Downloaded to: \(tarFile.path)")
 
-        // Extract the kernel using ArchiveReader (same as Apple Container CLI)
+        // Unpacking happens on the kernel service's actor, off the main thread
         progress.step("Unpacking kernel")
-        let kernelFile = try extractKernelFromArchive(
-            tarFile: tarFile,
-            kernelPath: defaultKernelBinaryPath,
-            tempDir: tempDir
-        )
-
-        // Use the KernelService to install the kernel (creates symlink, etc.)
         let service = try await getKernelService()
-        try await service.installKernel(
-            kernelFile: kernelFile,
+        try await service.installKernelFrom(
+            tar: tarFile,
+            kernelFilePath: defaultKernelBinaryPath,
             platform: .current,
             force: true
         )
 
         logger.info("Kernel installed successfully")
-    }
-
-    /// Extract kernel file from archive using ArchiveReader (same approach as Apple Container CLI)
-    private func extractKernelFromArchive(
-        tarFile: URL,
-        kernelPath: String,
-        tempDir: URL
-    ) throws -> URL {
-        logger.info("Extracting kernel from archive: \(tarFile.path)")
-        logger.info("Looking for: \(kernelPath)")
-
-        var archiveReader = try ArchiveReader(file: tarFile)
-        var (entry, data) = try archiveReader.extractFile(path: kernelPath)
-
-        // If the target file is a symlink, get the data for the actual file
-        if entry.fileType == .symbolicLink,
-            let symlinkRelative = entry.symlinkTarget
-        {
-            logger.info("Kernel is a symlink to: \(symlinkRelative)")
-            // Reopen the archive to traverse from the beginning
-            archiveReader = try ArchiveReader(file: tarFile)
-
-            let symlinkTarget = URL(filePath: kernelPath)
-                .deletingLastPathComponent().appending(path: symlinkRelative)
-            let resolvedPath = symlinkTarget.standardized.relativePath
-
-            logger.info("Resolved symlink path: \(resolvedPath)")
-
-            let (_, targetData) = try archiveReader.extractFile(
-                path: resolvedPath
-            )
-
-            data = targetData
-        }
-
-        // Write the kernel to temp directory
-        let fileName = URL(filePath: kernelPath).lastPathComponent
-        let fileURL = tempDir.appendingPathComponent(fileName)
-
-        try data.write(to: fileURL, options: .atomic)
-
-        logger.info(
-            "Extracted kernel to: \(fileURL.path), size: \(data.count) bytes"
-        )
-
-        return fileURL
     }
 
     private func initImageExists() async -> Bool {

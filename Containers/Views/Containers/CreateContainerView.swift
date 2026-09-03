@@ -594,26 +594,22 @@ struct CreateContainerView: View {
             }
 
             do {
-                let mounts = try await ContainerFilesystems(
+                let resolved = try await ResolvedMounts(
                     mounts: self.mounts,
                     volumes: self.volumes,
                     using: volumeManager
                 )
 
-                self.container.virtualFileSystem = mounts.bindMounts
-                self.container.temporaryFileSystem = mounts.temporaryFileSystems
-                self.container.volumes = mounts.volumes
+                self.container.mounts = resolved.mounts
                 self.container.platform = try Platform(
                     from: self.platformString
                 )
                 self.container.shmSize = shmSizeInBytes
                 self.container.capabilities = self.capabilities.names
 
-                let validPorts = self.ports.filter({
-                    $0.host > 0 && $0.container > 0
-                })
-
-                self.container.publishPorts = validPorts.map(\.publishedPort)
+                self.container.publishPorts = self.ports.compactMap(
+                    \.publishedPort
+                )
 
                 let validEnvironments = self.environments.filter({
                     !$0.key.trimmingCharacters(in: .whitespacesAndNewlines)

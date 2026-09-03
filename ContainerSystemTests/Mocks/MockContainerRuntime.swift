@@ -6,6 +6,7 @@
 //
 
 import Containerization
+import ContainerizationError
 import ContainerizationOCI
 import Foundation
 import Logging
@@ -17,12 +18,69 @@ import Logging
 /// Creates real but lightweight service instances backed by temporary
 /// directories.  All stores (ContentStore, ImageStore) are filesystem-only
 /// and safe to use in a test host without special entitlements.
+///
+/// The services live here rather than in the superclass's own storage, which
+/// is private; the runtime's accessors are the seam, so they are overridden
+/// to hand back these instances.
 @MainActor
 final class MockContainerRuntime: ContainerRuntime {
+
+    private var mockContainersService: ContainersService?
+    private var mockImagesService: ImagesService?
+    private var mockKernelService: KernelService?
+    private var mockContentStore: ContentStore?
 
     init() {
         super.init(forTesting: true)
     }
+
+    // MARK: - Service Accessors
+
+    override func getContainersService() async throws -> ContainersService {
+        guard let service = mockContainersService else {
+            throw ContainerizationError(
+                .internalError,
+                message: "Containers service not initialized"
+            )
+        }
+
+        return service
+    }
+
+    override func getImagesService() async throws -> ImagesService {
+        guard let service = mockImagesService else {
+            throw ContainerizationError(
+                .internalError,
+                message: "Images service not initialized"
+            )
+        }
+
+        return service
+    }
+
+    override func getKernelService() async throws -> KernelService {
+        guard let service = mockKernelService else {
+            throw ContainerizationError(
+                .internalError,
+                message: "Kernel service not initialized"
+            )
+        }
+
+        return service
+    }
+
+    override func getContentStore() throws -> ContentStore {
+        guard let store = mockContentStore else {
+            throw ContainerizationError(
+                .internalError,
+                message: "Content store not initialized"
+            )
+        }
+
+        return store
+    }
+
+    // MARK: - Lifecycle
 
     // Override start to set up isolated services in a temp directory
     override func start(appRoot: URL) async throws {
@@ -60,25 +118,24 @@ final class MockContainerRuntime: ContainerRuntime {
             contentStore: localContentStore,
             imageStore: imageStore,
             snapshotsPath: snapshotsPath,
-            log: ContainerRuntime.logger
+            log: logger
         )
-        self.imagesService = images
-        self.contentStore = localContentStore
+        self.mockImagesService = images
+        self.mockContentStore = localContentStore
 
         // ContainersService — reads existing containers from disk (empty in tests)
-        self.containersService = try ContainersService(
+        self.mockContainersService = try ContainersService(
             appRoot: appRoot,
             imagesService: images,
-            log: ContainerRuntime.logger
+            log: logger
         )
 
         // KernelService — just creates a directory
-        self.kernelService = try KernelService(
-            log: ContainerRuntime.logger,
+        self.mockKernelService = try KernelService(
+            log: logger,
             appRoot: appRoot
         )
 
-        servicesInitialized = true
         isRunning = true
         startupError = nil
     }
@@ -92,11 +149,10 @@ final class MockContainerRuntime: ContainerRuntime {
         isStopping = true
         defer { isStopping = false }
 
-        containersService = nil
-        imagesService = nil
-        kernelService = nil
-        contentStore = nil
-        servicesInitialized = false
+        mockContainersService = nil
+        mockImagesService = nil
+        mockKernelService = nil
+        mockContentStore = nil
         isRunning = false
 
         // Clean up temp directory

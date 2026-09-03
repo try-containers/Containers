@@ -15,4 +15,9 @@ extension CGFloat {
 
     /// The fixed width of a form's control column.
     static let fieldControlWidth: CGFloat = 260
+
+    /// The gap between the mark on a sheet's centre line — the progress
+    /// spinner, or the mark that a failure leaves in its place — and the
+    /// writing hung beneath it.
+    static let sheetMarkSpacing: CGFloat = 12
 }

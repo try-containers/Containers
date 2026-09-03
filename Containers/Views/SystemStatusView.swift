@@ -79,7 +79,7 @@ struct SystemStatusView: View {
         } description: {
             Text("Start it to work with your containers, images and volumes.")
         } actions: {
-            Button("Start System", action: start)
+            Button("Start", action: start)
         }
     }
 
