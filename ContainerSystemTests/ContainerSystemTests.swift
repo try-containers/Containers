@@ -10,12 +10,12 @@ import Testing
 
 @testable import ContainerSystem
 
-@Suite(.serialized)
+@Suite("Container system", .serialized)
 struct ContainerSystemTests {
 
-    @Test("System starts successfully")
+    @Test("Start system")
     @MainActor
-    func testSystemStart() async throws {
+    func startSystem() async throws {
         let testRuntime = MockContainerRuntime()
         let system = SystemManager(testRuntime: testRuntime)
 
@@ -29,9 +29,9 @@ struct ContainerSystemTests {
         try await system.stop()
     }
 
-    @Test("System can be started multiple times")
+    @Test("Start twice")
     @MainActor
-    func testSystemMultipleStarts() async throws {
+    func startTwice() async throws {
         let testRuntime = MockContainerRuntime()
         let system = SystemManager(testRuntime: testRuntime)
 
@@ -48,9 +48,9 @@ struct ContainerSystemTests {
         try await system.stop()
     }
 
-    @Test("System stops successfully")
+    @Test("Stop system")
     @MainActor
-    func testSystemStop() async throws {
+    func stopSystem() async throws {
         let testRuntime = MockContainerRuntime()
         let system = SystemManager(testRuntime: testRuntime)
 

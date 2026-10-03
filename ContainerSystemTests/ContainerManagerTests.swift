@@ -11,6 +11,7 @@ import Testing
 
 @testable import ContainerSystem
 
+@Suite("Container manager")
 struct ContainerManagerTests {
 
     // MARK: - Setup Helper
@@ -29,9 +30,9 @@ struct ContainerManagerTests {
 
     // MARK: - List Containers Tests
 
-    @Test("List containers returns array")
+    @Test("List containers")
     @MainActor
-    func testListContainers() async throws {
+    func listContainers() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ContainerManager(testRuntime: testRuntime)
@@ -40,9 +41,9 @@ struct ContainerManagerTests {
         #expect(type(of: containers) == [ContainerSnapshot].self)
     }
 
-    @Test("List containers is callable")
+    @Test("List returns container snapshots")
     @MainActor
-    func testListContainersCallable() async throws {
+    func listReturnsSnapshots() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ContainerManager(testRuntime: testRuntime)
@@ -54,9 +55,9 @@ struct ContainerManagerTests {
 
     // MARK: - Get Container Tests
 
-    @Test("Get non-existent container throws error")
+    @Test("Get missing container throws")
     @MainActor
-    func testGetNonExistentContainer() async throws {
+    func getMissingContainerThrows() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ContainerManager(testRuntime: testRuntime)

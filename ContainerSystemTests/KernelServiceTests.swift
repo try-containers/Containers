@@ -68,7 +68,7 @@ struct KernelServiceTests {
         return try Data(contentsOf: kernel.path)
     }
 
-    @Test("Installing writes the kernel named in the archive")
+    @Test("Install named kernel")
     func installsNamedKernel() async throws {
         let directory = try TemporaryDirectory("kernel-install")
         defer { directory.remove() }
@@ -89,7 +89,7 @@ struct KernelServiceTests {
         #expect(try await installedKernel(from: service) == Data("real kernel".utf8))
     }
 
-    @Test("A symlinked kernel installs the file it points at")
+    @Test("Install follows symlink")
     func followsSymlink() async throws {
         let directory = try TemporaryDirectory("kernel-symlink")
         defer { directory.remove() }
@@ -117,7 +117,7 @@ struct KernelServiceTests {
         )
     }
 
-    @Test("An installed kernel is kept unless the install is forced")
+    @Test("Keep existing kernel")
     func keepsExistingKernel() async throws {
         let directory = try TemporaryDirectory("kernel-keep")
         defer { directory.remove() }
@@ -144,7 +144,7 @@ struct KernelServiceTests {
         #expect(try await installedKernel(from: service) == Data("first kernel".utf8))
     }
 
-    @Test("Forcing replaces the installed kernel")
+    @Test("Force replaces kernel")
     func forceReplacesKernel() async throws {
         let directory = try TemporaryDirectory("kernel-force")
         defer { directory.remove() }
@@ -171,7 +171,7 @@ struct KernelServiceTests {
         #expect(try await installedKernel(from: service) == Data("second kernel".utf8))
     }
 
-    @Test("Asking for a kernel that was never installed fails")
+    @Test("Missing kernel fails")
     func missingKernelFails() async throws {
         let directory = try TemporaryDirectory("kernel-missing")
         defer { directory.remove() }
@@ -183,7 +183,7 @@ struct KernelServiceTests {
         }
     }
 
-    @Test("A kernel path the archive does not hold fails")
+    @Test("Missing archive member fails")
     func missingArchiveMemberFails() async throws {
         let directory = try TemporaryDirectory("kernel-bad-path")
         defer { directory.remove() }

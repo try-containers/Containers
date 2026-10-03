@@ -12,6 +12,7 @@ import Testing
 
 @testable import ContainerSystem
 
+@Suite("Image manager")
 struct ImageManagerTests {
 
     // MARK: - Setup Helper
@@ -30,9 +31,9 @@ struct ImageManagerTests {
 
     // MARK: - List Images Tests
 
-    @Test("A fresh store lists no images")
+    @Test("Empty store lists no images")
     @MainActor
-    func testListImages() async throws {
+    func emptyStoreListsNoImages() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ImageManager(testRuntime: testRuntime)
@@ -41,9 +42,9 @@ struct ImageManagerTests {
         #expect(images.isEmpty)
     }
 
-    @Test("Listing fails once the system has been stopped")
+    @Test("List fails after stop")
     @MainActor
-    func testListAfterStopFails() async throws {
+    func listFailsAfterStop() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ImageManager(testRuntime: testRuntime)
@@ -54,9 +55,9 @@ struct ImageManagerTests {
         }
     }
 
-    @Test("List images filters infrastructure images")
+    @Test("List hides infrastructure images")
     @MainActor
-    func testListImagesFiltersInfra() async throws {
+    func listHidesInfrastructureImages() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ImageManager(testRuntime: testRuntime)
@@ -71,9 +72,9 @@ struct ImageManagerTests {
 
     // MARK: - Save Images Tests
 
-    @Test("Save images to valid directory")
+    @Test("Save to directory")
     @MainActor
-    func testSaveImagesToDirectory() async throws {
+    func saveToDirectory() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -98,9 +99,9 @@ struct ImageManagerTests {
         )
     }
 
-    @Test("Save images with empty list succeeds")
+    @Test("Save empty list")
     @MainActor
-    func testSaveEmptyImageList() async throws {
+    func saveEmptyList() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -127,9 +128,9 @@ struct ImageManagerTests {
 
     // MARK: - Delete Images Tests
 
-    @Test("Delete images with empty list succeeds")
+    @Test("Delete empty list")
     @MainActor
-    func testDeleteEmptyImageList() async throws {
+    func deleteEmptyList() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ImageManager(testRuntime: testRuntime)

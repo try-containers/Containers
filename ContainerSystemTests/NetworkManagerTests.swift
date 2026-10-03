@@ -47,7 +47,7 @@ struct NetworkManagerTests {
 
         """
 
-    @Test("A domain is the one the file names, not the one the filename does")
+    @Test("Domain is read from contents")
     func readsDomainFromContents() throws {
         let directory = try resolverDirectory([
             // The file is for `test`, whatever its own name says.
@@ -59,7 +59,7 @@ struct NetworkManagerTests {
         #expect(manager.listDomains(in: directory) == ["test"])
     }
 
-    @Test("Only the CLI's own resolver files are listed")
+    @Test("Other resolvers are ignored")
     func ignoresForeignResolvers() throws {
         let directory = try resolverDirectory([
             "containerization.test": cliResolver,
@@ -73,7 +73,7 @@ struct NetworkManagerTests {
 
     /// The CLI passes over a file it cannot read a domain out of, so a file
     /// written by hand without that line is not a domain either.
-    @Test("A file with no domain line is passed over")
+    @Test("Resolver without domain is skipped")
     func skipsResolverWithoutDomain() throws {
         let directory = try resolverDirectory([
             "containerization.test": "nameserver 127.0.0.1\nport 2053\n"
@@ -84,7 +84,7 @@ struct NetworkManagerTests {
         #expect(manager.listDomains(in: directory).isEmpty)
     }
 
-    @Test("Domains come back in order")
+    @Test("Domains are sorted")
     func sortsDomains() throws {
         let directory = try resolverDirectory([
             "containerization.zulu": "domain zulu\n",
@@ -97,7 +97,7 @@ struct NetworkManagerTests {
         #expect(manager.listDomains(in: directory) == ["alpha", "mike", "zulu"])
     }
 
-    @Test("A localhost domain is read like any other")
+    @Test("Localhost resolver is read")
     func readsLocalhostResolver() throws {
         // What `--localhost` adds: a redirected address, and 1053 for a port.
         let directory = try resolverDirectory([
@@ -115,7 +115,7 @@ struct NetworkManagerTests {
         #expect(manager.listDomains(in: directory) == ["local"])
     }
 
-    @Test("A missing resolver directory is no domains at all")
+    @Test("Missing directory yields no domains")
     func toleratesMissingDirectory() {
         let absent = URL.temporaryDirectory
             .appendingPathComponent("absent-\(UUID().uuidString)")

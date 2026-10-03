@@ -15,7 +15,7 @@ import Testing
 @MainActor
 struct ProgressStepsTests {
 
-    @Test("A step shows its description on the progress it belongs to")
+    @Test("Step description shows on parent")
     func showsStepDescription() async throws {
         let progress = Progress(totalUnitCount: 2)
 
@@ -28,7 +28,7 @@ struct ProgressStepsTests {
         }
     }
 
-    @Test("The deepest step under way speaks for the whole operation")
+    @Test("Deepest step describes the operation")
     func deepestStepWins() async throws {
         let progress = Progress(totalUnitCount: 1)
 
@@ -44,7 +44,7 @@ struct ProgressStepsTests {
         }
     }
 
-    @Test("Each step counts for its share of the operation")
+    @Test("Steps share the total")
     func stepsShareTheOperation() async throws {
         let progress = Progress(totalUnitCount: 2)
 
@@ -57,7 +57,7 @@ struct ProgressStepsTests {
         #expect(progress.fractionCompleted == 0.5)
     }
 
-    @Test("A step that reports no amounts still counts once it is done")
+    @Test("Unmeasured step completes")
     func unmeasuredStepCompletes() async throws {
         let progress = Progress(totalUnitCount: 2)
 
@@ -68,7 +68,7 @@ struct ProgressStepsTests {
         #expect(progress.fractionCompleted == 0.5)
     }
 
-    @Test("A step that fails leaves the operation where it was")
+    @Test("Failed step doesn't complete")
     func failedStepDoesNotComplete() async {
         struct Failure: Error {}
 
@@ -83,7 +83,7 @@ struct ProgressStepsTests {
         #expect(progress.fractionCompleted == 0)
     }
 
-    @Test("A step that has finished no longer speaks for the operation")
+    @Test("Finished step stops mirroring")
     func finishedStepStopsMirroring() async throws {
         let progress = Progress(totalUnitCount: 2)
         var finished: Progress?
@@ -99,7 +99,7 @@ struct ProgressStepsTests {
         #expect(progress.localizedAdditionalDescription == "")
     }
 
-    @Test("Reports that arrive once a step is complete are dropped")
+    @Test("Late reports are dropped")
     func lateReportsAreDropped() async throws {
         let progress = Progress(totalUnitCount: 2)
         var update: ProgressHandler?
@@ -117,7 +117,7 @@ struct ProgressStepsTests {
         #expect(progress.completedUnitCount == 1)
     }
 
-    @Test("Bytes measure the step where the service says how many there are")
+    @Test("Bytes take precedence over items")
     func bytesOverItems() async {
         let progress = Progress(totalUnitCount: 0)
         let update = progress.updateHandler()
@@ -133,7 +133,7 @@ struct ProgressStepsTests {
         #expect(progress.fractionCompleted == 0.1)
     }
 
-    @Test("Counts without a total leave the step indeterminate")
+    @Test("Counts without a total stay indeterminate")
     func countsWithoutTotal() async {
         let progress = Progress(totalUnitCount: 0)
 
@@ -142,7 +142,7 @@ struct ProgressStepsTests {
         #expect(progress.isIndeterminate)
     }
 
-    @Test("One handler keeps one count across the work it is handed to")
+    @Test("Handler accumulates counts")
     func handlerAccumulates() async {
         let progress = Progress(totalUnitCount: 0)
         let update = progress.updateHandler()
@@ -154,7 +154,7 @@ struct ProgressStepsTests {
         #expect(progress.completedUnitCount == 2)
     }
 
-    @Test("More arriving than was promised never takes the operation past its end")
+    @Test("Overshoot is capped")
     func overshootIsCapped() async throws {
         let progress = Progress(totalUnitCount: 1)
 
@@ -167,7 +167,7 @@ struct ProgressStepsTests {
         #expect(progress.fractionCompleted == 1)
     }
 
-    @Test("A step that catches up with its total and is given more counts once")
+    @Test("Growing total counts once")
     func totalGrowingAfterCatchingUp() async throws {
         let progress = Progress(totalUnitCount: 2)
 

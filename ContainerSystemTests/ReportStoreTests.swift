@@ -21,7 +21,7 @@ struct ReportStoreTests {
         return (try ReportStore(root: root), root)
     }
 
-    @Test("A report is listed by what the manifest says of it")
+    @Test("Record and list")
     func recordsAndLists() async throws {
         let (store, root) = try makeStore()
 
@@ -50,7 +50,7 @@ struct ReportStoreTests {
 
     /// The account is read from the file rather than from the manifest, which
     /// is the whole point of keeping the two apart.
-    @Test("The account comes back as it went in")
+    @Test("Body round trip")
     func readsBodyBack() async throws {
         let (store, root) = try makeStore()
 
@@ -74,7 +74,7 @@ struct ReportStoreTests {
 
     /// Deflated as Xcode deflates its own, so that anything that reads a gzip
     /// file can read one of these.
-    @Test("The account is kept as a gzip file")
+    @Test("Body is gzipped")
     func keepsBodyDeflated() async throws {
         let (store, root) = try makeStore()
 
@@ -97,7 +97,7 @@ struct ReportStoreTests {
         #expect(Gzip.text(of: data) == body)
     }
 
-    @Test("A report that is removed leaves nothing behind")
+    @Test("Remove deletes report")
     func removesReport() async throws {
         let (store, root) = try makeStore()
 
@@ -124,7 +124,7 @@ struct ReportStoreTests {
 
     /// The count a section carries is kept with the reports themselves, so it
     /// is still right after the app has been closed and opened again.
-    @Test("A report that has been read stays read")
+    @Test("Read state persists")
     func keepsWhatHasBeenRead() async throws {
         let (store, root) = try makeStore()
 
@@ -149,7 +149,7 @@ struct ReportStoreTests {
 
     /// Reports outlive the app, so a store opened again reads what an earlier
     /// one wrote rather than starting afresh.
-    @Test("Reports are still there when the store is opened again")
+    @Test("Reopened store keeps reports")
     func readsWhatAnEarlierStoreWrote() async throws {
         let (store, root) = try makeStore()
 
@@ -176,7 +176,7 @@ struct ReportStoreTests {
 struct ReportBodyTests {
     /// The same error twice, once with the name of its case around it, is what
     /// most of these are: a report says it once.
-    @Test("An error that only wraps itself is said once")
+    @Test("Wrapped error appears once")
     func doesNotRepeatTheError() {
         // What a `ContainerizationError` is: its case, then the message.
         struct Wrapped: LocalizedError, CustomStringConvertible {
@@ -195,7 +195,7 @@ struct ReportBodyTests {
     }
 
     /// Where the two say different things, both are worth keeping.
-    @Test("An error that says two things keeps both")
+    @Test("Distinct descriptions are both kept")
     func keepsBothWhereTheyDiffer() {
         struct Detailed: LocalizedError {
             var errorDescription: String? { "The container couldn’t be started." }

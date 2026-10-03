@@ -14,7 +14,7 @@ import Testing
 struct ReferenceNormalizedTests {
 
     @Test(
-        "Short names are filled in as Docker Hub fills them in",
+        "Short names expand to Docker Hub",
         arguments: [
             ("nginx", "docker.io/library/nginx:latest"),
             ("nginx:1.27", "docker.io/library/nginx:1.27"),
@@ -28,7 +28,7 @@ struct ReferenceNormalizedTests {
     }
 
     @Test(
-        "A name with its own registry keeps it",
+        "Explicit registry is kept",
         arguments: [
             ("ghcr.io/apple/containerization/vminit:0.1", "ghcr.io/apple/containerization/vminit:0.1"),
             ("localhost:5000/app", "localhost:5000/app:latest"),
@@ -39,7 +39,7 @@ struct ReferenceNormalizedTests {
         #expect(try Reference.normalized(reference).description == expected)
     }
 
-    @Test("A name that isn't a reference throws")
+    @Test("Invalid reference throws")
     func invalid() {
         #expect(throws: (any Error).self) {
             try Reference.normalized("Not A Reference!")

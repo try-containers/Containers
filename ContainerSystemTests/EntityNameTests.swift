@@ -14,7 +14,7 @@ import Testing
 struct EntityNameTests {
 
     @Test(
-        "Names built from the allowed characters are accepted",
+        "Valid names are accepted",
         arguments: ["web", "my-app", "db_1", "a.b-c_d", "A", "9lives"]
     )
     func acceptsValidNames(_ name: String) {
@@ -22,7 +22,7 @@ struct EntityNameTests {
     }
 
     @Test(
-        "Names that do not start with a letter or digit are rejected",
+        "Bad first character is rejected",
         arguments: ["", "-web", "_web", ".web", "/web", " web"]
     )
     func rejectsBadStarts(_ name: String) {
@@ -30,14 +30,14 @@ struct EntityNameTests {
     }
 
     @Test(
-        "Names carrying characters outside the set are rejected",
+        "Disallowed characters are rejected",
         arguments: ["my app", "web/1", "web:latest", "wéb", "web!", "a\nb"]
     )
     func rejectsBadCharacters(_ name: String) {
         #expect(!EntityName.isValid(name))
     }
 
-    @Test("A name is allowed up to the length limit and no further")
+    @Test("Length limit")
     func enforcesLength() {
         let atLimit = String(repeating: "a", count: EntityName.maximumLength)
         let overLimit = String(
@@ -50,7 +50,7 @@ struct EntityNameTests {
     }
 
     @Test(
-        "Sanitizing drops what is not allowed and the run-up to the first letter",
+        "Sanitize removes disallowed characters",
         arguments: [
             ("my app", "myapp"),
             ("--web", "web"),
@@ -63,7 +63,7 @@ struct EntityNameTests {
         #expect(EntityName.valid(from: input) == expected)
     }
 
-    @Test("Sanitizing brings a name back under the length limit")
+    @Test("Sanitize truncates long names")
     func sanitizeTruncates() {
         let sanitized = EntityName.valid(
             from: String(repeating: "a", count: EntityName.maximumLength + 50)
@@ -74,7 +74,7 @@ struct EntityNameTests {
     }
 
     @Test(
-        "What sanitizing returns is either usable or nothing at all",
+        "Sanitize returns a valid name or nil",
         arguments: [
             "my app", "--web", "web:latest", "...", "!!!", "", "café",
             "9lives", "___",

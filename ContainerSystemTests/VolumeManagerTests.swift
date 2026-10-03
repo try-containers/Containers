@@ -11,7 +11,7 @@ import Testing
 
 @testable import ContainerSystem
 
-@Suite(.serialized)
+@Suite("Volume manager", .serialized)
 struct VolumeManagerTests {
 
     // MARK: - Setup Helper
@@ -31,9 +31,9 @@ struct VolumeManagerTests {
 
     // MARK: - List Volumes Tests
 
-    @Test("List volumes returns empty array initially")
+    @Test("Empty store lists no volumes")
     @MainActor
-    func testListVolumes() async throws {
+    func emptyStoreListsNoVolumes() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = VolumeManager(testRuntime: testRuntime)
@@ -44,9 +44,9 @@ struct VolumeManagerTests {
 
     // MARK: - Create Volume Tests
 
-    @Test("Create volume succeeds and is listed")
+    @Test("Created volume is listed")
     @MainActor
-    func testCreateVolume() async throws {
+    func createdVolumeIsListed() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let volumeName = "test-volume-\(UUID().uuidString)"
@@ -69,9 +69,9 @@ struct VolumeManagerTests {
         #expect(volumes.contains(where: { $0.name == volumeName }))
     }
 
-    @Test("Create volume without size uses default size")
+    @Test("Default size when none given")
     @MainActor
-    func testCreateVolumeWithoutSize() async throws {
+    func createWithDefaultSize() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let volumeName = "test-volume-\(UUID().uuidString)"
@@ -94,9 +94,9 @@ struct VolumeManagerTests {
         )
     }
 
-    @Test("Create volume with invalid name throws error")
+    @Test("Invalid name throws")
     @MainActor
-    func testCreateVolumeInvalidName() async throws {
+    func invalidNameThrows() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = VolumeManager(testRuntime: testRuntime)
@@ -111,9 +111,9 @@ struct VolumeManagerTests {
         }
     }
 
-    @Test("Create duplicate volume throws error")
+    @Test("Duplicate name throws")
     @MainActor
-    func testCreateDuplicateVolume() async throws {
+    func duplicateNameThrows() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let volumeName = "test-volume-\(UUID().uuidString)"
@@ -138,9 +138,9 @@ struct VolumeManagerTests {
 
     // MARK: - Delete Volume Tests
 
-    @Test("Delete empty volume list succeeds")
+    @Test("Delete empty list")
     @MainActor
-    func testDeleteEmptyVolumeList() async throws {
+    func deleteEmptyList() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = VolumeManager(testRuntime: testRuntime)
@@ -148,9 +148,9 @@ struct VolumeManagerTests {
         try await manager.delete(volumes: [])
     }
 
-    @Test("Delete volume removes it from list")
+    @Test("Delete removes volume")
     @MainActor
-    func testDeleteVolume() async throws {
+    func deleteRemovesVolume() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let volumeName = "test-volume-\(UUID().uuidString)"

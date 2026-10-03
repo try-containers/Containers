@@ -10,12 +10,12 @@ import Testing
 
 @testable import ContainerSystem
 
-@Suite(.serialized)
+@Suite("Containers service", .serialized)
 struct ContainersServiceTests {
 
-    @Test("Service initializes successfully")
+    @Test("Initialize service")
     @MainActor
-    func testServiceInitialization() async throws {
+    func initializeService() async throws {
         let appRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-containers-\(UUID().uuidString)")
 
@@ -29,9 +29,9 @@ struct ContainersServiceTests {
         try await system.stop()
     }
 
-    @Test("Service can be stopped")
+    @Test("Stop service")
     @MainActor
-    func testServiceStop() async throws {
+    func stopService() async throws {
         let appRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-containers-\(UUID().uuidString)")
 

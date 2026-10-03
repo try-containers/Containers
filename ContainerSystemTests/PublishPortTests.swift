@@ -28,12 +28,12 @@ struct PublishPortTests {
         )
     }
 
-    @Test("Distinct host ports do not clash")
+    @Test("Distinct ports don't overlap")
     func distinctPortsDoNotOverlap() {
         #expect(!([port(host: 8080), port(host: 8081)]).hasOverlaps())
     }
 
-    @Test("The same host port twice clashes")
+    @Test("Duplicate port overlaps")
     func duplicatePortOverlaps() {
         // Different container ports still fight over the one host port.
         #expect(
@@ -45,12 +45,12 @@ struct PublishPortTests {
         )
     }
 
-    @Test("A range clashes with a port that falls inside it")
+    @Test("Range covers port")
     func rangeCoversPort() {
         #expect(([port(host: 8080, count: 5), port(host: 8082)]).hasOverlaps())
     }
 
-    @Test("Ranges that only touch do not clash")
+    @Test("Adjacent ranges don't overlap")
     func adjacentRangesDoNotOverlap() {
         // 8080-8082 then 8083-8084.
         #expect(
@@ -59,7 +59,7 @@ struct PublishPortTests {
         )
     }
 
-    @Test("Overlapping ranges clash")
+    @Test("Overlapping ranges overlap")
     func overlappingRangesOverlap() {
         #expect(
             ([port(host: 8080, count: 4), port(host: 8082, count: 3)])
@@ -67,7 +67,7 @@ struct PublishPortTests {
         )
     }
 
-    @Test("The same port on TCP and UDP does not clash")
+    @Test("Protocols are separate")
     func protocolsAreSeparate() {
         #expect(
             !([port(host: 8080, proto: .tcp), port(host: 8080, proto: .udp)])
@@ -75,12 +75,12 @@ struct PublishPortTests {
         )
     }
 
-    @Test("Nothing published cannot clash")
+    @Test("Empty list doesn't overlap")
     func emptyDoesNotOverlap() {
         #expect(!([PublishPort]()).hasOverlaps())
     }
 
-    @Test("A range running past the last port is counted without overflowing")
+    @Test("Range past last port doesn't overflow")
     func rangeOverflowingPortRange() {
         // A count that carries 65535 past the end of the range: tallied in
         // UInt16 that traps instead of reporting anything.
@@ -91,7 +91,7 @@ struct PublishPortTests {
     }
 
     @Test(
-        "A protocol is read from its name, and anything else is TCP",
+        "Protocol parses, defaulting to TCP",
         arguments: [
             ("udp", PublishProtocol.udp), ("UDP", .udp),
             ("tcp", .tcp), ("sctp", .tcp), ("", .tcp),

@@ -13,7 +13,7 @@ import Testing
 @Suite("File IO")
 struct FileIOTests {
 
-    @Test("A directory tree survives an archive round trip")
+    @Test("Archive round trip")
     func archiveRoundTrip() async throws {
         let source = try TemporaryDirectory("archive-source")
         let destination = try TemporaryDirectory("archive-destination")
@@ -50,7 +50,7 @@ struct FileIOTests {
         }
     }
 
-    @Test("Copying leaves the original where it was")
+    @Test("Copy keeps source")
     func copyKeepsSource() async throws {
         let directory = try TemporaryDirectory("copy")
         defer { directory.remove() }
@@ -70,7 +70,7 @@ struct FileIOTests {
         )
     }
 
-    @Test("Moving takes the original away")
+    @Test("Move removes source")
     func moveRemovesSource() async throws {
         let directory = try TemporaryDirectory("move")
         defer { directory.remove() }
@@ -84,7 +84,7 @@ struct FileIOTests {
         #expect(try Data(contentsOf: destination) == Data("export".utf8))
     }
 
-    @Test("Copying onto something that is already there fails")
+    @Test("Copy onto existing file fails")
     func copyOntoExistingFails() async throws {
         let directory = try TemporaryDirectory("copy-clash")
         defer { directory.remove() }
@@ -100,7 +100,7 @@ struct FileIOTests {
         #expect(try Data(contentsOf: destination) == Data("second".utf8))
     }
 
-    @Test("Reading a file that is not there fails")
+    @Test("Read missing file fails")
     func readMissingFails() async throws {
         let directory = try TemporaryDirectory("read-missing")
         defer { directory.remove() }

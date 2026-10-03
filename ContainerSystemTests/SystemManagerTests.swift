@@ -40,7 +40,7 @@ struct SystemManagerTests {
     /// The sheet that offers to stop a first run is not always the thing that
     /// began it: the dashboard starts the system on later launches and the
     /// sheet only opens onto the work. Cancelling has to reach it either way.
-    @Test("A start is stopped by the system, not only by whoever began it")
+    @Test("Cancel start begun elsewhere")
     func cancelsStartBegunElsewhere() async throws {
         let runtime = NeverFinishingRuntime()
         let system = SystemManager(testRuntime: runtime)
@@ -63,7 +63,7 @@ struct SystemManagerTests {
         #expect(system.status == .notStarted)
     }
 
-    @Test("Cancelling the waiting task stops the start as well")
+    @Test("Cancel start from caller")
     func cancelsStartFromTheCaller() async throws {
         let runtime = NeverFinishingRuntime()
         let system = SystemManager(testRuntime: runtime)
@@ -83,7 +83,7 @@ struct SystemManagerTests {
         #expect(runtime.didFinish == false)
     }
 
-    @Test("Cancelling when nothing is starting does nothing")
+    @Test("Cancel with nothing starting")
     func cancelsNothingSafely() {
         let system = SystemManager(testRuntime: NeverFinishingRuntime())
 
