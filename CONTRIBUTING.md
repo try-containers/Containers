@@ -30,6 +30,10 @@ Find issues from the [Issues tab](https://github.com/try-containers/Containers/i
 > Please make sure to first comment under an issue or ask a maintainer to assign you to the issue before working on it. This helps prevent multiple people from working on the same
 > thing, which could result in your work not being merged. Additionally, some issues might be reserved for those with more in-depth knowledge of the codebase.
 
+## Signing
+
+Copy `Configuration/Local.xcconfig.example` to `Configuration/Local.xcconfig` and set your own `DEVELOPMENT_TEAM`. The file is ignored by git, so set the team there rather than in Xcode's Signing & Capabilities tab, which writes it into the project file.
+
 ## Code Style
 
 Please follow the [Google Swift Style Guide](https://google.github.io/swift/).

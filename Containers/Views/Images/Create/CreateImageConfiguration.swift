@@ -19,17 +19,9 @@ struct CreateImageConfiguration: View {
     let onFileSelection: () -> Void
 
     @Binding var error: ErrorAlert?
-    @Binding var imageName: String
-    @Binding var tag: String
-    @Binding var pullPlatform: PlatformSelection
-    @Binding var contextDirectory: URL?
-    @Binding var dockerFile: URL?
-    @Binding var buildTag: String
-    @Binding var buildPlatform: PlatformSelection
-    @Binding var buildArguments: [KeyValue]
-    @Binding var targetStage: String
-    @Binding var tarFile: URL?
-    @Binding var forceLoad: Bool
+    @Binding var pull: ImagePullRequest
+    @Binding var build: ImageBuildRequest
+    @Binding var load: ImageLoadRequest
 
     var body: some View {
         Group {
@@ -37,25 +29,25 @@ struct CreateImageConfiguration: View {
             case .pull:
                 PullImageView(
                     shouldLoadFeaturedImages: shouldLoadPullFeaturedImages,
-                    imageName: $imageName,
-                    tag: $tag,
-                    platform: $pullPlatform
+                    imageName: $pull.imageName,
+                    tag: $pull.tag,
+                    platform: $pull.platform
                 )
             case .build:
                 BuildDockerfileView(
                     defaultFileDialogDirectory: defaultFileDialogDirectory,
                     error: $error,
-                    contextDirectory: $contextDirectory,
-                    dockerFile: $dockerFile,
-                    buildTag: $buildTag,
-                    buildPlatform: $buildPlatform,
-                    buildArguments: $buildArguments,
-                    targetStage: $targetStage
+                    contextDirectory: $build.contextDirectory,
+                    dockerFile: $build.dockerFile,
+                    buildTag: $build.tag,
+                    buildPlatform: $build.platform,
+                    buildArguments: $build.arguments,
+                    targetStage: $build.targetStage
                 )
             case .load:
                 LoadTarImageView(
-                    tarFile: $tarFile,
-                    force: $forceLoad,
+                    tarFile: $load.tarFile,
+                    force: $load.force,
                     tarContentTypes: tarContentTypes,
                     defaultDirectory: defaultFileDialogDirectory,
                     onSelection: onFileSelection

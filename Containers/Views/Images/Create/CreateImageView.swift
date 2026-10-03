@@ -62,19 +62,9 @@ struct CreateImageView: View {
     @SwiftUI.State private var stepTransitionDirection: Int = 1
     @SwiftUI.State private var selectedMethod: CreationMethod?
     @SwiftUI.State private var failure: ErrorAlert?
-    @SwiftUI.State private var tarFile: URL?
-    @SwiftUI.State private var forceLoad: Bool = false
-    @SwiftUI.State private var contextDirectory: URL?
-    @SwiftUI.State private var imageName: String = ""
-    @SwiftUI.State private var tag: String = "latest"
-    @SwiftUI.State private var pullPlatform: PlatformSelection = .any
-    @SwiftUI.State private var dockerFile: URL?
-    @SwiftUI.State private var buildTag: String = ""
-    @SwiftUI.State private var buildPlatform: PlatformSelection = .platform(
-        .current
-    )
-    @SwiftUI.State private var buildArguments: [KeyValue] = []
-    @SwiftUI.State private var targetStage: String = ""
+    @SwiftUI.State private var pull = ImagePullRequest()
+    @SwiftUI.State private var build = ImageBuildRequest()
+    @SwiftUI.State private var load = ImageLoadRequest()
     @SwiftUI.State private var shouldLoadPullFeaturedImages: Bool = false
     @SwiftUI.State private var paneTitle: String?
 
@@ -175,17 +165,9 @@ struct CreateImageView: View {
                 shouldLoadPullFeaturedImages: shouldLoadPullFeaturedImages,
                 onFileSelection: { failure = nil },
                 error: $failure,
-                imageName: $imageName,
-                tag: $tag,
-                pullPlatform: $pullPlatform,
-                contextDirectory: $contextDirectory,
-                dockerFile: $dockerFile,
-                buildTag: $buildTag,
-                buildPlatform: $buildPlatform,
-                buildArguments: $buildArguments,
-                targetStage: $targetStage,
-                tarFile: $tarFile,
-                forceLoad: $forceLoad
+                pull: $pull,
+                build: $build,
+                load: $load
             )
         }
     }
@@ -220,14 +202,10 @@ struct CreateImageView: View {
             return selectedMethod != nil
         case .configuration:
             switch selectedMethod {
-            case .pull:
-                return !imageName.isEmpty
-            case .build:
-                return contextDirectory != nil && dockerFile != nil
-            case .load:
-                return tarFile != nil
-            case .none:
-                return false
+            case .pull: return pull.isComplete
+            case .build: return build.isComplete
+            case .load: return load.isComplete
+            case .none: return false
             }
         }
     }
@@ -245,14 +223,14 @@ struct CreateImageView: View {
         panel.canChooseDirectories = false
         panel.canCreateDirectories = false
         panel.showsHiddenFiles = true
-        panel.directoryURL = tarFile?.parent ?? defaultFileDialogDirectory
+        panel.directoryURL = load.tarFile?.parent ?? defaultFileDialogDirectory
         panel.allowedContentTypes = tarContentTypes
 
         guard panel.runModal() == .OK, let url = panel.url else {
             return
         }
 
-        tarFile = url
+        load.tarFile = url
         createImage()
     }
 
@@ -347,20 +325,17 @@ struct CreateImageView: View {
     /// here rather than left to the manager, so the row can be titled with
     /// what the image is going to be called.
     private func startBuild() throws {
-        guard let contextDirectory, let dockerFile else {
+        guard let contextDirectory = build.contextDirectory, let dockerFile = build.dockerFile else {
             throw ContainerizationError(
                 .invalidArgument,
                 message: "Choose a Dockerfile and the folder to build from."
             )
         }
 
-        let tag =
-            buildTag.isEmpty ? UUID().uuidString.lowercased() : buildTag
-        let platform = buildPlatform.platform ?? Platform.current
-        let arguments = buildArguments.filter {
-            !$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        let targetStage = targetStage
+        let tag = build.resolvedTag()
+        let platform = build.targetPlatform
+        let arguments = build.namedArguments
+        let targetStage = build.targetStage
         let imageManager = imageManager
 
         activityCenter.start(
@@ -400,14 +375,14 @@ struct CreateImageView: View {
     /// is only known once it has been read, so the row is known by the file
     /// until then.
     private func startLoad() throws {
-        guard let tarFile else {
+        guard let tarFile = load.tarFile else {
             throw ContainerizationError(
                 .invalidArgument,
                 message: "Choose the archive to load the image from."
             )
         }
 
-        let force = forceLoad
+        let force = load.force
         let imageManager = imageManager
 
         activityCenter.start(
@@ -433,8 +408,8 @@ struct CreateImageView: View {
     /// Hands the pull over to the row it will land in, which is where it is
     /// watched and stopped from now on.
     private func startPull() {
-        let reference = tag.isEmpty ? imageName : "\(imageName):\(tag)"
-        let platform = pullPlatform.platform
+        let reference = pull.reference
+        let platform = pull.platform.platform
         let imageManager = imageManager
 
         activityCenter.start(
