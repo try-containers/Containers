@@ -13,7 +13,7 @@ import ContainerizationOCI
 import Foundation
 import Logging
 
-/// Manages the container runtime lifecycle and services.
+/// Container runtime lifecycle and services.
 /// Owns all services and provides factory methods for creating managers.
 @Observable
 @MainActor
@@ -59,16 +59,14 @@ class ContainerRuntime {
     var isStarting: Bool = false
     var isStopping: Bool = false
     var startupError: Error?
-
-    /// Timestamp of last container state change
-    /// All ContainerManager instances observe this property
     var lastContainerStateChange: Date = Date()
+    var reports: [Report] = []
 
-    /// What a long-running operation (pull, build, unpack) is doing, which
-    /// every manager reports into and every sheet reads from.
-    let progress = ProgressReporter()
+    /// What a first start is fetching, while it fetches it.
+    var setupProgress: Progress?
 
-    // Plugin processes storage (used by ContainerRuntime+Plugins extension)
+    @ObservationIgnored var reportStore: ReportStore?
+
     var pluginProcesses: [String: PluginProcessInfo] = [:]
 
     // Current configuration
@@ -77,7 +75,6 @@ class ContainerRuntime {
 
     // MARK: - Private State
 
-    // Service storage (used by ContainerRuntime+Services extension)
     private var servicesInitialized = false
     private var pluginLoader: PluginLoader?
     private var containersService: ContainersService?
@@ -93,8 +90,7 @@ class ContainerRuntime {
     }
 
     // MARK: - Service Accessors
-    /// Get containers service. Only accessible to managers in ContainerSystem module.
-    /// Can be overridden in tests to provide mock services.
+
     func getContainersService() async throws -> ContainersService {
         guard let service = containersService else {
             throw ContainerizationError(
@@ -105,8 +101,6 @@ class ContainerRuntime {
         return service
     }
 
-    /// Get images service. Only accessible to managers in ContainerSystem module.
-    /// Can be overridden in tests to provide mock services.
     func getImagesService() async throws -> ImagesService {
         guard let service = imagesService else {
             throw ContainerizationError(
@@ -118,8 +112,6 @@ class ContainerRuntime {
         return service
     }
 
-    /// Get kernel service. Only accessible to managers in ContainerSystem module.
-    /// Can be overridden in tests to provide mock services.
     func getKernelService() async throws -> KernelService {
         guard let service = kernelService else {
             throw ContainerizationError(
@@ -131,7 +123,6 @@ class ContainerRuntime {
         return service
     }
 
-    /// Get app root directory. Only accessible to managers in ContainerSystem module.
     func getAppRoot() throws -> URL {
         guard let appRoot = appRoot else {
             throw ContainerizationError(
@@ -143,7 +134,6 @@ class ContainerRuntime {
         return appRoot
     }
 
-    /// Get content store. Only accessible to managers in ContainerSystem module.
     func getContentStore() throws -> ContentStore {
         guard let contentStore = contentStore else {
             throw ContainerizationError(
@@ -177,13 +167,8 @@ class ContainerRuntime {
         }
 
         do {
-            // Create necessary directories
             try createDataDirectories(appRoot: appRoot)
-
-            // Initialize services
             try await initializeServices(appRoot: appRoot)
-
-            // Install prerequisites (init image and kernel)
             try await installPrerequisites()
 
             isRunning = true
@@ -193,17 +178,27 @@ class ContainerRuntime {
 
         } catch {
             self.isRunning = false
-            self.startupError = error
+
+            let wasCancelled = error is CancellationError || Task.isCancelled
+
+            self.startupError = wasCancelled ? nil : error
+
             if isAccessingAppRootSecurityScope {
                 appRoot.stopAccessingSecurityScopedResource()
                 isAccessingAppRootSecurityScope = false
             }
+
             self.appRoot = nil
 
-            // Cleanup on failure
+            // Cleanup on failure.
             stopAllPlugins()
+            discardServices()
 
-            logger.error("Failed to start system: \(error)")
+            if wasCancelled {
+                logger.info("Start cancelled; system left stopped")
+            } else {
+                logger.error("Failed to start system: \(error)")
+            }
 
             throw error
         }
@@ -222,13 +217,12 @@ class ContainerRuntime {
 
         logger.info("Stopping container system...")
 
-        // Stop all plugins
         stopAllPlugins()
 
-        // Shutdown services
         await shutdownServices()
 
         isRunning = false
+
         if isAccessingAppRootSecurityScope {
             appRoot?.stopAccessingSecurityScopedResource()
             isAccessingAppRootSecurityScope = false
@@ -275,7 +269,6 @@ class ContainerRuntime {
         self.imagesService = imagesService
         self.contentStore = contentStore
 
-        // Initialize sandboxed containers service
         let service = try ContainersService(
             appRoot: appRoot,
             imagesService: imagesService,
@@ -284,7 +277,6 @@ class ContainerRuntime {
 
         self.containersService = service
 
-        // Initialize kernel service
         let kernel = try KernelService(log: logger, appRoot: appRoot)
 
         self.kernelService = kernel
@@ -320,6 +312,12 @@ class ContainerRuntime {
             }
         }
 
+        discardServices()
+    }
+
+    /// Lets go of the services, so that the next start builds them again
+    /// rather than reaching for ones whose plugins have been stopped.
+    private func discardServices() {
         containersService = nil
         imagesService = nil
         kernelService = nil

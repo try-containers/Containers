@@ -12,28 +12,66 @@ struct ContainersView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(SystemManager.self) private var system
     @Environment(VolumeManager.self) private var volumeManager
+    @Environment(ActivityCenter.self) private var activityCenter
+    @Environment(ReportManager.self) private var reportManager
     @Environment(\.openWindow) private var openWindow
 
     @Binding var searchText: String
     @Binding var runningContainersOnly: Bool
+    @Binding var selection: Set<ContainerItem.ID>
+    @Binding var actions: SelectionActions
+    @Binding var command: SelectionCommand?
 
     var refreshTrigger: Int
 
-    @State private var containers: [ContainerViewModel] = []
-    @State private var selectedContainer: ContainerViewModel? = nil
-    @State private var lastUpdated: Date? = nil
-    @State private var errorAlert: ErrorAlert?
-    @State private var showDeleteConfirmation = false
-    @State private var showCreateContainerView = false
-    @State private var runningContainerIDs: Set<String> = []
+    @State private var containers: [ContainerItem] = []
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var filteredContainers: [ContainerViewModel] {
+    /// A container still being made gets a row of its own whatever the filter
+    /// says, keyed by the name it will have, so it becomes that row in place.
+    private func withCreations(
+        _ containers: [ContainerItem]
+    ) -> [ContainerItem] {
+        let working = activityCenter.activities(ofKind: .container)
+        var madeIDs = Set<String>()
+
+        let made = containers.map { container -> ContainerItem in
+            var container = container
+
+            if let activity = working.first(where: { $0.id == container.id }) {
+                container.activity = ActivitySnapshot(activity)
+            } else if container.status != .running,
+                let report = reportManager.latestReport(
+                    named: container.id,
+                    ofKind: [.container]
+                ), !report.isRead
+            {
+                // An unread failure from an earlier run, unless the container
+                // has started since.
+                container.activity = ActivitySnapshot(report: report)
+            }
+
+            madeIDs.insert(container.id)
+
+            return container
+        }
+
+        let pending =
+            working
+            .filter { !madeIDs.contains($0.id) }
+            .map {
+                ContainerItem(pending: ActivitySnapshot($0))
+            }
+
+        return (pending + made).sorted { $0.id < $1.id }
+    }
+
+    private var filteredContainers: [ContainerItem] {
         if trimmedText.isEmpty {
-            return marked(
+            return withCreations(
                 runningContainersOnly
                     ? containers.filter({ $0.status == .running }) : containers
             )
@@ -46,267 +84,260 @@ struct ContainersView: View {
                 || $0.formattedIPAddress.contains(trimmedText) == true
         })
 
-        return marked(
+        return withCreations(
             runningContainersOnly
                 ? filtered.filter({ $0.status == .running }) : filtered
         )
     }
 
-    /// Says which rows are working, so that a row whose buttons have to change
-    /// is a row the table can see has changed.
-    private func marked(
-        _ containers: [ContainerViewModel]
-    ) -> [ContainerViewModel] {
-        containers.map { container in
-            var container = container
-            container.isBusy = runningContainerIDs.contains(container.id)
-            return container
-        }
+    /// One whose last action failed counts, so it can be tried again.
+    private func isSettled(_ container: ContainerItem) -> Bool {
+        !container.isPending && (container.activity?.hasEnded ?? true)
+    }
+
+    private func startable(
+        _ containers: [ContainerItem]
+    ) -> [ContainerItem] {
+        containers.filter { isSettled($0) && $0.status == .stopped }
+    }
+
+    private func stoppable(
+        _ containers: [ContainerItem]
+    ) -> [ContainerItem] {
+        containers.filter { isSettled($0) && $0.status == .running }
+    }
+
+    private var rowActions: TableRowActions<ContainerItem> {
+        TableRowActions(
+            noun: "Container",
+            name: \.id,
+            // A row still being created has nothing to show yet.
+            canOpen: { !$0.isPending },
+            open: openDetails(for:),
+            canDelete: { $0.activity?.hasEnded ?? true },
+            deletesWithoutAsking: \.isPending,
+            delete: deleteContainers,
+            canStart: { !startable($0).isEmpty },
+            start: { startContainers(startable($0)) },
+            canStop: { !stoppable($0).isEmpty },
+            stop: { stopContainers(stoppable($0)) },
+            pendingWork: { $0.isPending ? $0.activity : nil }
+        )
     }
 
     var body: some View {
         TableView(
             rows: filteredContainers,
+            selection: $selection,
+            sortOrder: [KeyPathComparator(\.name)],
+            actions: $actions,
+            command: $command,
+            rowActions: rowActions,
             refreshTrigger: refreshTrigger,
-            lastUpdated: lastUpdated,
-            isFiltering: !trimmedText.isEmpty || runningContainersOnly,
             tableStyle: .automatic,
-            onClear: {
-                containers = []
-                lastUpdated = nil
-            },
-            onRefresh: refreshContainers
+            activityKind: .container,
+            onClear: { containers = [] },
+            onRefresh: refreshContainers,
+            menu: { selected in
+                Button("Start", systemImage: "play") {
+                    startContainers(startable(selected))
+                }
+                .disabled(startable(selected).isEmpty)
+
+                Button("Stop", systemImage: "stop") {
+                    stopContainers(stoppable(selected))
+                }
+                .disabled(stoppable(selected).isEmpty)
+            }
         ) {
-            TableColumn("Name") { container in
-                Button(
-                    action: {
-                        openWindow(
-                            id: ContainersApp.containerDetailWindowID,
-                            value: container.id
+            TableColumn("State", value: \.formattedState) { container in
+                // The name is on the tooltip and for VoiceOver.
+                Image(systemName: stateSymbol(for: container.status))
+                    .font(.system(size: 8))
+                    .rowTint(stateColor(for: container.status))
+                    .frame(maxWidth: .infinity)
+                    .help(stateLabel(for: container.status))
+                    .accessibilityLabel(stateLabel(for: container.status))
+            }
+            .width(min: 36, ideal: 44, max: 60)
+
+            TableColumn("Name", value: \.name) { container in
+                HStack(spacing: 4) {
+                    Text(container.name)
+                        .lineLimit(1)
+                        .foregroundStyle(
+                            container.isPending ? .secondary : .primary
                         )
-                    },
-                    label: {
-                        Text(container.name)
-                            .lineLimit(1)
-                            .underline()
+
+                    if let activity = container.activity {
+                        Spacer(minLength: 0)
+
+                        RowProgressIndicator(
+                            activity: activity,
+                            activityCenter: activityCenter,
+                            openReport: openWindow.report
+                        )
                     }
-                )
-                .buttonStyle(.link)
-                .pointerStyle(.link)
+                }
             }
             .width(min: 100, ideal: 150, max: 250)
 
-            TableColumn("Image") { container in
+            TableColumn("Image", value: \.imageName) { container in
                 Text(container.imageName)
                     .lineLimit(1)
+                    .foregroundStyle(
+                        container.isPending ? .secondary : .primary
+                    )
             }
             .width(min: 120, ideal: 180, max: 300)
 
-            TableColumn("State") { container in
-                Text(container.status.rawValue.localizedCapitalized)
-                    .foregroundStyle(stateColor(for: container.status))
-                    .lineLimit(1)
-            }
-            .width(min: 64, ideal: 80, max: 100)
-
-            TableColumn("IP Address") { container in
-                Text(container.formattedIPAddress)
-                    .lineLimit(1)
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(
-                        !container.hasIPAddress
-                            ? .secondary : .primary
-                    )
-                    .textSelection(.enabled)
+            TableColumn("IP Address", value: \.formattedIPAddress) { container in
+                Text(
+                    !container.isPending
+                        ? container.formattedIPAddress : "—"
+                )
+                .lineLimit(1)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(
+                    !container.hasIPAddress
+                        ? .secondary : .primary
+                )
+                .textSelection(.enabled)
             }
             .width(min: 100, ideal: 120, max: 140)
 
-            TableColumn("Uptime") { container in
+            TableColumn("Uptime", value: \.startedSort) { container in
                 TimelineView(.periodic(from: .now, by: 15)) { context in
-                    Text(container.formattedUptime(at: context.date))
-                        .lineLimit(1)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(
-                            container.status == .running
-                                ? .primary : .secondary
-                        )
+                    Text(
+                        !container.isPending
+                            ? container.formattedUptime(at: context.date) : "—"
+                    )
+                    .lineLimit(1)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(
+                        container.status == .running
+                            ? .primary : .secondary
+                    )
                 }
             }
             .width(min: 80, ideal: 100, max: 140)
-
-            TableColumn("Actions") { container in
-                HStack(spacing: 12) {
-                    switch container.status {
-                    case .running:
-                        RowActionButton(
-                            icon: "stop.fill",
-                            tint: .gray,
-                            isEnabled: !container.isBusy
-                        ) {
-                            stopContainer(container)
-                        }
-
-                    case .stopped:
-                        RowActionButton(
-                            icon: "play.fill",
-                            tint: .blue,
-                            isEnabled: !container.isBusy
-                        ) {
-                            startContainer(container)
-                        }
-
-                    case .stopping, .unknown:
-                        Image(systemName: "slash.circle")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    // Only the actions answer for the work: the row stays
-                    // live, so its detail is a click away while it runs.
-                    RowActionButton(
-                        icon: "trash.fill",
-                        tint: .red,
-                        isEnabled: !container.isBusy
-                    ) {
-                        selectedContainer = container
-                        showDeleteConfirmation = true
-                    }
-                }
-                .padding(.horizontal, 8)
-            }
-            .width(min: 92, ideal: 92, max: 92)
         }
         .onChange(of: containerManager.lastContainerChange) {
             Task {
                 guard system.status == .running else { return }
-                await refreshContainers()
+                try? await refreshContainers()
             }
         }
-        .sheet(
-            isPresented: $showCreateContainerView,
-            onDismiss: {
-                Task {
-                    await refreshContainers()
-                }
-            },
-            content: {
-                CreateContainerView(imageReference: "")
-            }
+    }
+
+    private func openDetails(for container: ContainerItem) {
+        openWindow(
+            id: ContainersApp.containerDetailWindowID,
+            value: container.id
         )
-        .errorAlert($errorAlert)
-        .confirmationDialog(
-            "Delete Container?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                guard let container = selectedContainer else {
-                    return
-                }
+    }
 
-                deleteContainer(container)
-                selectedContainer = nil
-            }
-
-            Button("Cancel", role: .cancel) {
-                selectedContainer = nil
-            }
-        } message: {
-            if let container = selectedContainer {
-                Text("Delete \(container.id)? This cannot be undone.")
-            }
+    /// Unknown gets its own mark: it shares the stopped colour, and a hollow
+    /// ring would pass it off as stopped.
+    private func stateSymbol(for status: ContainerStatus) -> String {
+        switch status {
+        case .running, .stopping: "circle.fill"
+        case .stopped: "circle"
+        case .unknown: "questionmark.circle"
         }
+    }
+
+    private func stateLabel(for status: ContainerStatus) -> String {
+        status == .unknown
+            ? "Unknown" : status.rawValue.localizedCapitalized
     }
 
     private func stateColor(for status: ContainerStatus) -> Color {
         switch status {
         case .running: return .green
         case .stopping: return .orange
-        case .stopped: return .red
+        case .stopped: return .secondary
         case .unknown: return .secondary
         }
     }
 
-    private func startContainer(_ container: ContainerViewModel) {
-        runningContainerIDs.insert(container.id)
+    /// Run as row work, so a failure shows in the row like a creation's.
+    private func startContainers(_ containers: [ContainerItem]) {
+        let containerManager = containerManager
 
-        Task {
-            defer { runningContainerIDs.remove(container.id) }
-
-            do {
+        for container in containers {
+            activityCenter.run(
+                on: container.id,
+                kind: .container,
+                subtitle: container.imageName,
+                failureTitle: "The container couldn’t be started."
+            ) {
                 try await containerManager.run(id: container.id)
-            } catch (let err) {
-                self.errorAlert = ErrorAlert(
-                    "The container couldn’t be started.",
-                    error: err
-                )
             }
         }
     }
 
-    private func stopContainer(_ container: ContainerViewModel) {
-        runningContainerIDs.insert(container.id)
+    private func stopContainers(_ containers: [ContainerItem]) {
+        let containerManager = containerManager
+        let timeout = Int32(UserDefaults.stopContainerTimeoutSeconds)
 
-        Task {
-            defer { runningContainerIDs.remove(container.id) }
-
-            do {
+        for container in containers {
+            activityCenter.run(
+                on: container.id,
+                kind: .container,
+                subtitle: container.imageName,
+                failureTitle: "The container couldn’t be stopped."
+            ) {
                 try await containerManager.stop(
                     ids: [container.id],
-                    timeoutSeconds: Int32(
-                        UserDefaults.stopContainerTimeoutSeconds
-                    )
-                )
-            } catch (let err) {
-                self.errorAlert = ErrorAlert(
-                    "The container couldn’t be stopped.",
-                    error: err
+                    timeoutSeconds: timeout
                 )
             }
         }
     }
 
-    private func deleteContainer(_ container: ContainerViewModel) {
-        runningContainerIDs.insert(container.id)
+    private func deleteContainers(_ containers: [ContainerItem]) {
+        let containerManager = containerManager
 
-        Task {
-            defer { runningContainerIDs.remove(container.id) }
+        for container in containers {
+            // A row that only stands for failed work is that work.
+            if container.isPending, let activity = container.activity {
+                activityCenter.remove(activity.id)
+                continue
+            }
 
-            do {
+            activityCenter.run(
+                on: container.id,
+                kind: .container,
+                subtitle: container.imageName,
+                failureTitle: "The container couldn’t be deleted."
+            ) {
                 try await containerManager.delete(
                     ids: [container.id],
                     force: true
                 )
-                await refreshContainers()
-            } catch (let err) {
-                self.errorAlert = ErrorAlert(
-                    "The container couldn’t be deleted.",
-                    error: err
-                )
             }
         }
     }
 
-    private func refreshContainers() async {
-        do {
-            self.containers = (try await containerManager.list())
-                .map({ ContainerViewModel($0) })
-                .sorted { $0.id < $1.id }
-            self.lastUpdated = Date()
-        } catch (let err) {
-            self.errorAlert = ErrorAlert(
-                "The containers couldn’t be loaded.",
-                error: err
-            )
-        }
+    private func refreshContainers() async throws {
+        containers = try await containerManager.list().map(ContainerItem.init)
     }
 }
 
 #Preview {
+    let reportManager = ReportManager()
+
     ContainersView(
         searchText: .constant(""),
         runningContainersOnly: .constant(false),
+        selection: .constant([]),
+        actions: .constant(SelectionActions()),
+        command: .constant(nil),
         refreshTrigger: 0
     )
     .environment(ContainerManager())
     .environment(SystemManager())
+    .environment(ActivityCenter(reports: reportManager))
+    .environment(reportManager)
 }

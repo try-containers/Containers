@@ -13,9 +13,8 @@ struct InspectView: View {
     private let root: JSONNode?
     private let json: String
 
-    /// What the tree would take unconstrained. A scroll view answers
-    /// `sizeThatFits` with its viewport, so the size it holds has to be
-    /// measured here and declared upward.
+    /// The tree's natural size. A scroll view reports its viewport, not its
+    /// content, so the tree is measured here and passed up.
     @State private var treeSize: CGSize = .zero
 
     init(json: String) {
@@ -27,7 +26,7 @@ struct InspectView: View {
         self.init(json: InspectJSONEncoder.encode(value))
     }
 
-    /// Called from layout, so the write is deferred.
+    /// Called during layout, so the state write is deferred.
     private func measureTree(size: CGSize) {
         guard
             size.width > 0,
@@ -39,11 +38,9 @@ struct InspectView: View {
     }
 
     var body: some View {
-        // A ScrollView centres content smaller than itself, so collapsing the
-        // root left one line floating in the middle of the tab. Growing the
-        // content to the viewport pins it to the corner instead — and it takes
-        // a GeometryReader to know that size, since a scrollable axis proposes
-        // nothing and `maxHeight: .infinity` has nothing to fill.
+        // A scroll view centres content smaller than itself. Growing the tree
+        // to the viewport keeps it top-leading; a scroll axis proposes no
+        // size, so the viewport comes from a GeometryReader.
         GeometryReader { viewport in
             ScrollView([.vertical, .horizontal]) {
                 MeasuredSize(onSize: measureTree) {
@@ -51,14 +48,13 @@ struct InspectView: View {
                         if let root {
                             JSONNodeView(node: root)
                         } else {
-                            // Not parseable: the text is still the answer.
+                            // Not valid JSON: show the raw text.
                             Text(json)
                                 .font(JSONStyle.font)
                                 .textSelection(.enabled)
                         }
                     }
-                    // JSON is read a line at a time; wrapping a digest across
-                    // two of them is worse than scrolling for it.
+                    // Lines scroll rather than wrap, so long values like digests stay whole.
                     .fixedSize()
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
@@ -72,19 +68,16 @@ struct InspectView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .contentIdealSize(treeSize)
-        // Not ready until it has measured itself: the size arrives a turn
-        // after the tree is first laid out, and fitting before it lands uses
-        // the fallbacks — so the window took its height, then its width, in
-        // two animations instead of one.
+        // The size arrives a turn after the first layout. Fitting earlier
+        // resizes the window in two animations instead of one.
         .contentReady(treeSize != .zero)
-        // The JSON runs to any length, so the tab's bound is what it gets —
-        // and a tree this size is not worth measuring twice a layout pass.
+        // JSON can be any length, so the window bounds the tab and it scrolls.
         .contentUnbounded()
     }
 }
 
-/// Reports what its content would take unconstrained, while still handing it
-/// whatever it is given — one pass, so the tree is not laid out twice.
+/// Reports its content's natural size while laying it out at the proposed
+/// size, in one pass so the tree isn't measured twice.
 private struct MeasuredSize: Layout {
     let onSize: @MainActor @Sendable (CGSize) -> Void
 
@@ -161,8 +154,7 @@ private struct JSONNodeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(children) { JSONNodeView(node: $0) }
             }
-            // Outside a List a DisclosureGroup does not indent what it holds,
-            // and a tree that does not step in is not a tree.
+            // Outside a List, a DisclosureGroup doesn't indent its content.
             .padding(.leading, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
@@ -175,9 +167,7 @@ private struct JSONNodeView: View {
         }
     }
 
-    /// One `Text` per row rather than one per token: the colours ride on the
-    /// string, so a row is a single view and selecting across it gives the
-    /// whole line rather than a fragment.
+    /// One `Text` per row, coloured by attributes, so selection spans the whole line.
     private func row(_ attributed: AttributedString) -> some View {
         Text(attributed)
             .font(JSONStyle.font)
@@ -233,9 +223,7 @@ private struct JSONNode: Identifiable {
         case leaf(String, JSONRole)
     }
 
-    /// The path to this node. Stable across re-parses, so a branch the user
-    /// opened stays open when the view is rebuilt — a fresh id each parse
-    /// silently reset every disclosure.
+    /// The node's path, stable across re-parses so disclosure state survives a rebuild.
     let id: String
     /// Quoted, as it would be written. `nil` for array elements and the root.
     let key: String?
@@ -260,8 +248,7 @@ private enum JSONTree {
     private static func value(of object: Any, path: String) -> JSONNode.Value {
         switch object {
         case let dictionary as [String: Any]:
-            // Keys come back unordered, so they are sorted to keep the same
-            // tree between re-parses.
+            // Sorted, since `JSONSerialization` returns keys unordered.
             .object(
                 dictionary.sorted { $0.key < $1.key }.map { key, child in
                     let childPath = "\(path)/\(key)"
@@ -294,8 +281,7 @@ private enum JSONTree {
         }
     }
 
-    /// Re-quotes and re-escapes a string that came out of `JSONSerialization`
-    /// decoded, so a row reads as the JSON it was written as.
+    /// Re-escapes a decoded string so the row shows it as written in the JSON.
     private static func quoted(_ string: String) -> String {
         var quoted = "\""
 
@@ -317,8 +303,7 @@ private enum JSONTree {
 }
 
 extension NSColor {
-    /// One colour per appearance, resolved when it is drawn rather than when
-    /// it is built, so the JSON recolours with the system.
+    /// Resolved at draw time, so the colours follow the system appearance.
     fileprivate static func inspect(light: Int, dark: Int) -> NSColor {
         NSColor(name: nil) { appearance in
             let isDark =

@@ -14,62 +14,73 @@ import ContainerizationOCI
 import Foundation
 
 extension ContainerRuntime {
-
-    // MARK: - Prerequisites Installation
-
-    /// Install system prerequisites (init image and kernel)
     func installPrerequisites() async throws {
         let initExists = await initImageExists()
         let kernelExistsResult = await kernelExists()
 
-        // What a first run has to fetch is known before it starts, so the
-        // steps count against what will actually be done.
-        let steps = (initExists ? 0 : 2) + (kernelExistsResult ? 0 : 2)
+        guard !initExists || !kernelExistsResult else { return }
 
-        guard steps > 0 else { return }
+        // Only what is missing is counted, so the bar measures what will actually be done.
+        let progress = Progress.discreteProgress(
+            totalUnitCount: (initExists ? 0 : 2) + (kernelExistsResult ? 0 : 2)
+        )
 
-        progress.begin(totalTasks: steps)
+        setupProgress = progress
 
         defer {
-            progress.finish()
+            setupProgress = nil
         }
 
         if !initExists {
+            try Task.checkCancellation()
             logger.info("Installing base container filesystem...")
-            try await installInitialFilesystem()
+            try await progress.performStep(pendingUnitCount: 2) { step in
+                try await installInitialFilesystem(progress: step)
+            }
         }
 
         if !kernelExistsResult {
+            try Task.checkCancellation()
             logger.info("Installing default kernel...")
-            try await installDefaultKernel()
+            try await progress.performStep(pendingUnitCount: 2) { step in
+                try await installDefaultKernel(progress: step)
+            }
             logger.info("Kernel installed")
         }
     }
 
     // MARK: - Private Helpers
 
-    private func installInitialFilesystem() async throws {
+    private func installInitialFilesystem(progress: Progress) async throws {
         let initFsRef = DefaultsStore.get(key: .defaultInitImage)
 
         let service = try await getImagesService()
 
-        progress.step("Fetching init image", itemsName: "blobs")
-        let imageDescription = try await service.pull(
-            reference: initFsRef,
-            platform: .current,
-            insecure: false,
-            progressUpdate: progress.handler()
-        )
+        progress.totalUnitCount = 2
 
-        progress.step("Unpacking init image", itemsName: "entries")
-        try await service.unpack(
-            description: imageDescription,
-            platform: .current,
-            progressUpdate: progress.handler()
-        )
+        let imageDescription = try await progress.performStep(
+            "Fetching init image"
+        ) { step in
+            try await service.pull(
+                reference: initFsRef,
+                platform: .current,
+                insecure: false,
+                progressUpdate: step.updateHandler()
+            )
+        }
+
+        try Task.checkCancellation()
+
+        try await progress.performStep("Unpacking init image") { step in
+            try await service.unpack(
+                description: imageDescription,
+                platform: .current,
+                progressUpdate: step.updateHandler()
+            )
+        }
     }
 
-    private func installDefaultKernel() async throws {
+    private func installDefaultKernel(progress: Progress) async throws {
         // Get kernel URL and binary path from DefaultsStore (same as Apple Container CLI)
         let defaultKernelURL = DefaultsStore.get(key: .defaultKernelURL)
         let defaultKernelBinaryPath = DefaultsStore.get(
@@ -79,6 +90,7 @@ extension ContainerRuntime {
         logger.info(
             "Starting kernel installation from: \(defaultKernelURL)"
         )
+
         logger.info(
             "Kernel binary path in archive: \(defaultKernelBinaryPath)"
         )
@@ -91,8 +103,7 @@ extension ContainerRuntime {
         }
 
         // Create temp directory for download and extraction
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 
         try FileManager.default.createDirectory(
             at: tempDir,
@@ -110,16 +121,15 @@ extension ContainerRuntime {
 
         logger.info("Downloading from: \(sourceURL) to: \(tarFile.path)")
 
-        progress.step("Downloading kernel")
-        let response = try await FileDownloader(
-            destination: tarFile,
-            progress: progress
-        ).download(from: sourceURL)
+        progress.totalUnitCount = 2
+
+        let response = try await progress.performStep("Downloading kernel") { step in
+            try await FileDownloader(destination: tarFile, progress: step).download(from: sourceURL)
+        }
 
         if let httpResponse = response as? HTTPURLResponse {
-            logger.info(
-                "Download response status: \(httpResponse.statusCode)"
-            )
+            logger.info("Download response status: \(httpResponse.statusCode)")
+
             guard httpResponse.statusCode == 200 else {
                 throw ContainerizationError(
                     .internalError,
@@ -131,15 +141,19 @@ extension ContainerRuntime {
 
         logger.info("Downloaded to: \(tarFile.path)")
 
+        try Task.checkCancellation()
+
         // Unpacking happens on the kernel service's actor, off the main thread
-        progress.step("Unpacking kernel")
-        let service = try await getKernelService()
-        try await service.installKernelFrom(
-            tar: tarFile,
-            kernelFilePath: defaultKernelBinaryPath,
-            platform: .current,
-            force: true
-        )
+        try await progress.performStep("Unpacking kernel") { _ in
+            let service = try await getKernelService()
+
+            try await service.installKernelFrom(
+                tar: tarFile,
+                kernelFilePath: defaultKernelBinaryPath,
+                platform: .current,
+                force: true
+            )
+        }
 
         logger.info("Kernel installed successfully")
     }

@@ -7,6 +7,8 @@
 
 import AppKit
 import ContainerSystem
+import Containerization
+import ContainerizationError
 import ContainerizationOCI
 import ContainerizationOS
 import Foundation
@@ -36,28 +38,11 @@ struct CreateImageView: View {
             case .load: return "Load an image from a tar archive"
             }
         }
-
-        /// The steps the method reports, which the progress counts against.
-        var totalSteps: Int {
-            switch self {
-            case .pull: return 2
-            case .build: return 3
-            case .load: return 2
-            }
-        }
-    }
-
-    /// Where the sheet goes once the user says yes to stopping the work.
-    private enum StopIntent {
-        case goBack
-        case close
     }
 
     enum Step: Int, CaseIterable {
         case method = 0
         case configuration = 1
-        /// The work itself, so that leaving it is an ordinary step back.
-        case progress = 2
 
         var isCentered: Bool {
             switch self {
@@ -65,21 +50,18 @@ struct CreateImageView: View {
                 true
             case .configuration:
                 false
-            case .progress:
-                true
             }
         }
     }
 
     @Environment(ImageManager.self) private var imageManager
+    @Environment(ActivityCenter.self) private var activityCenter
     @Environment(\.dismiss) private var dismiss
 
     @SwiftUI.State private var currentStep: Step = .method
     @SwiftUI.State private var stepTransitionDirection: Int = 1
     @SwiftUI.State private var selectedMethod: CreationMethod?
     @SwiftUI.State private var failure: ErrorAlert?
-    @SwiftUI.State private var creationTask: Task<Void, Never>?
-    @SwiftUI.State private var stopIntent: StopIntent?
     @SwiftUI.State private var tarFile: URL?
     @SwiftUI.State private var forceLoad: Bool = false
     @SwiftUI.State private var contextDirectory: URL?
@@ -88,7 +70,9 @@ struct CreateImageView: View {
     @SwiftUI.State private var pullPlatform: PlatformSelection = .any
     @SwiftUI.State private var dockerFile: URL?
     @SwiftUI.State private var buildTag: String = ""
-    @SwiftUI.State private var buildPlatform: PlatformSelection = .platform(.current)
+    @SwiftUI.State private var buildPlatform: PlatformSelection = .platform(
+        .current
+    )
     @SwiftUI.State private var buildArguments: [KeyValue] = []
     @SwiftUI.State private var targetStage: String = ""
     @SwiftUI.State private var shouldLoadPullFeaturedImages: Bool = false
@@ -97,9 +81,7 @@ struct CreateImageView: View {
     var body: some View {
         CreateView(
             title: "Create Image",
-            isProcessing: isCreating,
             isFailed: failure != nil,
-            progressTitle: progressMessage,
             width: Self.sheetWidth,
             height: 480,
             showsHeader: false,
@@ -116,7 +98,7 @@ struct CreateImageView: View {
             },
             actions: {
                 Button {
-                    confirmStop(.close)
+                    dismiss()
                 } label: {
                     Text("Cancel")
                         .frame(width: .sheetButtonLabelWidth)
@@ -126,7 +108,7 @@ struct CreateImageView: View {
                 Spacer()
 
                 Button(
-                    action: { confirmStop(.goBack) },
+                    action: previousStep,
                     label: {
                         Text("Previous")
                             .frame(width: .sheetButtonLabelWidth)
@@ -145,7 +127,7 @@ struct CreateImageView: View {
                         }
                     )
                     .defaultAction(enabled: canProceedToNextStep)
-                case .configuration, .progress:
+                case .configuration:
                     Button(
                         action: createImage,
                         label: {
@@ -154,18 +136,8 @@ struct CreateImageView: View {
                         }
                     )
                     .defaultAction(
-                        enabled: !isCreating && canProceedToNextStep
-                            && failure == nil
+                        enabled: canProceedToNextStep && failure == nil
                     )
-                }
-            },
-            progress: {
-                if !imageManager.progress.detail.isEmpty {
-                    Text(imageManager.progress.detail)
-                        .font(.subheadline)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
                 }
             },
             failure: {
@@ -174,52 +146,6 @@ struct CreateImageView: View {
                 }
             }
         )
-        .confirmationDialog(
-            "Stop Creating Image",
-            isPresented: Binding(
-                get: { stopIntent != nil },
-                set: { presented in
-                    if !presented { stopIntent = nil }
-                }
-            ),
-            titleVisibility: .visible,
-            presenting: stopIntent
-        ) { intent in
-            Button("Stop", role: .destructive) {
-                stop(intent)
-            }
-
-            Button("Continue", role: .cancel) {}
-        } message: { _ in
-            Text(
-                "The image hasn’t finished being created. Stopping now discards it."
-            )
-        }
-    }
-
-    /// Work under way is only stopped on purpose, so the button asks first.
-    private func confirmStop(_ intent: StopIntent) {
-        guard isCreating else {
-            stop(intent)
-            return
-        }
-
-        stopIntent = intent
-    }
-
-    private func stop(_ intent: StopIntent) {
-        switch intent {
-        case .goBack:
-            previousStep()
-        case .close:
-            cancelCreation()
-            dismiss()
-        }
-    }
-
-    /// The work is a step, so nothing else has to be asked whether it runs.
-    private var isCreating: Bool {
-        currentStep == .progress
     }
 
     private func paneTitle(for step: Step) -> String? {
@@ -261,8 +187,6 @@ struct CreateImageView: View {
                 tarFile: $tarFile,
                 forceLoad: $forceLoad
             )
-        case .progress:
-            EmptyView()
         }
     }
 
@@ -277,23 +201,6 @@ struct CreateImageView: View {
             insertion: .opacity.combined(with: .offset(x: shift)),
             removal: .identity
         )
-    }
-
-    private var progressMessage: String {
-        let step = imageManager.progress.description
-
-        guard step.isEmpty else { return step }
-        guard let method = selectedMethod else { return "Processing..." }
-
-        switch method {
-        case .pull:
-            return "Pulling image from registry..."
-        case .build:
-            return
-                "Building image from Dockerfile...\nThis may take several minutes."
-        case .load:
-            return "Loading image from tar archive..."
-        }
     }
 
     // MARK: - Navigation
@@ -311,7 +218,7 @@ struct CreateImageView: View {
         switch currentStep {
         case .method:
             return selectedMethod != nil
-        case .configuration, .progress:
+        case .configuration:
             switch selectedMethod {
             case .pull:
                 return !imageName.isEmpty
@@ -379,8 +286,6 @@ struct CreateImageView: View {
     }
 
     func previousStep() {
-        cancelCreation()
-
         // The failure stands in front of the step that produced it, so going
         // back leaves the failure rather than the step.
         guard failure == nil else {
@@ -408,61 +313,144 @@ struct CreateImageView: View {
 
     // MARK: - Image Creation
 
+    /// The sheet's part is settling what to make; making it belongs to the
+    /// row it will land in, which is where it is watched and stopped.
     func createImage() {
         guard let method = selectedMethod else { return }
 
-        prepareStepTransition()
-        stepTransitionDirection = 1
-        paneTitle = nil
+        do {
+            switch method {
+            case .pull:
+                startPull()
+            case .build:
+                try startBuild()
+            case .load:
+                try startLoad()
+            }
+        } catch {
+            // What is wrong with what was asked for is answered here, where
+            // it can still be put right; what goes wrong doing it is answered
+            // in the row.
+            failure = ErrorAlert(
+                failureTitle(for: method),
+                error: error,
+                showsDetails: false
+            )
 
-        withAnimation(Self.stepAnimation) {
-            currentStep = .progress
-            failure = nil
+            return
         }
 
-        creationTask = Task { @MainActor in
-            imageManager.progress.begin(totalTasks: method.totalSteps)
+        dismiss()
+    }
 
-            defer {
-                imageManager.progress.finish()
-            }
+    /// Hands the build over to the row it will land in. The tag is settled
+    /// here rather than left to the manager, so the row can be titled with
+    /// what the image is going to be called.
+    private func startBuild() throws {
+        guard let contextDirectory, let dockerFile else {
+            throw ContainerizationError(
+                .invalidArgument,
+                message: "Choose a Dockerfile and the folder to build from."
+            )
+        }
 
-            do {
-                switch method {
-                case .pull:
-                    try await pullImage()
-                case .build:
-                    try await buildImage()
-                case .load:
-                    try await loadImage()
-                }
+        let tag =
+            buildTag.isEmpty ? UUID().uuidString.lowercased() : buildTag
+        let platform = buildPlatform.platform ?? Platform.current
+        let arguments = buildArguments.filter {
+            !$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let targetStage = targetStage
+        let imageManager = imageManager
 
-                // Dismiss on success
-                dismiss()
+        activityCenter.start(
+            id: ImageItem.identity(for: tag) ?? tag,
+            kind: .image,
+            title: tag,
+            failureTitle: failureTitle(for: .build)
+        ) { progress in
+            try await imageManager.build(
+                dockerFile: dockerFile,
+                contextDirectory: contextDirectory,
+                tag: tag,
+                cpus: 2,
+                memory: 1024.mib(),
+                vSockPort: 8088,
+                outputs: [
+                    BuildImageOutputConfiguration(
+                        type: .oci,
+                        additionalFields: []
+                    )
+                ],
+                platforms: [platform],
+                buildArguments: arguments,
+                labels: [],
+                noCache: false,
+                targetStage: targetStage,
+                cacheIn: [],
+                cacheOut: [],
+                progress: progress
+            )
 
-            } catch is CancellationError {
-                // Going back is what called this off, and it has moved on.
-            } catch {
-                // Failing is not a step being turned to: the message takes the
-                // place the progress held, without the assistant's slide.
-                stepTransitionDirection = -1
-                currentStep = .configuration
-                failure = ErrorAlert(
-                    failureTitle(for: method),
-                    error: error,
-                    // What went wrong here reads in full, so there is
-                    // nothing to keep folded away.
-                    showsDetails: false
-                )
-            }
+            return nil
         }
     }
 
-    /// Stops work still in flight. Where the sheet goes next is the caller's
-    /// to say: back a step, or away altogether.
-    func cancelCreation() {
-        creationTask?.cancel()
-        creationTask = nil
+    /// Hands the load over to the row it will land in. What the archive holds
+    /// is only known once it has been read, so the row is known by the file
+    /// until then.
+    private func startLoad() throws {
+        guard let tarFile else {
+            throw ContainerizationError(
+                .invalidArgument,
+                message: "Choose the archive to load the image from."
+            )
+        }
+
+        let force = forceLoad
+        let imageManager = imageManager
+
+        activityCenter.start(
+            id: tarFile.path,
+            kind: .image,
+            title: tarFile.lastPathComponent,
+            failureTitle: failureTitle(for: .load)
+        ) { progress in
+            let loaded = try await imageManager.load(
+                tar: tarFile,
+                force: force,
+                progress: progress
+            )
+
+            // The archive says what it holds only once it has been read, and
+            // what it holds is what the row has been standing in for.
+            guard let reference = loaded.first?.reference else { return nil }
+
+            return ImageItem.identity(for: reference) ?? reference
+        }
+    }
+
+    /// Hands the pull over to the row it will land in, which is where it is
+    /// watched and stopped from now on.
+    private func startPull() {
+        let reference = tag.isEmpty ? imageName : "\(imageName):\(tag)"
+        let platform = pullPlatform.platform
+        let imageManager = imageManager
+
+        activityCenter.start(
+            id: ImageItem.identity(for: reference) ?? reference,
+            kind: .image,
+            title: reference,
+            failureTitle: failureTitle(for: .pull)
+        ) { progress in
+            try await imageManager.pull(
+                reference: reference,
+                platform: platform,
+                progress: progress
+            )
+
+            return nil
+        }
     }
 
     private func failureTitle(for method: CreationMethod) -> String {
@@ -474,62 +462,5 @@ struct CreateImageView: View {
         case .load:
             "The image couldn’t be loaded."
         }
-    }
-
-    func pullImage() async throws {
-        let reference = tag.isEmpty ? imageName : "\(imageName):\(tag)"
-
-        try await imageManager.pull(
-            reference: reference,
-            platform: pullPlatform.platform
-        )
-    }
-
-    func buildImage() async throws {
-        guard let contextDirectory, let dockerFile else {
-            throw NSError(
-                domain: "BuildError",
-                code: 1,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "Missing context directory or Dockerfile"
-                ]
-            )
-        }
-
-        let validBuildArguments = self.buildArguments.filter({
-            !$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })
-
-        try await imageManager.build(
-            dockerFile: dockerFile,
-            contextDirectory: contextDirectory,
-            tag: buildTag,
-            cpus: 2,
-            memory: 1024.mib(),
-            vSockPort: 8088,
-            outputs: [
-                BuildImageOutputConfiguration(type: .oci, additionalFields: [])
-            ],
-            platforms: [buildPlatform.platform ?? Platform.current],
-            buildArguments: validBuildArguments,
-            labels: [],
-            noCache: false,
-            targetStage: targetStage,
-            cacheIn: [],
-            cacheOut: []
-        )
-    }
-
-    func loadImage() async throws {
-        guard let tarFile else {
-            throw NSError(
-                domain: "LoadError",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "No tar file selected"]
-            )
-        }
-
-        try await imageManager.load(tar: tarFile, force: forceLoad)
     }
 }

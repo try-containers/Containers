@@ -13,7 +13,7 @@ import ContainerizationError
 import Foundation
 import Logging
 
-/// Service for managing Linux kernel binaries used by container VMs.
+/// Service for handling Linux kernel binaries used by container VMs.
 actor KernelService {
     private let log: Logger
     private let kernelsRoot: URL
@@ -22,25 +22,17 @@ actor KernelService {
         self.log = log
         self.kernelsRoot = appRoot.appendingPathComponent("kernels")
 
-        try FileManager.default.createDirectory(
-            at: kernelsRoot,
-            withIntermediateDirectories: true
-        )
+        try FileManager.default.createDirectory(at: kernelsRoot, withIntermediateDirectories: true)
     }
 
     /// Get the default kernel for the given platform.
-    func getDefaultKernel(platform: SystemPlatform) async throws
-        -> Kernel
-    {
-        let kernelPath = kernelsRoot.appendingPathComponent(
-            "default-\(platform.architecture.rawValue)"
-        )
+    func getDefaultKernel(platform: SystemPlatform) async throws -> Kernel {
+        let kernelPath = kernelsRoot.appendingPathComponent("default-\(platform.architecture.rawValue)")
 
         guard FileManager.default.fileExists(atPath: kernelPath.path) else {
             throw ContainerizationError(
                 .notFound,
-                message:
-                    "Default kernel not found for \(platform.architecture.rawValue)"
+                message: "Default kernel not found for \(platform.architecture.rawValue)"
             )
         }
 
@@ -58,15 +50,11 @@ actor KernelService {
         platform: SystemPlatform,
         force: Bool = false
     ) async throws {
-        let destination = kernelsRoot.appendingPathComponent(
-            "default-\(platform.architecture.rawValue)"
-        )
+        let destination = kernelsRoot.appendingPathComponent("default-\(platform.architecture.rawValue)")
 
         if FileManager.default.fileExists(atPath: destination.path) {
             guard force else {
-                log.info(
-                    "Kernel already installed for \(platform.architecture.rawValue), skipping"
-                )
+                log.info("Kernel already installed for \(platform.architecture.rawValue), skipping")
                 return
             }
 
@@ -77,13 +65,10 @@ actor KernelService {
 
         try kernel.write(to: destination, options: .atomic)
 
-        log.info(
-            "Kernel installed at \(destination.path), size: \(kernel.count) bytes"
-        )
+        log.info("Kernel installed at \(destination.path), size: \(kernel.count) bytes")
     }
 
-    /// Extract a file from an archive (same approach as the Apple Container
-    /// CLI), returning its bytes rather than a path.
+    /// Extract a file from an archive, returning its bytes rather than a path.
     private func extractFile(tarFile: URL, at path: String) throws -> Data {
         log.info("Extracting \(path) from archive: \(tarFile.path)")
 
@@ -91,22 +76,17 @@ actor KernelService {
         let (entry, extracted) = try archiveReader.extractFile(path: path)
 
         // If the target file is a symlink, get the data for the actual file
-        guard entry.fileType == .symbolicLink,
-            let symlinkRelative = entry.symlinkTarget
-        else {
+        guard entry.fileType == .symbolicLink, let symlinkRelative = entry.symlinkTarget else {
             return extracted
         }
 
         // Reopen the archive to traverse from the beginning
         archiveReader = try ArchiveReader(file: tarFile)
 
-        let symlinkTarget = URL(filePath: path)
-            .deletingLastPathComponent().appending(path: symlinkRelative)
+        let symlinkTarget = URL(filePath: path).deletingLastPathComponent().appending(path: symlinkRelative)
         let resolvedPath = symlinkTarget.standardized.relativePath
 
-        log.info(
-            "Kernel is a symlink to \(symlinkRelative), resolved: \(resolvedPath)"
-        )
+        log.info("Kernel is a symlink to \(symlinkRelative), resolved: \(resolvedPath)")
 
         let (_, targetData) = try archiveReader.extractFile(path: resolvedPath)
 

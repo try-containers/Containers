@@ -15,28 +15,20 @@ import ContainerizationOS
 import Foundation
 import Logging
 
-/// A service that manages container images, wrapping ImageStore and EXT4Unpacker.
+/// A service that handles container images, wrapping ImageStore and EXT4Unpacker.
 actor ImagesService {
     private let imageStore: ImageStore
     private let contentStore: ContentStore
     private let snapshotsPath: URL
     private let log: Logger
 
-    init(
-        contentStore: ContentStore,
-        imageStore: ImageStore,
-        snapshotsPath: URL,
-        log: Logger
-    ) throws {
+    init(contentStore: ContentStore, imageStore: ImageStore, snapshotsPath: URL, log: Logger) throws {
         self.contentStore = contentStore
         self.imageStore = imageStore
         self.snapshotsPath = snapshotsPath
         self.log = log
 
-        try FileManager.default.createDirectory(
-            at: snapshotsPath,
-            withIntermediateDirectories: true
-        )
+        try FileManager.default.createDirectory(at: snapshotsPath, withIntermediateDirectories: true)
     }
 
     // MARK: - Internal API
@@ -78,53 +70,35 @@ actor ImagesService {
         let targetPlatform = platform ?? .current
 
         // Determine the EXT4 file path for this image+platform combination
-        let ext4Path = snapshotFilePath(
-            for: description,
-            platform: targetPlatform
-        )
+        let ext4Path = snapshotFilePath(for: description, platform: targetPlatform)
 
         // Skip if already unpacked
         if FileManager.default.fileExists(atPath: ext4Path.path) {
             return
         }
 
-        let unpacker = EXT4Unpacker(blockSizeInBytes: 10 * 1024 * 1024 * 1024)
-        _ = try await unpacker.unpack(
-            image,
-            for: targetPlatform,
-            at: ext4Path,
-            progress: progressUpdate
-        )
+        let initImage = DefaultsStore.get(key: .defaultInitImage)
+        let blockSize = image.reference == initImage ? 512.mib() : 512.gib()
+        let unpacker = EXT4Unpacker(blockSizeInBytes: blockSize)
+        _ = try await unpacker.unpack(image, for: targetPlatform, at: ext4Path, progress: progressUpdate)
     }
 
     /// Get a Filesystem representing the unpacked image snapshot.
-    func getImageSnapshot(
-        description: ImageDescription,
-        platform: Platform
-    ) async throws -> Filesystem {
+    func getImageSnapshot(description: ImageDescription, platform: Platform) async throws -> Filesystem {
         let ext4Path = snapshotFilePath(for: description, platform: platform)
 
         guard FileManager.default.fileExists(atPath: ext4Path.path) else {
             throw ContainerizationError(
                 .notFound,
-                message:
-                    "image snapshot not found at \(ext4Path.path). Was the image unpacked?"
+                message: "image snapshot not found at \(ext4Path.path). Was the image unpacked?"
             )
         }
 
-        return Filesystem(
-            type: .block(format: "ext4"),
-            source: ext4Path.path,
-            destination: "/",
-            options: []
-        )
+        return Filesystem(type: .block(format: "ext4"), source: ext4Path.path, destination: "/", options: [])
     }
 
     /// Load images from an OCI layout directory on disk.
-    func load(
-        from directory: URL,
-        force: Bool = false
-    ) async throws -> ([ImageDescription], [String]) {
+    func load(from directory: URL, force: Bool = false) async throws -> ([ImageDescription], [String]) {
         let images = try await imageStore.load(from: directory)
         let descriptions = images.map { $0.description }
         let references = descriptions.map { $0.reference }
@@ -132,22 +106,14 @@ actor ImagesService {
     }
 
     /// Tag an image with a new reference.
-    func tag(existing: String, new: String) async throws
-        -> ImageDescription
-    {
+    func tag(existing: String, new: String) async throws -> ImageDescription {
         let image = try await imageStore.tag(existing: existing, new: new)
         return image.description
     }
 
     /// Save images to an OCI layout directory.
-    func save(references: [String], out: URL, platform: Platform?)
-        async throws
-    {
-        try await imageStore.save(
-            references: references,
-            out: out,
-            platform: platform
-        )
+    func save(references: [String], out: URL, platform: Platform?) async throws {
+        try await imageStore.save(references: references, out: out, platform: platform)
     }
 
     /// Push an image to a remote registry.
@@ -170,39 +136,25 @@ actor ImagesService {
     }
 
     /// Delete an image by reference.
-    func delete(reference: String, garbageCollect: Bool = false)
-        async throws
-    {
-        try await imageStore.delete(
-            reference: reference,
-            performCleanup: garbageCollect
-        )
+    func delete(reference: String, garbageCollect: Bool = false) async throws {
+        try await imageStore.delete(reference: reference, performCleanup: garbageCollect)
     }
 
     // MARK: - Private Helpers
 
-    private func snapshotFilePath(
-        for description: ImageDescription,
-        platform: Platform
-    ) -> URL {
+    private func snapshotFilePath(for description: ImageDescription, platform: Platform) -> URL {
         // Use a stable hash of the digest + platform for the snapshot file name
-        let key =
-            "\(description.digest)-\(platform.os)-\(platform.architecture)"
+        let key = "\(description.digest)-\(platform.os)-\(platform.architecture)"
         let fileName = key.replacingOccurrences(of: ":", with: "-")
             .replacingOccurrences(of: "/", with: "-")
         return snapshotsPath.appendingPathComponent(fileName)
     }
 
     /// Security domain for keychain credential lookups.
-    /// Matches the domain used by the `container` CLI.
-    private static let keychainDomain = "com.apple.container.registry"
+    private static let keychainDomain = "app.containers.registry"
 
     /// Resolve authentication for a registry reference.
-    /// Checks environment variables first (for CI), then keychain, then returns nil (anonymous).
-    /// This mirrors the auth flow from the Apple container package's ImagesService.
-    private func resolveAuthentication(
-        for reference: String
-    ) -> Authentication? {
+    private func resolveAuthentication(for reference: String) -> Authentication? {
         guard let hostname = Self.extractHostname(from: reference) else {
             return nil
         }

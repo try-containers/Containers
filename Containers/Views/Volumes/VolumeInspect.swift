@@ -9,7 +9,7 @@ import ContainerSystem
 import SwiftUI
 
 struct VolumeInspect: View {
-    let volume: VolumeViewModel
+    let volume: VolumeItem
 
     var body: some View {
         InspectView(value: PrintableVolume(volume.volume))

@@ -32,11 +32,7 @@ private struct MultiWriter: Writer {
     }
 }
 
-/// Answers a wait once, with whichever comes first: the container's exit, or
-/// the caller giving up on it.
-///
-/// A task's value is not a cancellable thing to await, so a container that
-/// runs for hours would hold whoever waited on it for just as long.
+/// Answers a wait once, with whichever comes first: the container's exit, or the caller giving up on it.
 private final class ExitWaiter: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Int32, Error>?
@@ -147,7 +143,6 @@ extension Filesystem {
 
 /// A sandbox-compatible containers service that runs LinuxContainer in-process.
 actor ContainersService {
-
     private struct ContainerState {
         var snapshot: ContainerSnapshot
         var container: LinuxContainer?
@@ -169,21 +164,14 @@ actor ContainersService {
     private var stateChangeCallbacks: [@Sendable @MainActor () -> Void] = []
 
     /// Register a callback to be invoked when container state changes
-    func addStateChangeCallback(
-        _ callback: @escaping @Sendable @MainActor () -> Void
-    ) {
+    func addStateChangeCallback(_ callback: @escaping @Sendable @MainActor () -> Void) {
         stateChangeCallbacks.append(callback)
     }
 
-    init(appRoot: URL, imagesService: ImagesService, log: Logger)
-        throws
-    {
+    init(appRoot: URL, imagesService: ImagesService, log: Logger) throws {
         let containerRoot = appRoot.appendingPathComponent("containers")
 
-        try FileManager.default.createDirectory(
-            at: containerRoot,
-            withIntermediateDirectories: true
-        )
+        try FileManager.default.createDirectory(at: containerRoot, withIntermediateDirectories: true)
 
         self.appRoot = appRoot
         self.containerRoot = containerRoot
@@ -193,14 +181,10 @@ actor ContainersService {
 
         let count = containers.count
 
-        log.info(
-            "ContainersService initialized with \(count) existing container(s)"
-        )
+        log.info("ContainersService initialized with \(count) existing container(s)")
     }
 
-    private static func loadAtBoot(root: URL, log: Logger) -> [String:
-        ContainerState]
-    {
+    private static func loadAtBoot(root: URL, log: Logger) -> [String: ContainerState] {
         var results = [String: ContainerState]()
 
         guard
@@ -235,9 +219,7 @@ actor ContainersService {
                 )
                 // Container restored from disk
             } catch {
-                log.warning(
-                    "Failed to load container bundle at \(dir.path): \(error)"
-                )
+                log.warning("Failed to load container bundle at \(dir.path): \(error)")
             }
         }
         return results
@@ -288,10 +270,7 @@ actor ContainersService {
         // Creating container
 
         guard containers[configuration.id] == nil else {
-            throw ContainerizationError(
-                .exists,
-                message: "container already exists: \(configuration.id)"
-            )
+            throw ContainerizationError(.exists, message: "container already exists: \(configuration.id)")
         }
 
         let path = containerRoot.appendingPathComponent(configuration.id)
@@ -315,16 +294,9 @@ actor ContainersService {
                 description: configuration.image,
                 platform: configuration.platform
             )
-            try bundle.cloneContainerRootFs(
-                cloning: imageFs,
-                readonly: configuration.readOnly
-            )
+            try bundle.cloneContainerRootFs(cloning: imageFs, readonly: configuration.readOnly)
 
-            let snapshot = ContainerSnapshot(
-                configuration: configuration,
-                status: .stopped,
-                networks: []
-            )
+            let snapshot = ContainerSnapshot(configuration: configuration, status: .stopped, networks: [])
             containers[configuration.id] = ContainerState(
                 snapshot: snapshot,
                 container: LinuxContainer?.none,
@@ -348,10 +320,7 @@ actor ContainersService {
 
     private func _bootstrap(id: String, stdio: [FileHandle?]) async throws {
         guard var state = containers[id] else {
-            throw ContainerizationError(
-                .notFound,
-                message: "container with ID \(id) not found"
-            )
+            throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
 
         // Already bootstrapped
@@ -383,11 +352,7 @@ actor ContainersService {
         let containerLogURL = bundle.path.appendingPathComponent("stdio.log")
 
         do {
-            let fd = Darwin.open(
-                containerLogURL.path,
-                O_CREAT | O_RDONLY | O_TRUNC,
-                0o644
-            )
+            let fd = Darwin.open(containerLogURL.path, O_CREAT | O_RDONLY | O_TRUNC, 0o644)
             guard fd >= 0 else {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
@@ -444,25 +409,16 @@ actor ContainersService {
         // Allocate IP before the closure (actor-isolated state)
         let (ip, gw) = try allocateIP(for: id)
 
-        let container = try LinuxContainer(
-            id,
-            rootfs: rootfs,
-            vmm: vmm,
-            logger: self.log
-        ) { czConfig in
+        let container = try LinuxContainer(id, rootfs: rootfs, vmm: vmm, logger: self.log) { czConfig in
             try Self.configureContainer(
                 czConfig: &czConfig,
                 config: config,
                 precomputedMounts: precomputedMounts,
                 precomputedSockets: precomputedSockets
             )
+
             // Configure NATInterface (IsolatedInterfaceStrategy pattern)
-            czConfig.interfaces = [
-                try NATInterface(
-                    ipv4Address: CIDRv4(ip),
-                    ipv4Gateway: IPv4Address(gw)
-                )
-            ]
+            czConfig.interfaces = [try NATInterface(ipv4Address: CIDRv4(ip), ipv4Gateway: IPv4Address(gw))]
 
             // Do not set hosts configuration - causes I/O errors when framework tries to write /etc/hosts
             // The framework will handle hosts automatically
@@ -506,10 +462,7 @@ actor ContainersService {
         // Starting process in container
 
         guard var state = containers[id] else {
-            throw ContainerizationError(
-                .notFound,
-                message: "container with ID \(id) not found"
-            )
+            throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
 
         let isInit = id == processID
@@ -518,10 +471,7 @@ actor ContainersService {
         }
 
         guard let container = state.container else {
-            throw ContainerizationError(
-                .invalidState,
-                message: "container not bootstrapped: \(id)"
-            )
+            throw ContainerizationError(.invalidState, message: "container not bootstrapped: \(id)")
         }
 
         try await container.start()
@@ -536,13 +486,9 @@ actor ContainersService {
             // Kept on disk so the container still reports when it last ran
             // after the app has been quit and reopened.
             do {
-                try state.bundle?.setState(
-                    Bundle.State(startedDate: startedDate)
-                )
+                try state.bundle?.setState(Bundle.State(startedDate: startedDate))
             } catch {
-                log.warning(
-                    "Failed to record start date for container \(id): \(error)"
-                )
+                log.warning("Failed to record start date for container \(id): \(error)")
             }
 
             // Start port forwarding for published ports
@@ -551,14 +497,9 @@ actor ContainersService {
                 let forwarder = PortForwarder(log: self.log)
                 for port in config.publishedPorts {
                     do {
-                        try await forwarder.startForwarding(
-                            publishPort: port,
-                            container: container
-                        )
+                        try await forwarder.startForwarding(publishPort: port, container: container)
                     } catch {
-                        log.warning(
-                            "Failed to start port forwarding for \(port.hostPort) -> \(port.containerPort): \(error)"
-                        )
+                        log.warning("Failed to start port forwarding for \(port.hostPort) -> \(port.containerPort): \(error)")
                     }
                 }
                 portForwarders[id] = forwarder
@@ -588,10 +529,7 @@ actor ContainersService {
     /// Waits for the container's init process to exit and returns its code.
     func wait(id: String) async throws -> Int32 {
         guard let state = containers[id] else {
-            throw ContainerizationError(
-                .notFound,
-                message: "container with ID \(id) not found"
-            )
+            throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
 
         // A container that exited before anyone waited on it has already torn
@@ -603,6 +541,36 @@ actor ContainersService {
         return try await ExitWaiter().wait(for: monitor)
     }
 
+    /// What each running container is using right now. A container that
+    /// cannot say, because it is on its way down, is left out.
+    func resourceUsage() async -> [ContainerResourceUsage] {
+        // Taken before the first await: the actor can change underneath it.
+        let running = containers.compactMap { id, state in
+            state.snapshot.status == .running
+                ? state.container.map { (id, $0) } : nil
+        }
+
+        var usage: [ContainerResourceUsage] = []
+
+        for (id, container) in running {
+            guard
+                let stats = try? await container.statistics(categories: [.memory, .cpu])
+            else {
+                continue
+            }
+
+            let entry = ContainerResourceUsage(
+                id: id,
+                memoryBytes: stats.memory?.usageBytes ?? 0,
+                cpuUsageMicroseconds: stats.cpu?.usageUsec ?? 0
+            )
+
+            usage.append(entry)
+        }
+
+        return usage
+    }
+
     func stop(id: String, options: ContainerStopOptions) async throws {
         try await containerLock.withLock { _ in
             try await self._stop(id: id, options: options)
@@ -611,10 +579,7 @@ actor ContainersService {
 
     private func _stop(id: String, options: ContainerStopOptions) async throws {
         guard var state = containers[id] else {
-            throw ContainerizationError(
-                .notFound,
-                message: "container with ID \(id) not found"
-            )
+            throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
 
         if let container = state.container {
@@ -625,9 +590,7 @@ actor ContainersService {
                     throw err
                 }
             } catch {
-                log.error(
-                    "Error during graceful stop of container \(id): \(error)"
-                )
+                log.error("Error during graceful stop of container \(id): \(error)")
             }
         }
 
@@ -655,17 +618,11 @@ actor ContainersService {
 
     func delete(id: String) async throws {
         guard let state = containers[id] else {
-            throw ContainerizationError(
-                .notFound,
-                message: "container with ID \(id) not found"
-            )
+            throw ContainerizationError(.notFound, message: "container with ID \(id) not found")
         }
 
         if state.snapshot.status == .running {
-            throw ContainerizationError(
-                .invalidState,
-                message: "cannot delete running container"
-            )
+            throw ContainerizationError(.invalidState, message: "cannot delete running container")
         }
 
         removeContainer(id: id)
@@ -693,23 +650,17 @@ actor ContainersService {
     /// Execute a command in a running container and return its output (uses vsock, no networking needed).
     func exec(id: String, arguments: [String]) async throws -> String {
         guard let state = containers[id], let container = state.container else {
-            throw ContainerizationError(
-                .invalidState,
-                message: "container not running: \(id)"
-            )
+            throw ContainerizationError(.invalidState, message: "container not running: \(id)")
         }
 
-        let outputURL = containerRoot.appendingPathComponent(
-            "\(id)-exec-output.tmp"
-        )
+        let outputURL = containerRoot.appendingPathComponent("\(id)-exec-output.tmp")
 
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
 
         let outputHandle = try FileHandle(forWritingTo: outputURL)
         let writer = MultiWriter(handles: [outputHandle])
 
-        let process = try await container.exec("exec-\(UUID().uuidString)") {
-            config in
+        let process = try await container.exec("exec-\(UUID().uuidString)") { config in
             config.arguments = arguments
             config.stdout = writer
             config.stderr = writer
@@ -726,11 +677,8 @@ actor ContainersService {
         try? FileManager.default.removeItem(at: outputURL)
 
         if exitStatus.exitCode != 0 {
-            throw ContainerizationError(
-                .internalError,
-                message:
-                    "command failed with exit code \(exitStatus.exitCode): \(output)"
-            )
+            let message = "command failed with exit code \(exitStatus.exitCode): \(output)"
+            throw ContainerizationError(.internalError, message: message)
         }
 
         return output
@@ -738,10 +686,7 @@ actor ContainersService {
 
     func dial(id: String, port: UInt32) async throws -> FileHandle {
         guard let state = containers[id], let container = state.container else {
-            throw ContainerizationError(
-                .invalidState,
-                message: "container not running: \(id)"
-            )
+            throw ContainerizationError(.invalidState, message: "container not running: \(id)")
         }
 
         // Dialing vsock port
@@ -750,13 +695,9 @@ actor ContainersService {
 
     // MARK: - IP Allocation
 
-    private func allocateIP(for id: String) throws -> (
-        address: String, gateway: String
-    ) {
+    private func allocateIP(for id: String) throws -> (address: String, gateway: String) {
         if let existing = ipAllocations[id] {
-            return (
-                address: "192.168.64.\(existing)/24", gateway: "192.168.64.1"
-            )
+            return (address: "192.168.64.\(existing)/24", gateway: "192.168.64.1")
         }
         for i: UInt8 in 2...254 {
             if !ipAllocations.values.contains(i) {
@@ -764,10 +705,7 @@ actor ContainersService {
                 return (address: "192.168.64.\(i)/24", gateway: "192.168.64.1")
             }
         }
-        throw ContainerizationError(
-            .internalError,
-            message: "no available IP addresses"
-        )
+        throw ContainerizationError(.internalError, message: "no available IP addresses")
     }
 
     private func releaseIP(for id: String) {
@@ -803,10 +741,7 @@ actor ContainersService {
         notifyStateChange()
     }
 
-    private func gracefulStopContainer(
-        _ lc: LinuxContainer,
-        stopOpts: ContainerStopOptions
-    ) async throws {
+    private func gracefulStopContainer(_ lc: LinuxContainer, stopOpts: ContainerStopOptions) async throws {
         // Try to gracefully shut down the process, then force-stop the VM.
         do {
             _ = try await withThrowingTaskGroup(of: ExitStatus.self) { group in
@@ -815,17 +750,14 @@ actor ContainersService {
                 }
                 group.addTask {
                     try await lc.kill(Signal(rawValue: stopOpts.signal))
-                    try await Task.sleep(
-                        for: .seconds(stopOpts.timeoutInSeconds)
-                    )
+                    try await Task.sleep(for: .seconds(stopOpts.timeoutInSeconds))
                     try await lc.kill(Signal(rawValue: SIGKILL))
                     return ExitStatus(exitCode: 137)
                 }
                 guard let code = try await group.next() else {
                     throw ContainerizationError(
                         .internalError,
-                        message:
-                            "failed to get exit code from gracefully stopping container"
+                        message: "failed to get exit code from gracefully stopping container"
                     )
                 }
                 group.cancelAll()
@@ -850,7 +782,6 @@ actor ContainersService {
         czConfig.sysctl = config.sysctls
         czConfig.virtualization = config.virtualization
 
-        // Use precomputed mounts and sockets
         czConfig.mounts.append(contentsOf: precomputedMounts)
         czConfig.sockets.append(contentsOf: precomputedSockets)
 
@@ -864,23 +795,15 @@ actor ContainersService {
             czConfig.sockets.append(socketConfig)
         }
 
-        if config.ssh,
-            let sshSocket = Foundation.ProcessInfo.processInfo.environment[
-                "SSH_AUTH_SOCK"
-            ]
-        {
+        if config.ssh, let sshSocket = Foundation.ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"] {
             let socketUrl = URL(fileURLWithPath: sshSocket)
             let socketPath = socketUrl.path(percentEncoded: false)
-            let attrs = try? FileManager.default.attributesOfItem(
-                atPath: socketPath
-            )
+            let attrs = try? FileManager.default.attributesOfItem(atPath: socketPath)
             let permissions = (attrs?[.posixPermissions] as? NSNumber)
                 .map { FilePermissions(rawValue: mode_t($0.intValue)) }
             let socketConfig = UnixSocketConfiguration(
                 source: socketUrl,
-                destination: URL(
-                    fileURLWithPath: "/run/host-services/ssh-auth.sock"
-                ),
+                destination: URL(fileURLWithPath: "/run/host-services/ssh-auth.sock"),
                 permissions: permissions,
                 direction: .into
             )
@@ -912,22 +835,16 @@ actor ContainersService {
 
         czConfig.process.arguments = [process.executable] + process.arguments
         czConfig.process.environmentVariables = process.environment
-        czConfig.process.capabilities = try capabilities(
-            from: config.capabilities
-        )
+        czConfig.process.capabilities = try capabilities(from: config.capabilities)
 
-        if config.ssh,
-            Foundation.ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"]
-                != nil
-        {
+        if config.ssh, Foundation.ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"] != nil {
             let sshEnvVar = "SSH_AUTH_SOCK"
             let sshGuestPath = "/run/host-services/ssh-auth.sock"
+
             if !czConfig.process.environmentVariables.contains(where: {
                 $0.starts(with: "\(sshEnvVar)=")
             }) {
-                czConfig.process.environmentVariables.append(
-                    "\(sshEnvVar)=\(sshGuestPath)"
-                )
+                czConfig.process.environmentVariables.append("\(sshEnvVar)=\(sshGuestPath)")
             }
         }
 
@@ -937,6 +854,7 @@ actor ContainersService {
             guard let kind = try? LinuxRLimit.Kind($0.limit) else { return nil }
             return .init(kind: kind, hard: $0.hard, soft: $0.soft)
         }
+
         switch process.user {
         case .raw(let name):
             czConfig.process.user = .init(
@@ -957,29 +875,21 @@ actor ContainersService {
         }
     }
 
-    private static func capabilities(from names: [String]) throws
-        -> Containerization.LinuxCapabilities
-    {
+    private static func capabilities(from names: [String]) throws -> Containerization.LinuxCapabilities {
         let capabilities = try capabilitySet(from: names)
 
         guard !capabilities.isEmpty else {
             return .allCapabilities
         }
 
-        return Containerization.LinuxCapabilities(
-            capabilities: Array(capabilities)
-        )
+        return Containerization.LinuxCapabilities(capabilities: Array(capabilities))
     }
 
-    private static func capabilitySet(from names: [String]) throws -> Set<
-        CapabilityName
-    > {
+    private static func capabilitySet(from names: [String]) throws -> Set<CapabilityName> {
         var capabilities: Set<CapabilityName> = []
 
         for name in names {
-            let trimmedName = name.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
+            let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard !trimmedName.isEmpty else {
                 continue
@@ -995,26 +905,26 @@ actor ContainersService {
         return capabilities
     }
 
-    private func getInitBlock(
-        for platform: Platform
-    ) async throws -> Filesystem {
-        // Use in-process ImagesService to get the init image snapshot (no XPC)
-        let initImageRef = ClientImage.initImageRef
+    private func getInitBlock(for platform: Platform) async throws -> Filesystem {
+        let initImageRef: String = DefaultsStore.get(key: .defaultInitImage)
         let initDescription = try await imagesService.pull(
             reference: initImageRef,
             platform: platform,
             insecure: false,
             progressUpdate: nil
         )
+
         try await imagesService.unpack(
             description: initDescription,
             platform: platform,
             progressUpdate: nil
         )
+
         var fs = try await imagesService.getImageSnapshot(
             description: initDescription,
             platform: platform
         )
+
         fs.options = ["ro"]
         return fs
     }

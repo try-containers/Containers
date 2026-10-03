@@ -82,20 +82,6 @@
 			);
 			target = 9829EC412E17BA3C00A9F8D3 /* Containers */;
 		};
-		77C44FAB2F6AABE000167C4D /* Exceptions for "ContainerSystem" folder in "Containers" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Helpers/ContainerConfigurationProvider.swift,
-			);
-			target = 9829EC412E17BA3C00A9F8D3 /* Containers */;
-		};
-		77C44FAC2F6AABE000167C4D /* Exceptions for "ContainerSystem" folder in "ContainerSystem" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Helpers/ContainerConfigurationProvider.swift,
-			);
-			target = 7735090F2F34EA2F00C5471F /* ContainerSystem */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -106,10 +92,6 @@
 		};
 		77C44F6E2F69C4EE00167C4D /* ContainerSystem */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				77C44FAB2F6AABE000167C4D /* Exceptions for "ContainerSystem" folder in "Containers" target */,
-				77C44FAC2F6AABE000167C4D /* Exceptions for "ContainerSystem" folder in "ContainerSystem" target */,
-			);
 			path = ContainerSystem;
 			sourceTree = "<group>";
 		};
@@ -346,7 +328,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nswift-format lint -r ${PROJECT_DIR} --configuration swift-format.txt\n";
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nswift-format lint -r ${PROJECT_DIR} --configuration .swift-format\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

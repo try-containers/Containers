@@ -19,13 +19,14 @@ where Item.ID: Hashable {
 
     @Environment(\.formListStyle) private var style
 
-    @SwiftUI.State var state = State()
-    @SwiftUI.State private var isExpanded: Bool = true
-    @SwiftUI.State private var pendingFocusItemID: Item.ID?
+    @State var selection = Selection()
+    @State private var storedIsExpanded: Bool = true
+    @State private var pendingFocusItemID: Item.ID?
 
     @Binding var items: [Item]
 
     var title: String?
+    var expansion: Binding<Bool>?
     var description: String? = nil
     var editorDescription: String? = nil
     var columnTitles: [String] = ["Value"]
@@ -44,6 +45,18 @@ where Item.ID: Hashable {
         rowFields == nil
     }
 
+    // Held by the caller when given, so the section survives being rebuilt.
+    private var isExpanded: Bool {
+        get { expansion?.wrappedValue ?? storedIsExpanded }
+        nonmutating set {
+            if let expansion {
+                expansion.wrappedValue = newValue
+            } else {
+                storedIsExpanded = newValue
+            }
+        }
+    }
+
     // MARK: - Types
 
     /// One editable cell of a row: where its text lives, and what to call it
@@ -60,6 +73,7 @@ where Item.ID: Hashable {
     private init(
         items: Binding<[Item]>,
         title: String?,
+        isExpanded: Binding<Bool>?,
         description: String?,
         editorDescription: String?,
         columnTitles: [String],
@@ -75,6 +89,7 @@ where Item.ID: Hashable {
     ) {
         self._items = items
         self.title = title
+        self.expansion = isExpanded
         self.description = description
         self.editorDescription = editorDescription
         self.columnTitles = columnTitles
@@ -93,6 +108,7 @@ where Item.ID: Hashable {
     init(
         items: Binding<[Item]>,
         title: String? = nil,
+        isExpanded: Binding<Bool>? = nil,
         description: String? = nil,
         editorDescription: String? = nil,
         columnTitles: [String] = ["Value"],
@@ -108,6 +124,7 @@ where Item.ID: Hashable {
         self.init(
             items: items,
             title: title,
+            isExpanded: isExpanded,
             description: description,
             editorDescription: editorDescription,
             columnTitles: columnTitles,
@@ -131,7 +148,7 @@ where Item.ID: Hashable {
                 editor
             }
             .onChange(of: items.endIndex) { _, _ in
-                removeStaleState()
+                removeStaleSelection()
             }
     }
 
@@ -209,12 +226,15 @@ where Item.ID: Hashable {
             }
 
             if (title != nil && !isExpanded) || hasContentBelow {
-                // Collapsed, the heading's own bottom padding is the gap.
                 Divider()
                     .padding(
                         .top,
                         isExpanded && title != nil ? sectionSpacing : 0
                     )
+                    // Last in its container, the rule takes no room: scrolled
+                    // to the end it falls just past the clip, and the edge's
+                    // own rule is left in its place instead of a point below.
+                    .frame(height: hasContentBelow ? nil : 0, alignment: .top)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: title == nil ? .infinity : nil, alignment: .leading)
@@ -280,7 +300,7 @@ where Item.ID: Hashable {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(items, selection: $state.selectedItemID) { item in
+            List(items, selection: $selection.selectedItemID) { item in
                 selectableRow(for: item.id)
                     .tag(item.id)
                     .contentShape(Rectangle())
@@ -292,7 +312,7 @@ where Item.ID: Hashable {
     private func controls(backgroundColor: Color? = nil) -> some View {
         Controls(
             addLabel: addLabel,
-            isRemoveDisabled: state.selectedItemID == nil,
+            isRemoveDisabled: selection.selectedItemID == nil,
             backgroundColor: backgroundColor,
             add: addItem,
             remove: removeSelectedItem
@@ -313,10 +333,10 @@ where Item.ID: Hashable {
 
     @ViewBuilder
     private func row(for id: Item.ID) -> some View {
-        if let rowFields, let binding = state.binding(for: id, in: $items) {
+        if let rowFields, let binding = itemBinding(for: id) {
             FieldRow(
                 fields: rowFields(binding),
-                isSelected: state.selectedItemID == id,
+                isSelected: selection.selectedItemID == id,
                 autofocus: pendingFocusItemID == id,
                 focusHandled: { pendingFocusItemID = nil }
             )
@@ -337,29 +357,51 @@ where Item.ID: Hashable {
         }
     }
 
+    /// An index-based binding outlives the row it was built for: after a removal
+    /// SwiftUI can still evaluate the old row, and the index then reads past the
+    /// end of the array. Looking the item up by id keeps that harmless, falling
+    /// back to the value the row was built with.
+    func itemBinding(for id: Item.ID) -> Binding<Item>? {
+        guard let current = items.first(where: { $0.id == id }) else {
+            return nil
+        }
+
+        return Binding(
+            get: { items.first { $0.id == id } ?? current },
+            set: { updated in
+                guard let index = items.firstIndex(where: { $0.id == id })
+                else {
+                    return
+                }
+
+                items[index] = updated
+            }
+        )
+    }
+
     // MARK: - Actions
 
     private func addItem() {
         let item = newItem()
 
         if usesModalEditor {
-            state.editorTarget = .new(item)
+            selection.editorTarget = .new(item)
         } else {
-            state.append(item, to: &items)
+            selection.append(item, to: &items)
             pendingFocusItemID = item.id
         }
     }
 
     private func removeSelectedItem() {
-        guard let index = state.selectedIndex(in: items) else {
+        guard let index = selection.selectedIndex(in: items) else {
             return
         }
 
-        state.remove(at: index, from: &items)
+        selection.remove(at: index, from: &items)
     }
 
-    private func removeStaleState() {
-        state.discardStaleState(in: items)
+    private func removeStaleSelection() {
+        selection.discardStale(in: items)
     }
 
     // MARK: - Subviews
@@ -490,6 +532,7 @@ extension FormList where EditorContent == EmptyView {
     init(
         items: Binding<[Item]>,
         title: String? = nil,
+        isExpanded: Binding<Bool>? = nil,
         description: String? = nil,
         columnTitles: [String] = ["Value"],
         addLabel: String,
@@ -501,6 +544,7 @@ extension FormList where EditorContent == EmptyView {
         self.init(
             items: items,
             title: title,
+            isExpanded: isExpanded,
             description: description,
             editorDescription: nil,
             columnTitles: columnTitles,

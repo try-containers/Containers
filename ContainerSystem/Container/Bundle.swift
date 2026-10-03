@@ -30,7 +30,7 @@ public struct Bundle: Sendable {
 
     /// What a container carries over from one run to the next.
     public struct State: Codable, Sendable {
-        public var startedDate: Date?
+        public let startedDate: Date?
 
         public init(startedDate: Date? = nil) {
             self.startedDate = startedDate

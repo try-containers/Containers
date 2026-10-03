@@ -2,7 +2,7 @@
 //  Filesystem.swift
 //  Containers
 //
-//  Local implementation of Filesystem type (replaces ContainerResource.Filesystem)
+//  Created by Axel Martinez on 2026/02/04.
 //
 
 import Foundation
@@ -139,9 +139,7 @@ public struct Filesystem: Sendable, Codable {
     }
 
     /// Create a tmpfs temporary filesystem mount.
-    public static func tmpfs(destination: String, options: [String] = [])
-        -> Filesystem
-    {
+    public static func tmpfs(destination: String, options: [String] = []) -> Filesystem {
         Filesystem(
             type: .tmpfs,
             source: "",

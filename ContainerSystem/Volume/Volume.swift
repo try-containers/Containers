@@ -19,7 +19,7 @@ public struct Volume: Sendable, Codable, Identifiable, Equatable {
     public var id: String { name }
 
     /// Label key used to mark anonymous volumes.
-    public static let anonymousLabel = "com.apple.container.resource.anonymous"
+    public static let anonymousLabel = "app.containers.resource.anonymous"
 
     /// Whether this volume is anonymous (auto-created, not explicitly named by user).
     public var isAnonymous: Bool {

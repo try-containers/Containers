@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct CreateView<
-    Content: View, Actions: View, Progress: View, TabBar: View, Failure: View
+    Content: View, Actions: View, TabBar: View, Failure: View
 >: View {
     let title: String
     let error: Binding<ErrorAlert?>
@@ -29,7 +29,6 @@ struct CreateView<
     let tabBar: TabBar
     let content: Content
     let actions: Actions
-    let progress: Progress
     let failure: Failure
 
     init(
@@ -52,7 +51,6 @@ struct CreateView<
         @ViewBuilder tabBar: () -> TabBar = { EmptyView() },
         @ViewBuilder content: () -> Content,
         @ViewBuilder actions: () -> Actions,
-        @ViewBuilder progress: () -> Progress = { EmptyView() },
         @ViewBuilder failure: () -> Failure = { EmptyView() }
     ) {
         self.title = title
@@ -74,7 +72,6 @@ struct CreateView<
         self.tabBar = tabBar()
         self.content = content()
         self.actions = actions()
-        self.progress = progress()
         self.failure = failure()
     }
 
@@ -96,8 +93,8 @@ struct CreateView<
 
                 tabBar
                     .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
+                    .frame(height: .barHeight)
                     .background(Color(nsColor: .controlBackgroundColor))
 
                 Divider()
@@ -192,21 +189,17 @@ struct CreateView<
     private var progressStatus: some View {
         ProgressView()
             .overlay(alignment: .bottom) {
-                VStack(spacing: 4) {
-                    if let progressTitle {
-                        Text(progressTitle)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    progress
-                }
-                .multilineTextAlignment(.center)
-                .frame(width: width - 40)
-                // Hung from the spinner's foot rather than sharing its bottom
-                // edge, which is what puts the writing below it.
-                .alignmentGuide(VerticalAlignment.bottom) { _ in
-                    -CGFloat.sheetMarkSpacing
+                if let progressTitle {
+                    Text(progressTitle)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(width: width - 40)
+                        // Hung from the spinner's foot rather than sharing its
+                        // bottom edge, which is what puts the writing below it.
+                        .alignmentGuide(VerticalAlignment.bottom) { _ in
+                            -CGFloat.sheetMarkSpacing
+                        }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -223,6 +216,8 @@ struct CreateView<
         .transaction { $0.animation = nil }
     }
 }
+
+/// The tabs across the top of a sheet, drawn as the tabs over a log are.
 struct CreateViewTabBar<Tab: Hashable & CaseIterable & RawRepresentable>: View
 where Tab.AllCases: RandomAccessCollection, Tab.RawValue == String {
     @Binding var selection: Tab
@@ -230,49 +225,13 @@ where Tab.AllCases: RandomAccessCollection, Tab.RawValue == String {
     var body: some View {
         HStack(spacing: 6) {
             ForEach(Array(Tab.allCases), id: \.self) { tab in
-                tabButton(for: tab)
+                BarToggle(
+                    tab.rawValue,
+                    selection: $selection,
+                    value: tab,
+                    manner: .segment
+                )
             }
-        }
-    }
-
-    private func tabButton(for tab: Tab) -> some View {
-        TabButton(tab: tab, selection: $selection)
-    }
-}
-
-private struct TabButton<Tab: Hashable & RawRepresentable>: View
-where Tab.RawValue == String {
-    let tab: Tab
-    @Binding var selection: Tab
-    @State private var isHovered = false
-
-    var body: some View {
-        Button {
-            selection = tab
-        } label: {
-            Text(tab.rawValue)
-                .foregroundStyle(
-                    tab == selection ? Color.accentColor : .primary
-                )
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(background)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-    }
-
-    private var background: Color {
-        if tab == selection {
-            return Color.accentColor.opacity(0.12)
-        } else if isHovered {
-            return Color(nsColor: .quaternaryLabelColor)
-        } else {
-            return .clear
         }
     }
 }

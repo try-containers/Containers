@@ -29,11 +29,11 @@ public enum PublishProtocol: String, Sendable, Codable, CaseIterable {
 
 /// Represents a port forwarding rule from host to container.
 public struct PublishPort: Sendable, Codable {
-    public var hostAddress: IPAddress
-    public var hostPort: UInt16
-    public var containerPort: UInt16
-    public var proto: PublishProtocol
-    public var count: UInt16
+    public let hostAddress: IPAddress
+    public let hostPort: UInt16
+    public let containerPort: UInt16
+    public let proto: PublishProtocol
+    public let count: UInt16
 
     public init(
         hostAddress: IPAddress? = try? IPAddress("127.0.0.1"),

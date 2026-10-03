@@ -9,7 +9,7 @@ import ContainerSystem
 import SwiftUI
 
 struct ImageInspect: View {
-    let image: ImageViewModel
+    let image: ImageItem
 
     @Environment(ImageManager.self) private var imageManager
 

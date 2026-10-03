@@ -27,7 +27,11 @@ struct CreateVolumeView: View {
     @SwiftUI.State private var sizeUnit: UnitInformationStorage = .gigabytes
     @SwiftUI.State private var errorAlert: ErrorAlert?
     @SwiftUI.State private var showProgressView: Bool = false
+
+    // : Tabs
     @SwiftUI.State private var selectedTab: Tab = .info
+    @SwiftUI.State private var isLabelsExpanded = true
+    @SwiftUI.State private var isOptionsExpanded = true
 
     var body: some View {
         CreateView(
@@ -130,6 +134,7 @@ struct CreateVolumeView: View {
             FormList(
                 items: $labels,
                 title: "Labels",
+                isExpanded: $isLabelsExpanded,
                 columnTitles: ["Key", "Value"],
                 addLabel: "Add Label",
                 emptyMessage: "No Labels",
@@ -155,6 +160,7 @@ struct CreateVolumeView: View {
             FormList(
                 items: $options,
                 title: "Driver Specific Options",
+                isExpanded: $isOptionsExpanded,
                 columnTitles: ["Key", "Value"],
                 addLabel: "Add Option",
                 emptyMessage: "No Options",

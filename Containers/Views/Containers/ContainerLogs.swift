@@ -1,5 +1,5 @@
 //
-//  ContainerLogsView.swift
+//  ContainerLogs.swift
 //  Containers
 //
 //  Created by Axel Martinez on 10/2/26.
@@ -9,78 +9,171 @@ import ContainerSystem
 import SwiftUI
 
 struct ContainerLogs: View {
-    var containerID: String
-
-    @Environment(ContainerManager.self) private var containerManager
-
-    @State private var logs: String = ""
-    @State private var bootLog: String = ""
-    @State private var source: Source = .output
-    @State private var hasLoaded: Bool = false
-    @State private var errorAlert: ErrorAlert?
-
     private enum Source: String, CaseIterable, Identifiable {
-        case output = "Output"
-        case boot = "Boot"
+        case output
+        case boot
 
         var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .output: "Output"
+            case .boot: "Boot"
+            }
+        }
+
+        var filename: String {
+            switch self {
+            case .output: "stdio.log"
+            case .boot: "vminitd.log"
+            }
+        }
+
+        var emptyTitle: String {
+            switch self {
+            case .output: "No Output"
+            case .boot: "No Boot Log"
+            }
+        }
 
         var emptyMessage: String {
             switch self {
             case .output:
-                "Logs will appear here when the container generates output"
+                "Output will appear here when the container writes any"
             case .boot:
-                "The boot log is written while the container starts up"
+                "The console appears here once the container has been started"
             }
         }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Log", selection: $source) {
-                ForEach(Source.allCases) { source in
-                    Text(source.rawValue).tag(source)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 180)
-            .frame(maxWidth: .infinity)
+    @State private var source: Source = .output
+    /// Lags `source` until the new log is read, so the empty message never names the wrong log.
+    @State private var shownSource: Source = .output
+    @State private var logs: String = ""
+    @State private var hasLoaded: Bool = false
+    @State private var isFollowing = true
+    @State private var isAtEnd = true
+    @State private var filter = ""
 
-            if !hasLoaded {
-                // Hidden by the window until ready, so nothing to draw.
-                Color.clear
-            } else if selectedLogs.isEmpty {
-                ContentUnavailableView {
-                    Label("No Logs Available", systemImage: "doc.text")
-                } description: {
-                    Text(source.emptyMessage)
+    var containerID: String
+
+    private static let end = "end"
+
+    /// Wider than any detail window, so the log always takes the full width.
+    private static let idealWidth: CGFloat = 1_200
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if hasLoaded {
+                bar
+
+                Group {
+                    if logs.isEmpty {
+                        ContentUnavailableView {
+                            Label(
+                                shownSource.emptyTitle,
+                                systemImage: "list.bullet.rectangle"
+                            )
+                        } description: {
+                            Text(shownSource.emptyMessage)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        terminal
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Otherwise the window's animation crossfades the two logs.
+                .transaction { $0.animation = nil }
             } else {
-                terminal
+                Color.clear
             }
         }
-        .padding(20)
         .contentReady(hasLoaded)
-        .task {
+        // Unmeasured, so switching, filtering or emptying the log never resizes the window.
+        .contentUnbounded()
+        .contentIdealSize(CGSize(width: Self.idealWidth, height: 0))
+        .task(id: source) {
             await streamLogs()
         }
-        .task(id: source) {
-            guard source == .boot else { return }
-            bootLog = Self.read(Self.bootLogFile(for: containerID))
+    }
+
+    private var bar: some View {
+        ScopeBar(filter: $filter) {
+            HStack(spacing: 2) {
+                ForEach(Source.allCases) { source in
+                    BarToggle(
+                        source.title,
+                        selection: $source,
+                        value: source,
+                        manner: .tab
+                    )
+                }
+            }
+
+            Divider()
+                .frame(height: 12)
+        } trailing: {
+            BarToggle(
+                title: "Tail",
+                manner: .control,
+                isOn: $isFollowing
+            )
         }
-        .errorAlert($errorAlert)
+    }
+
+    private var shown: String {
+        let query = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !query.isEmpty else { return logs }
+
+        return
+            logs
+            .components(separatedBy: .newlines)
+            .filter { $0.localizedCaseInsensitiveContains(query) }
+            .joined(separator: "\n")
     }
 
     private var terminal: some View {
-        ScrollView {
-            Text(selectedLogs)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.white)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(shown)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+
+                    Color.clear
+                        .frame(height: 0)
+                        .id(Self.end)
+                }
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.maxY >= geometry.contentSize.height - 1
+            } action: { _, atEnd in
+                isAtEnd = atEnd
+
+                if atEnd { isFollowing = true }
+            }
+            // Only the reader scrolling away turns Tail off; new text doesn't.
+            .onScrollPhaseChange { oldPhase, newPhase in
+                if oldPhase != .idle, newPhase == .idle {
+                    isFollowing = isAtEnd
+                }
+            }
+            .onChange(of: shown) {
+                guard isFollowing else { return }
+
+                proxy.scrollTo(Self.end, anchor: .bottom)
+            }
+            .onChange(of: isFollowing) {
+                guard isFollowing else { return }
+
+                withAnimation {
+                    proxy.scrollTo(Self.end, anchor: .bottom)
+                }
+            }
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
@@ -89,32 +182,13 @@ struct ContainerLogs: View {
         .environment(\.colorScheme, .dark)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
     }
 
-    private var selectedLogs: String {
-        switch source {
-        case .output:
-            logs
-        case .boot:
-            bootLog
+    private func replace(with text: String, of source: Source) {
+        withTransaction(Transaction(animation: nil)) {
+            logs = text
+            shownSource = source
         }
-    }
-
-    private static func bootLogFile(for containerID: String) -> URL {
-        UserDefaults.applicationDataRoot
-            .appendingPathComponent("containers")
-            .appendingPathComponent(containerID)
-            .appendingPathComponent("vminitd.log")
-    }
-
-    private static func read(_ file: URL) -> String {
-        (try? String(contentsOf: file, encoding: .utf8))?
-            .trimmingCharacters(in: .newlines) ?? ""
     }
 
     private func streamLogs() async {
@@ -122,34 +196,33 @@ struct ContainerLogs: View {
             .appendingPathComponent("containers")
             .appendingPathComponent(containerID)
 
-        let logFile = containerDir.appendingPathComponent("stdio.log")
+        let logFile = containerDir.appendingPathComponent(source.filename)
 
-        // Create file if it doesn't exist
         if !FileManager.default.fileExists(atPath: logFile.path) {
             FileManager.default.createFile(atPath: logFile.path, contents: nil)
         }
 
         guard let fileHandle = try? FileHandle(forReadingFrom: logFile) else {
-            // Nothing to read, but the tab is done waiting.
+            replace(with: "", of: source)
             hasLoaded = true
             return
         }
 
-        // Read initial content
+        // Read before replacing, so the empty message doesn't flash between logs.
+        var initial = ""
+
         if let initialData = try? fileHandle.readToEnd(),
             let initialContent = String(data: initialData, encoding: .utf8)
         {
-            logs = initialContent.trimmingCharacters(in: .newlines)
+            initial = initialContent.trimmingCharacters(in: .newlines)
         }
 
-        // The tail arrives live from here, growing the tab rather than
-        // deciding its height.
+        replace(with: initial, of: source)
+
         hasLoaded = true
 
-        // Seek to end to only get new content
         _ = try? fileHandle.seekToEnd()
 
-        // Create async stream using readabilityHandler
         let stream = AsyncStream<String> { continuation in
             fileHandle.readabilityHandler = { handle in
                 let data = handle.availableData
@@ -176,7 +249,6 @@ struct ContainerLogs: View {
             }
         }
 
-        // Process new log content as it arrives
         for await newContent in stream {
             if !logs.isEmpty {
                 logs += newContent

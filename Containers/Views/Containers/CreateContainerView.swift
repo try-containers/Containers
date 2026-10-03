@@ -57,6 +57,7 @@ struct CreateContainerView: View {
     @Environment(ContainerManager.self) private var containerManager
     @Environment(ImageManager.self) private var imageManager
     @Environment(VolumeManager.self) private var volumeManager
+    @Environment(ActivityCenter.self) private var activityCenter
     @Environment(\.dismiss) private var dismiss
 
     let mode: Mode
@@ -64,12 +65,12 @@ struct CreateContainerView: View {
     @SwiftUI.State var imageReference: String
 
     @SwiftUI.State private var process: ContainerProcess = .init()
-    @SwiftUI.State private var container: ContainerInfo = .init()
+    @SwiftUI.State private var options: ContainerManagementOptions = .init()
+    @SwiftUI.State private var configuration: ContainerConfiguration = .init()
     @SwiftUI.State private var volumes: [VolumeMount] = []
     @SwiftUI.State private var mounts: [Mount] = []
     @SwiftUI.State private var ports: [PortMapping] = []
     @SwiftUI.State private var environments: [KeyValue] = []
-    @SwiftUI.State private var resource: ContainerConfiguration.Resources = .init()
     @SwiftUI.State private var registryScheme: String = RequestScheme.auto.rawValue
     @SwiftUI.State private var platformString: String = Platform.current.description
     @SwiftUI.State private var shmSize: String = ""
@@ -82,7 +83,13 @@ struct CreateContainerView: View {
     @SwiftUI.State private var stepTransitionDirection: Int = 1
     @SwiftUI.State private var showStopConfirmation: Bool = false
     @SwiftUI.State private var showPickLocalImage: Bool = false
+
+    // Tabs
     @SwiftUI.State private var selectedTab: Tab = .info
+    @SwiftUI.State private var isVolumesExpanded = false
+    @SwiftUI.State private var isMountsExpanded = false
+    @SwiftUI.State private var isPortsExpanded = false
+    @SwiftUI.State private var isCapabilitiesExpanded = false
 
     init(imageReference: String, mode: Mode = .create) {
         self.mode = mode
@@ -94,8 +101,7 @@ struct CreateContainerView: View {
             title: mode.title,
             error: $errorAlert,
             isProcessing: showProgressView,
-            progressTitle: containerManager.progress.description.isEmpty
-                ? mode.progressTitle : containerManager.progress.description,
+            progressTitle: mode.progressTitle,
             width: Self.sheetWidth,
             height: 460,
             scrollsContent: selectedTab == .options,
@@ -131,15 +137,6 @@ struct CreateContainerView: View {
                             in: .whitespacesAndNewlines
                         ).isEmpty
                 )
-            },
-            progress: {
-                if !containerManager.progress.detail.isEmpty {
-                    Text(containerManager.progress.detail)
-                        .font(.subheadline)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
-                }
             }
         )
         .sheet(
@@ -284,7 +281,7 @@ struct CreateContainerView: View {
             ) {
                 FormField(
                     placeholder: "my-container",
-                    value: $container.name,
+                    value: $options.name,
                     filter: EntityName.valid(from:)
                 )
             }
@@ -301,9 +298,9 @@ struct CreateContainerView: View {
                     FormField(
                         placeholder: "/bin/sh -c \"echo hello\"",
                         value: Binding(
-                            get: { container.entryPoint ?? "" },
+                            get: { options.entryPoint ?? "" },
                             set: {
-                                container.entryPoint = $0.isEmpty ? nil : $0
+                                options.entryPoint = $0.isEmpty ? nil : $0
                             }
                         )
                     )
@@ -313,9 +310,9 @@ struct CreateContainerView: View {
                     FormField(
                         placeholder: "SIGTERM",
                         value: Binding(
-                            get: { container.stopSignal ?? "" },
+                            get: { configuration.stopSignal ?? "" },
                             set: {
-                                container.stopSignal =
+                                configuration.stopSignal =
                                     $0.trimmingCharacters(
                                         in: .whitespacesAndNewlines
                                     ).isEmpty ? nil : $0
@@ -385,21 +382,16 @@ struct CreateContainerView: View {
                 FormRow(title: "Management") {
                     VStack(alignment: .leading) {
                         Toggle(
-                            "Run detached from the process",
-                            isOn: $container.detach
-                        )
-
-                        Toggle(
                             "Remove the container after it stops",
-                            isOn: $container.deleteOnTermination
+                            isOn: $options.deleteOnTermination
                         )
 
                         Toggle(
                             "Mount the root filesystem as read-only",
-                            isOn: $container.readOnly
+                            isOn: $configuration.readOnly
                         )
 
-                        Toggle(isOn: $container.virtualization) {
+                        Toggle(isOn: $configuration.virtualization) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(
                                     "Expose virtualization capabilities to the container"
@@ -418,7 +410,7 @@ struct CreateContainerView: View {
 
                         Toggle(
                             "Forward SSH agent socket to container",
-                            isOn: $container.ssh
+                            isOn: $configuration.ssh
                         )
                     }
                     .toggleStyle(.checkbox)
@@ -434,6 +426,7 @@ struct CreateContainerView: View {
             FormList(
                 items: $volumes,
                 title: "Volumes",
+                isExpanded: $isVolumesExpanded,
                 editorDescription:
                     "Select an existing volume or create an anonymous volume. To create a new named volume, use the Volumes section.",
                 columnTitles: ["Source", "Target"],
@@ -462,6 +455,7 @@ struct CreateContainerView: View {
             FormList(
                 items: $mounts,
                 title: "Mounts",
+                isExpanded: $isMountsExpanded,
                 editorDescription:
                     "Share a host path with the container, or tick Temporary mount to create an in-memory mount instead.",
                 columnTitles: ["Source", "Target"],
@@ -484,6 +478,7 @@ struct CreateContainerView: View {
             FormList(
                 items: $ports,
                 title: "Port Mappings",
+                isExpanded: $isPortsExpanded,
                 editorDescription:
                     "Publish a container port on the host, so it can be reached from outside the container.",
                 columnTitles: ["Host", "Container", "Protocol"],
@@ -502,6 +497,7 @@ struct CreateContainerView: View {
             FormList(
                 items: $capabilities,
                 title: "Capabilities",
+                isExpanded: $isCapabilitiesExpanded,
                 columnTitles: ["Capability"],
                 addLabel: "Add Capability",
                 emptyMessage: "No Capabilities",
@@ -546,7 +542,66 @@ struct CreateContainerView: View {
         creationTask?.cancel()
         creationTask = nil
         showProgressView = false
-        containerManager.progress.finish()
+    }
+
+    /// Hands the work over to the row it will appear in, which is where it is watched and stopped from now on.
+    private func startCreation(
+        imageReference: String,
+        process: ContainerProcess,
+        configuration: ContainerConfiguration,
+        options: ContainerManagementOptions,
+        registryScheme: String
+    ) {
+        let containerManager = containerManager
+        let mode = mode
+        let imagesDir = UserDefaults.applicationDataRoot
+            .appendingPathComponent("images")
+
+        activityCenter.start(
+            id: options.name,
+            kind: .container,
+            title: options.name,
+            subtitle: imageReference,
+            failureTitle: mode == .run
+                ? "The container couldn’t be started."
+                : "The container couldn’t be created."
+        ) { progress in
+            func create(progress: Progress) async throws -> String {
+                try await containerManager.create(
+                    imageReference: imageReference,
+                    imagesDir: imagesDir,
+                    arguments: [],
+                    process: process,
+                    configuration: configuration,
+                    options: options,
+                    registryScheme: registryScheme,
+                    progress: progress
+                )
+            }
+
+            guard mode == .run else {
+                _ = try await create(progress: progress)
+                return nil
+            }
+
+            // Starting weighs as one of creating's six steps.
+            progress.totalUnitCount = 7
+
+            let containerID = try await progress.performStep(
+                pendingUnitCount: 6
+            ) { step in
+                try await create(progress: step)
+            }
+
+            try await progress.performStep { step in
+                _ = try await containerManager.run(
+                    id: containerID,
+                    progress: step
+                )
+            }
+
+            return nil
+        }
     }
 
     private func createContainer() {
@@ -587,27 +642,32 @@ struct CreateContainerView: View {
         }
 
         creationTask = Task {
-            containerManager.progress.begin(totalTasks: mode == .run ? 7 : 6)
-
-            defer {
-                containerManager.progress.finish()
-            }
-
             do {
-                let resolved = try await ResolvedMounts(
+                let resolved = try ResolvedMounts(
                     mounts: self.mounts,
-                    volumes: self.volumes,
-                    using: volumeManager
+                    volumes: self.volumes
                 )
 
-                self.container.mounts = resolved.mounts
-                self.container.platform = try Platform(
+                let existingVolumes = try await volumeManager.list()
+                var volumes: [Volume] = []
+
+                for request in resolved.volumes {
+                    volumes.append(
+                        try await volumeManager.volume(
+                            named: request.name,
+                            among: existingVolumes
+                        )
+                    )
+                }
+
+                self.configuration.mounts = resolved.filesystems(with: volumes)
+                self.configuration.platform = try Platform(
                     from: self.platformString
                 )
-                self.container.shmSize = shmSizeInBytes
-                self.container.capabilities = self.capabilities.names
+                self.configuration.shmSize = shmSizeInBytes
+                self.configuration.capabilities = self.capabilities.names
 
-                self.container.publishPorts = self.ports.compactMap(
+                self.configuration.publishedPorts = self.ports.compactMap(
                     \.publishedPort
                 )
 
@@ -626,40 +686,27 @@ struct CreateContainerView: View {
 
                 // Make copies for actor boundary crossing
                 let process = self.process
-                let container = self.container
-                let resource = self.resource
+                let configuration = self.configuration
+                var options = self.options
                 let registryScheme = self.registryScheme
+                // Settled here rather than left to the manager, so that the
+                // row the work appears in can be titled with the name the
+                // container is going to have.
+                options.name = try ContainerManager.createContainerID(
+                    name: options.name
+                )
 
-                let containerID = try await containerManager.create(
+                startCreation(
                     imageReference: trimmedReference,
-                    imagesDir: UserDefaults.applicationDataRoot
-                        .appendingPathComponent("images"),
-                    arguments: [],
                     process: process,
-                    container: container,
-                    resource: resource,
+                    configuration: configuration,
+                    options: options,
                     registryScheme: registryScheme
                 )
 
-                var exitCode: Int32?
+                dismiss()
 
-                if mode == .run {
-                    exitCode = try await containerManager.run(
-                        id: containerID,
-                        detach: container.detach
-                    )
-                }
-
-                if let exitCode, exitCode != 0 {
-                    self.errorAlert = ErrorAlert(
-                        "The container exited with status \(exitCode).",
-                        message:
-                            "Check the container’s logs for what went wrong."
-                    )
-                } else {
-                    dismiss()
-                }
-
+                return
             } catch is CancellationError {
                 // The sheet was closed on purpose; there is nothing to report.
             } catch (let error) {
@@ -668,8 +715,6 @@ struct CreateContainerView: View {
                         ? "The container couldn’t be started."
                         : "The container couldn’t be created.",
                     error: error,
-                    // What went wrong here reads in full, so there is nothing
-                    // to keep folded away.
                     showsDetails: false
                 )
             }

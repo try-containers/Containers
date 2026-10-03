@@ -29,16 +29,7 @@ struct ImageHistory: View {
         let emptyLayer: Bool
 
         var formattedDigest: String {
-            guard var d = digest else {
-                return "<missing>"
-            }
-            if d.hasPrefix("sha256:") {
-                d = String(d.dropFirst("sha256:".count))
-            }
-            if d.count > 12 {
-                return String(d.prefix(12))
-            }
-            return d
+            digest?.trimmedDigest ?? "<missing>"
         }
 
         var formattedSize: String {

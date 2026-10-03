@@ -12,7 +12,7 @@ import SwiftUI
 extension FormList {
     var editorPresentation: Binding<Bool> {
         Binding(
-            get: { state.editorTarget != nil },
+            get: { selection.editorTarget != nil },
             set: { isPresented in
                 if !isPresented {
                     closeEditor()
@@ -38,7 +38,7 @@ extension FormList {
     }
 
     var isEditingNewItem: Bool {
-        if case .new = state.editorTarget {
+        if case .new = selection.editorTarget {
             return true
         }
 
@@ -62,7 +62,7 @@ extension FormList {
     }
 
     var editorItemBinding: Binding<Item>? {
-        guard let target = state.editorTarget else {
+        guard let target = selection.editorTarget else {
             return nil
         }
 
@@ -70,33 +70,33 @@ extension FormList {
         case .new:
             return Binding(
                 get: {
-                    guard case .new(let item) = self.state.editorTarget else {
+                    guard case .new(let item) = self.selection.editorTarget else {
                         return newItem()
                     }
 
                     return item
                 },
-                set: { state.editorTarget = .new($0) }
+                set: { selection.editorTarget = .new($0) }
             )
         case .existing(let id):
-            return state.binding(for: id, in: $items)
+            return itemBinding(for: id)
         }
     }
 
     func openEditor(for id: Item.ID) {
-        state.edit(id)
+        selection.edit(id)
     }
 
     func closeEditor() {
-        state.closeEditor()
+        selection.closeEditor()
     }
 
     func saveNewEditingItem() {
-        guard case .new(let item) = state.editorTarget else {
+        guard case .new(let item) = selection.editorTarget else {
             return
         }
 
-        state.append(item, to: &items)
-        state.closeEditor()
+        selection.append(item, to: &items)
+        selection.closeEditor()
     }
 }

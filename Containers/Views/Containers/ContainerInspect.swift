@@ -1,5 +1,5 @@
 //
-//  ContainerInfoView.swift
+//  ContainerInspect.swift
 //  Containers
 //
 //  Created by Axel Martinez on 06/06/2026.

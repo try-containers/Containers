@@ -9,56 +9,27 @@ import AppKit
 import SwiftUI
 import TipKit
 
-struct DetailAction: Identifiable {
-    let id: String
-    let title: String
-    let icon: String
-    let help: String
-    let isEnabled: Bool
-    let isDestructive: Bool
-    let tip: AnyTip?
-    let action: () -> Void
-
-    init(
-        id: String,
-        title: String,
-        icon: String,
-        help: String? = nil,
-        isEnabled: Bool = true,
-        isDestructive: Bool = false,
-        tip: AnyTip? = nil,
-        action: @escaping () -> Void
-    ) {
-        self.id = id
-        self.title = title
-        self.icon = icon
-        self.help = help ?? title
-        self.isEnabled = isEnabled
-        self.isDestructive = isDestructive
-        self.tip = tip
-        self.action = action
-    }
-}
-
-/// The size a detail window opens at, before it has anything to size to.
+/// The size each detail window opens at, before its content has loaded.
 ///
-/// One per window, measured from what each one's overview actually settles at,
-/// so opening it is not followed by a resize. They differ enough — the image
-/// overview is four rows, the volume's is nine — that a shared number would be
-/// wrong for all three.
+/// Measured from the size each window settles at on its first tab, so it
+/// doesn't resize right after opening. One shared size would be wrong for all:
+/// a log fills its tab, while a volume's inspect is a dozen lines.
 enum DetailPlaceholder {
-    static let container = CGSize(width: 550, height: 230)
-    static let image = CGSize(width: 650, height: 158)
-    static let volume = CGSize(width: 550, height: 214)
-
-    /// The narrowest a tab may be when it does not ask for a width of its own,
-    /// which is also the narrowest the placeholders are.
+    static let container = CGSize(width: 900, height: 450)
+    static let image = CGSize(width: 900, height: 430)
+    static let volume = CGSize(width: 900, height: 225)
+    static let report = CGSize(width: 900, height: 560)
     static let width: CGFloat = 550
     static let minimumHeight: CGFloat = 140
 
-    /// Centres on the window it was opened from. The parent is measured in
-    /// AppKit's upward coordinates, `display` runs downward.
-    static func centred(on display: CGRect, size: CGSize) -> WindowPlacement {
+    /// Places the window just below the toolbar of the window it was opened
+    /// from, centred across it.
+    /// `parent` is in AppKit's bottom-up coordinates; `display` is top-down,
+    /// from the top of the screen's usable area.
+    static func underParentToolbar(
+        on display: CGRect,
+        size: CGSize
+    ) -> WindowPlacement {
         guard
             let parent = NSApp.keyWindow,
             let screen = parent.screen
@@ -66,16 +37,25 @@ enum DetailPlaceholder {
             return WindowPlacement(.center, size: size)
         }
 
-        let offsetX = parent.frame.midX - screen.frame.midX
-        let offsetY = screen.frame.midY - parent.frame.midY
+        let visible = screen.visibleFrame
+        let top = parent.frame.maxY - chromeHeight(of: parent)
 
         return WindowPlacement(
             CGPoint(
-                x: display.midX + offsetX - size.width / 2,
-                y: display.midY + offsetY - size.height / 2
+                x: display.minX + (parent.frame.midX - visible.minX)
+                    - size.width / 2,
+                y: display.minY + (visible.maxY - top)
             ),
             size: size
         )
+    }
+
+    /// The height of the title bar and toolbar together.
+    private static func chromeHeight(of window: NSWindow) -> CGFloat {
+        let titlebar = window.standardWindowButton(.closeButton)?.superview
+
+        return titlebar?.frame.height
+            ?? window.frame.height - window.contentLayoutRect.height
     }
 }
 
@@ -94,24 +74,24 @@ struct DetailView<
         guard let visible = resizer.visibleScreenHeight else { return 720 }
         return max(minimumHeight, visible - 160)
     }
+
     private let fadeDuration: TimeInterval = 0.1
     private let resizeDuration: TimeInterval = 0.18
     private let readyTimeout: Duration = .seconds(2)
     private let toolbarTimeout: Duration = .milliseconds(500)
 
     let showTabs: Bool
-    let actions: [DetailAction]
+    let toolbarItems: [DetailToolbarItem]
 
     @Binding var selectedTab: Tab
 
     let tabTitle: (Tab) -> String
     let tabIcon: (Tab) -> String
     let tabWidth: (Tab) -> CGFloat?
-    /// Bounds the fit only; a tab that can outgrow it needs its own ScrollView.
     let tabMaxHeight: (Tab) -> CGFloat?
-    /// Caps and centres the content; `nil` runs edge to edge.
     let tabContentWidth: (Tab) -> CGFloat?
     let tabContent: (Tab) -> Content
+
     private let injectedToolbarController: DetailToolbarController?
 
     @State private var displayedTab: Tab
@@ -123,7 +103,6 @@ struct DetailView<
     @State private var widthOverflows = false
     @State private var pendingTab: Tab?
     @State private var isTransitioning = false
-    @State private var hasSized = false
     @State private var needsRefit = false
     @State private var hasMeasured = false
     @State private var hasAwaitedToolbar = false
@@ -135,7 +114,7 @@ struct DetailView<
     init(
         selectedTab: Binding<Tab>,
         showTabs: Bool = true,
-        actions: [DetailAction] = [],
+        toolbarItems: [DetailToolbarItem] = [],
         tabTitle: @escaping (Tab) -> String,
         tabIcon: @escaping (Tab) -> String,
         tabWidth: @escaping (Tab) -> CGFloat? = { _ in nil },
@@ -148,7 +127,7 @@ struct DetailView<
         self._selectedTab = selectedTab
         self._displayedTab = State(initialValue: selectedTab.wrappedValue)
         self.showTabs = showTabs
-        self.actions = actions
+        self.toolbarItems = toolbarItems
         self.tabTitle = tabTitle
         self.tabIcon = tabIcon
         self.tabWidth = tabWidth
@@ -165,15 +144,14 @@ struct DetailView<
         min(tabMaxHeight(displayedTab) ?? maximumHeight, maximumHeight)
     }
 
-    /// How wide a drag may take the window, as opposed to how wide it opens.
-    /// Content that is cut off should be draggable until it is not, and the
-    /// opening cap is far narrower than that — height works the same way,
-    /// opening at its cap but free to be dragged to the screen.
+    /// How wide the user can drag the window, as opposed to how wide it opens.
+    /// Content that's cut off can be dragged into view, so the limit is the
+    /// content's own width rather than the opening width. Height works the
+    /// same way.
     private var dragMaximumWidth: CGFloat {
         guard widthOverflows else { return maximumWidth }
 
-        // Exactly as wide as the content, so dragging stops once none of it is
-        // hidden — bounded by the screen, which is as far as a window goes.
+        // Stops once all the content shows, or at the screen's edge.
         return min(naturalWidth, resizer.visibleScreenWidth ?? naturalWidth)
     }
 
@@ -210,13 +188,12 @@ struct DetailView<
 
     private func fitTo(idealSize: CGSize) {
         // Zero from a tab with a bound is unbounded content, not empty.
-        let unbounded =
-            idealSize.height <= 0 && tabMaxHeight(displayedTab) != nil
+        let unbounded = idealSize.height <= 0 && tabMaxHeight(displayedTab) != nil
         let ideal = unbounded ? heightCap : idealSize.height
+
         guard ideal > 0 else { return }
 
         let height = min(max(ideal, minimumHeight), heightCap)
-
         let width = min(max(idealSize.width, effectiveMinWidth), maximumWidth)
 
         // Only content the window cannot show all of is worth dragging for.
@@ -247,14 +224,13 @@ struct DetailView<
     }
 
     var body: some View {
-        // The window sizes itself from this spacer, never the content: an
-        // overlay does not report its height, and the width must be the
-        // placeholder's or SwiftUI widens from the left edge, off centre.
+        // The window sizes itself from this spacer, not the content: an
+        // overlay doesn't report its height, and any other width makes
+        // SwiftUI grow the window from its left edge, off centre.
         Color.clear
-            // Both axes flexible: `maximumWidth` is how wide the window
-            // opens, which the fit applies — capping the layout with it too
-            // left the content 900 wide inside a window dragged wider, so the
-            // extra was empty and the content stayed hidden.
+            // Flexible both ways. `maximumWidth` only limits how wide the
+            // window opens; capping the layout too kept content at 900 points
+            // inside a window dragged wider, leaving it hidden.
             .frame(minWidth: defaultMinWidth, maxWidth: .infinity)
             .frame(minHeight: minimumHeight, maxHeight: .infinity)
             .overlay(alignment: .top) {
@@ -270,7 +246,7 @@ struct DetailView<
                     tabs: showTabs ? toolbarTabs : [],
                     selectedIndex: Array(Tab.allCases)
                         .firstIndex(of: displayedTab) ?? 0,
-                    actions: actions,
+                    items: toolbarItems,
                     onSelectTab: { index in
                         let all = Array(Tab.allCases)
                         guard all.indices.contains(index) else { return }
@@ -283,12 +259,6 @@ struct DetailView<
             }
             .onChange(of: measuredHeight) { _, height in
                 guard height > 0 else { return }
-
-                guard hasSized else {
-                    hasSized = true
-                    requestTransition(to: displayedTab)
-                    return
-                }
 
                 guard !isTransitioning else {
                     needsRefit = true
@@ -305,18 +275,18 @@ struct DetailView<
             .onChange(of: selectedTab) { _, tab in
                 requestTransition(to: tab)
             }
-            .task {
-                // Show the content anyway if no measurement ever arrives.
-                try? await Task.sleep(for: .milliseconds(400))
-                guard !hasSized else { return }
-                await fade(to: 1)
+            // The first tab fades in like any other: after its measurement, or
+            // once `awaitMeasurement` gives up waiting for one.
+            .onAppear {
+                requestTransition(to: displayedTab)
             }
     }
 
     private func requestTransition(to tab: Tab) {
         pendingTab = tab
-        // Cancelling a transition mid-animation leaves a stale height.
+
         guard !isTransitioning else { return }
+
         Task { await runTransitions() }
     }
 
@@ -348,21 +318,27 @@ struct DetailView<
             await fade(to: 0)
 
             guard let tab = pendingTab else { break }
+
             pendingTab = nil
 
             if tab != displayedTab {
                 hasMeasured = false
                 displayedTab = tab
-                await awaitMeasurement()
             }
+
+            await awaitMeasurement()
 
             guard pendingTab == nil else { continue }
 
             needsRefit = false
-            await resizer.fit(
-                size: CGSize(width: measuredWidth, height: measuredHeight),
-                duration: resizeDuration
-            )
+
+            // Content that never reported a size shows at the size it has.
+            if hasMeasured {
+                await resizer.fit(
+                    size: CGSize(width: measuredWidth, height: measuredHeight),
+                    duration: resizeDuration
+                )
+            }
             guard pendingTab == nil else { continue }
 
             await fade(to: 1)
@@ -379,13 +355,12 @@ struct DetailView<
             guard pendingTab == nil else { return }
 
             await Task.yield()
+
             try? await Task.sleep(for: .milliseconds(16))
         }
     }
 
     private func fade(to opacity: Double) async {
-        // withAnimation only interpolates the rendered value, so calling it
-        // with the value already held completes while pixels are still moving.
         guard contentOpacity != opacity else { return }
 
         await withCheckedContinuation { continuation in
@@ -409,19 +384,12 @@ struct DetailView<
         ) -> CGSize {
             guard let subview = subviews.first else { return .zero }
 
-            // Nothing proposed, so this is the content's own width — except
-            // for content that scrolls, which answers with its viewport and
-            // has to declare the width it holds instead.
             let declared = subview.contentIdealSize
             let natural =
                 declared.width > 0
                 ? declared.width : subview.sizeThatFits(.unspecified).width
             let width = min(max(natural, minWidth), maxWidth)
 
-            // At that width, not the current one: the outgoing width reports
-            // a height for a wrap about to change.
-            // Content that scrolls reports zero unless it declared a height,
-            // and zero is what marks it as unbounded further up.
             let height =
                 subview.isContentUnbounded
                 ? declared.height
@@ -429,10 +397,6 @@ struct DetailView<
                     ProposedViewSize(width: width, height: nil)
                 ).height
 
-            // A nil width is SwiftUI probing extremes; an unready tab
-            // measures whatever it draws while empty.
-            // Reported unclamped; the view applies the bounds and can see
-            // when the content did not fit inside them.
             if proposal.width != nil, subview.isContentReady {
                 MainActor.assumeIsolated {
                     onIdealSize(CGSize(width: natural, height: height))

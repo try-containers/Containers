@@ -16,11 +16,10 @@ struct FormField: View {
     private static let actionWidth: CGFloat = 20
 
     let placeholder: String
+
     @Binding var value: String
+
     var isEditable: Bool = true
-    /// Narrows what the field will hold, so a value it cannot take is never
-    /// entered. What the filter drops is beeped at, the way AppKit answers a
-    /// keystroke a formatter refuses.
     var filter: ((String) -> String)?
     var actionIcon: String?
     var actionTitle: String?
@@ -99,10 +98,10 @@ private struct InsetField: NSViewRepresentable {
         context.coordinator.value = $value
         context.coordinator.filter = filter
 
-        (field.cell as? InsetCell)?.trailingInset = trailingInset
+        let cell = field.cell as? InsetCell
+        cell?.trailingInset = trailingInset
+        cell?.lineBreakMode = context.environment.isEnabled ? .byClipping : .byTruncatingTail
         field.placeholderString = placeholder
-        // A path that is read rather than written stays legible; only the
-        // control being switched off dims it.
         field.isEnabled = context.environment.isEnabled
         field.isEditable = isEditable && context.environment.isEnabled
         field.isSelectable = true

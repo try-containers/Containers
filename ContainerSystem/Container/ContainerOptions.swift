@@ -9,7 +9,7 @@ import Foundation
 
 /// Options for creating a container.
 public struct ContainerCreateOptions: Sendable, Codable {
-    public var autoRemove: Bool
+    public let autoRemove: Bool
 
     public init(autoRemove: Bool = false) {
         self.autoRemove = autoRemove
@@ -28,4 +28,24 @@ public struct ContainerStopOptions: Sendable, Codable {
 
     /// Default stop options (SIGTERM with 10 second timeout).
     public static let `default` = ContainerStopOptions()
+}
+
+/// Options  for managing the container
+public struct ContainerManagementOptions: Sendable {
+    public var name = ""
+    public var kernel: String?
+    public var entryPoint: String?
+    public var networks: [String] = []
+    public var cidfile = ""
+    public var deleteOnTermination = false
+
+    // MARK: DNS
+
+    public var dnsDisabled = false
+    public var dnsNameservers: [String] = []
+    public var dnsDomain: String? = nil
+    public var dnsSearchDomains: [String] = []
+    public var dnsOptions: [String] = []
+
+    public init() {}
 }

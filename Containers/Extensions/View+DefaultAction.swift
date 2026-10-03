@@ -8,8 +8,7 @@
 import SwiftUI
 
 extension View {
-    /// A sheet's confirming button. Disabled it drops to a plain button rather
-    /// than a faded tint, which is what AppKit's default button does.
+    /// Disabled, it drops to a plain button, as AppKit's default button does.
     @ViewBuilder
     func defaultAction(enabled: Bool) -> some View {
         if enabled {

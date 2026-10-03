@@ -16,10 +16,8 @@ struct PullImageView: View {
     @Binding var platform: PlatformSelection
 
     @SwiftUI.State private var registry: Registry = .dockerHub
-    @SwiftUI.State private var registryFeaturedImages: [ImageSuggestion] = []
-    @SwiftUI.State private var registryFeaturedImageTask: Task<Void, Never>?
+    @SwiftUI.State private var registryLookup = RegistryLookup()
     @SwiftUI.State private var featuredImagePage: Int = 0
-    @SwiftUI.State private var isLoadingRegistryFeaturedImages: Bool = false
 
     @FocusState private var isImageNameFieldFocused: Bool
     @FocusState private var isTagFieldFocused: Bool
@@ -67,17 +65,11 @@ struct PullImageView: View {
             .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onChange(of: shouldLoadFeaturedImages, initial: true) {
-            _,
-            shouldLoad in
-            guard shouldLoad else { return }
-            loadRegistryFeaturedImages()
-        }
-        .onChange(of: registry) {
-            refreshRegistryData()
-        }
-        .onDisappear {
-            registryFeaturedImageTask?.cancel()
+        .task(id: shouldLoadFeaturedImages ? registry : nil) {
+            guard shouldLoadFeaturedImages else { return }
+
+            featuredImagePage = 0
+            await registryLookup.loadTrendingImages(on: registry)
         }
     }
 
@@ -103,7 +95,7 @@ struct PullImageView: View {
     private var featuredPageCount: Int {
         max(
             1,
-            (registryFeaturedImages.count + featuredImagesPerPage - 1)
+            (registryLookup.trendingImages.count + featuredImagesPerPage - 1)
                 / featuredImagesPerPage
         )
     }
@@ -112,39 +104,10 @@ struct PullImageView: View {
         let start = featuredImagePage * featuredImagesPerPage
         let end = min(
             start + featuredImagesPerPage,
-            registryFeaturedImages.count
+            registryLookup.trendingImages.count
         )
         guard start < end else { return [] }
-        return Array(registryFeaturedImages[start..<end])
-    }
-
-    /// A publisher's repositories often scrape the same logo, and a row of
-    /// identical icons reads as a bug. Drop the artwork they share so those
-    /// fall back to initials, keeping the ones that are actually distinct.
-    ///
-    /// Done once as the images arrive: as a computed property this ran for
-    /// every card on every redraw.
-    private func withoutSharedArtwork(
-        _ images: [ImageSuggestion]
-    ) -> [ImageSuggestion] {
-        let counts = images.reduce(into: [URL: Int]()) { counts, image in
-            if let url = image.imageURL {
-                counts[url, default: 0] += 1
-            }
-        }
-
-        return images.map { image in
-            guard let url = image.imageURL, counts[url, default: 0] > 1 else {
-                return image
-            }
-
-            return ImageSuggestion(
-                name: image.name,
-                publisher: image.publisher,
-                description: image.description,
-                imageURL: nil
-            )
-        }
+        return Array(registryLookup.trendingImages[start..<end])
     }
 
     private func featuredPageButton(
@@ -180,7 +143,7 @@ struct PullImageView: View {
                     Spacer()
                 }
 
-                if !registryFeaturedImages.isEmpty {
+                if !registryLookup.trendingImages.isEmpty {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(currentPageImages) { image in
                             FeaturedImageCard(image: image) {
@@ -212,7 +175,7 @@ struct PullImageView: View {
                             }
                         }
                     }
-                } else if isLoadingRegistryFeaturedImages {
+                } else if registryLookup.isLoading {
                     ProgressView()
                         .controlSize(.small)
                         .frame(maxWidth: .infinity, minHeight: 108)
@@ -239,8 +202,8 @@ struct PullImageView: View {
                 EmptyView()
             }
             .suggestions(for: isImageNameFieldFocused ? imageName : nil) {
-                [client = registry.client] text in
-                try await client.images(matching: text)
+                [registryLookup, registry] text in
+                try await registryLookup.images(matching: text, on: registry)
                     .filter { $0 != text }
             }
             .textFieldStyle(.roundedBorder)
@@ -271,62 +234,18 @@ struct PullImageView: View {
                 EmptyView()
             }
             .suggestions(for: isTagFieldFocused ? tag : nil) {
-                [client = registry.client, imageName] text in
-                try await client.tags(for: imageName, matching: text)
+                [registryLookup, registry, imageName] text in
+                try await registryLookup.tags(
+                    for: imageName,
+                    matching: text,
+                    on: registry
+                )
             }
             .textFieldStyle(.roundedBorder)
             .labelsHidden()
             .focused($isTagFieldFocused)
         }
     }
-
-    private func refreshRegistryData() {
-        registryFeaturedImageTask?.cancel()
-        registryFeaturedImageTask = nil
-        registryFeaturedImages = []
-        featuredImagePage = 0
-        isLoadingRegistryFeaturedImages = false
-
-        if shouldLoadFeaturedImages {
-            loadRegistryFeaturedImages()
-        }
-    }
-
-    private func loadRegistryFeaturedImages() {
-        guard registryFeaturedImages.isEmpty, registryFeaturedImageTask == nil
-        else {
-            return
-        }
-
-        let client = registry.client
-
-        registryFeaturedImageTask = Task {
-            await MainActor.run {
-                isLoadingRegistryFeaturedImages = true
-            }
-
-            do {
-                let images = try await client.trendingImages()
-
-                guard !Task.isCancelled else { return }
-
-                await MainActor.run {
-                    registryFeaturedImages = withoutSharedArtwork(images)
-                    isLoadingRegistryFeaturedImages = false
-                    registryFeaturedImageTask = nil
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-
-                await MainActor.run {
-                    registryFeaturedImages = []
-                    isLoadingRegistryFeaturedImages = false
-                    registryFeaturedImageTask = nil
-                }
-            }
-        }
-    }
-
 }
 
 private struct FeaturedImageCard: View {

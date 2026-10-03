@@ -13,10 +13,10 @@ public struct ContainerConfiguration: Sendable, Codable {
 
     /// DNS resolver configuration.
     public struct DNSConfiguration: Sendable, Codable {
-        public var nameservers: [String]
-        public var domain: String?
-        public var searchDomains: [String]
-        public var options: [String]
+        public let nameservers: [String]
+        public let domain: String?
+        public let searchDomains: [String]
+        public let options: [String]
 
         public static let defaultNameservers = ["1.1.1.1"]
 
@@ -100,82 +100,38 @@ public struct ContainerConfiguration: Sendable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
         self.image = try container.decode(ImageDescription.self, forKey: .image)
-        self.mounts =
-            try container.decodeIfPresent([Filesystem].self, forKey: .mounts)
-            ?? []
-        self.publishedPorts =
-            try container.decodeIfPresent(
-                [PublishPort].self,
-                forKey: .publishedPorts
-            ) ?? []
-        self.publishedSockets =
-            try container.decodeIfPresent(
-                [PublishSocket].self,
-                forKey: .publishedSockets
-            ) ?? []
-        self.labels =
-            try container.decodeIfPresent(
-                [String: String].self,
-                forKey: .labels
-            ) ?? [:]
-        self.sysctls =
-            try container.decodeIfPresent(
-                [String: String].self,
-                forKey: .sysctls
-            ) ?? [:]
-        self.networks =
-            try container.decodeIfPresent(
-                [AttachmentConfiguration].self,
-                forKey: .networks
-            ) ?? []
-        self.dns = try container.decodeIfPresent(
-            DNSConfiguration.self,
-            forKey: .dns
-        )
-        self.rosetta =
-            try container.decodeIfPresent(Bool.self, forKey: .rosetta) ?? false
-        self.initProcess = try container.decode(
-            ProcessConfiguration.self,
-            forKey: .initProcess
-        )
-        self.platform =
-            try container.decodeIfPresent(Platform.self, forKey: .platform)
-            ?? .current
-        self.resources =
-            try container.decodeIfPresent(Resources.self, forKey: .resources)
-            ?? Resources()
-        self.virtualization =
-            try container.decodeIfPresent(Bool.self, forKey: .virtualization)
-            ?? false
-        self.ssh =
-            try container.decodeIfPresent(Bool.self, forKey: .ssh) ?? false
-        self.useInit =
-            try container.decodeIfPresent(Bool.self, forKey: .useInit) ?? false
-        self.readOnly =
-            try container.decodeIfPresent(Bool.self, forKey: .readOnly) ?? false
-        self.capabilities =
-            try container.decodeIfPresent([String].self, forKey: .capabilities)
-            ?? []
-        self.shmSize = try container.decodeIfPresent(
-            UInt64.self,
-            forKey: .shmSize
-        )
-        self.stopSignal = try container.decodeIfPresent(
-            String.self,
-            forKey: .stopSignal
-        )
-        self.creationDate =
-            try container.decodeIfPresent(Date.self, forKey: .creationDate)
-            ?? Date(timeIntervalSince1970: 0)
+        self.mounts = try container.decodeIfPresent([Filesystem].self, forKey: .mounts) ?? []
+        self.publishedPorts = try container.decodeIfPresent([PublishPort].self, forKey: .publishedPorts) ?? []
+        self.publishedSockets = try container.decodeIfPresent([PublishSocket].self, forKey: .publishedSockets) ?? []
+        self.labels = try container.decodeIfPresent([String: String].self, forKey: .labels) ?? [:]
+        self.sysctls = try container.decodeIfPresent([String: String].self, forKey: .sysctls) ?? [:]
+        self.networks = try container.decodeIfPresent([AttachmentConfiguration].self, forKey: .networks) ?? []
+        self.dns = try container.decodeIfPresent(DNSConfiguration.self, forKey: .dns)
+        self.rosetta = try container.decodeIfPresent(Bool.self, forKey: .rosetta) ?? false
+        self.initProcess = try container.decode(ProcessConfiguration.self, forKey: .initProcess)
+        self.platform = try container.decodeIfPresent(Platform.self, forKey: .platform) ?? .current
+        self.resources = try container.decodeIfPresent(Resources.self, forKey: .resources) ?? Resources()
+        self.virtualization = try container.decodeIfPresent(Bool.self, forKey: .virtualization) ?? false
+        self.ssh = try container.decodeIfPresent(Bool.self, forKey: .ssh) ?? false
+        self.useInit = try container.decodeIfPresent(Bool.self, forKey: .useInit) ?? false
+        self.readOnly = try container.decodeIfPresent(Bool.self, forKey: .readOnly) ?? false
+        self.capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities) ?? []
+        self.shmSize = try container.decodeIfPresent(UInt64.self, forKey: .shmSize)
+        self.stopSignal = try container.decodeIfPresent(String.self, forKey: .stopSignal)
+        self.creationDate = try container.decodeIfPresent(Date.self, forKey: .creationDate) ?? Date(timeIntervalSince1970: 0)
     }
 
-    public init(
-        id: String,
-        image: ImageDescription,
-        process: ProcessConfiguration
-    ) {
+    public init(id: String, image: ImageDescription, process: ProcessConfiguration) {
         self.id = id
         self.image = image
         self.initProcess = process
+    }
+
+    public init() {
+        let image = ImageDescription(
+            reference: "",
+            descriptor: Descriptor(mediaType: "", digest: "", size: 0)
+        )
+        self.init(id: "", image: image, process: ProcessConfiguration(executable: ""))
     }
 }

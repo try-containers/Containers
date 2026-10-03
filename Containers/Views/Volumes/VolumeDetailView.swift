@@ -8,81 +8,20 @@
 import ContainerSystem
 import SwiftUI
 
-struct VolumeDetailWindow: View {
-    @Environment(VolumeManager.self) private var volumeManager
-
-    let id: String
-
-    @SwiftUI.State private var volume: VolumeViewModel?
-    @SwiftUI.State private var isLoading: Bool = true
-    @SwiftUI.State private var toolbarController = DetailToolbarController()
-
-    var body: some View {
-        Group {
-            if let volume {
-                VolumeDetailView(
-                    volume: volume,
-                    toolbarController: toolbarController
-                )
-            } else if isLoading {
-                // Empty until the detail arrives; the window grows into it.
-                Color.clear
-                    .frame(
-                        width: DetailPlaceholder.volume.width,
-                        height: DetailPlaceholder.volume.height
-                    )
-            } else {
-                ContentUnavailableView(
-                    "Volume Not Found",
-                    systemImage: "externaldrive",
-                    description: Text(
-                        "The volume '\(id)' no longer exists."
-                    )
-                )
-                .frame(width: 550, height: 320)
-            }
-        }
-        .background(
-            DetailToolbarAttacher(
-                controller: toolbarController,
-                tabs: VolumeDetailView.toolbarTabs,
-                actions: []
-            )
-        )
-        // Empty until the volume arrives, rather than a placeholder the user
-        // watches get replaced.
-        .navigationTitle(volume.map { Text($0.name) } ?? Text(""))
-        .task(id: id) {
-            await load()
-        }
-    }
-
-    private func load() async {
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            let items = try await volumeManager.listWithUsage()
-            if let match = items.first(where: { $0.volume.id == id }) {
-                self.volume = VolumeViewModel(match)
-            } else {
-                self.volume = nil
-            }
-        } catch {
-            self.volume = nil
-        }
-    }
-}
-
 struct VolumeDetailView: View {
-    let volume: VolumeViewModel
+    @Environment(ReportManager.self) private var reportManager
+    @Environment(\.openURL) private var openURL
+
+    let volume: VolumeItem
     let toolbarController: DetailToolbarController
 
-    @SwiftUI.State private var selectedCategory: DetailCategory = .overview
+    /// Opens on what the volume is, which is what a window is opened to
+    /// read; what it is called is there to be turned to.
+    @SwiftUI.State private var selectedCategory: DetailCategory = .inspect
 
     enum DetailCategory: String, CaseIterable, Hashable {
-        case overview
         case inspect
+        case info
     }
 
     static var toolbarTabs: [DetailToolbarController.Tab] {
@@ -93,35 +32,53 @@ struct VolumeDetailView: View {
 
     static func tabIcon(_ tab: DetailCategory) -> String {
         switch tab {
-        case .overview: "info.circle"
+        case .info: "info.circle"
         case .inspect: "curlybraces"
         }
+    }
+
+    /// The same shape with nothing wired up, so the window can build its
+    /// toolbar before it has a volume to build one from.
+    static var placeholderToolbarItems: [DetailToolbarItem] {
+        [.reportsPlaceholder]
+    }
+
+    private var toolbarItems: [DetailToolbarItem] {
+        [
+            .reports(
+                about: volume.id,
+                ofKind: [.volume],
+                manager: reportManager,
+                openURL: openURL
+            )
+        ]
     }
 
     var body: some View {
         DetailView(
             selectedTab: $selectedCategory,
+            toolbarItems: toolbarItems,
             tabTitle: { category in
                 category.rawValue.localizedCapitalized
             },
             tabIcon: { Self.tabIcon($0) },
             tabMaxHeight: { category in
                 switch category {
-                case .overview: nil
+                case .info: nil
                 case .inspect: 500
                 }
             },
             tabContentWidth: { category in
                 switch category {
-                case .overview: DetailPlaceholder.width
+                case .info: DetailPlaceholder.width
                 case .inspect: nil
                 }
             },
             toolbarController: toolbarController,
             tabContent: { category in
                 switch category {
-                case .overview:
-                    VolumeOverview(volume: volume)
+                case .info:
+                    VolumeInfo(volume: volume)
                 case .inspect:
                     VolumeInspect(volume: volume)
                 }

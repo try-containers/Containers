@@ -1,5 +1,5 @@
 //
-//  VolumeListView.swift
+//  VolumesView.swift
 //  Containers
 //
 //  Created by Axel Martinez on 2026/02/05.
@@ -10,24 +10,24 @@ import SwiftUI
 
 struct VolumesView: View {
     @Environment(VolumeManager.self) private var volumeManager
+    @Environment(ActivityCenter.self) private var activityCenter
+    @Environment(ReportManager.self) private var reportManager
     @Environment(\.openWindow) private var openWindow
+
     @Binding var searchText: String
+    @Binding var selection: Set<VolumeItem.ID>
+    @Binding var actions: SelectionActions
+    @Binding var command: SelectionCommand?
+
     var refreshTrigger: Int
 
-    @State private var volumes: [VolumeViewModel] = []
-    @State private var lastUpdated: Date? = nil
-    @State private var showInUseContainerForVolume: VolumeViewModel?
-    @State private var volumeToDelete: VolumeViewModel?
-    @State private var showCreateVolumeView: Bool = false
-    @State private var showDeleteConfirmation: Bool = false
-    @State private var errorAlert: ErrorAlert?
-    @State private var busyVolumeIDs: Set<String> = []
+    @State private var volumes: [VolumeItem] = []
 
     private var trimmedText: String {
         self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var filteredVolumes: [VolumeViewModel] {
+    private var filteredVolumes: [VolumeItem] {
         if trimmedText.isEmpty {
             return marked(volumes)
         }
@@ -38,76 +38,77 @@ struct VolumesView: View {
         return marked(filtered)
     }
 
-    /// Says which rows are working, so that a row whose buttons have to change
-    /// is a row the table can see has changed.
-    private func marked(_ volumes: [VolumeViewModel]) -> [VolumeViewModel] {
+    /// Attaches each volume's work, or an unread failure from an earlier run.
+    private func marked(_ volumes: [VolumeItem]) -> [VolumeItem] {
         volumes.map { volume in
             var volume = volume
-            volume.isBusy = busyVolumeIDs.contains(volume.id)
+
+            if let activity = activityCenter.activities(ofKind: .volume).first(
+                where: { $0.id == volume.id }
+            ) {
+                volume.activity = ActivitySnapshot(activity)
+            } else if let report = reportManager.latestReport(
+                named: volume.id,
+                ofKind: [.volume]
+            ), !report.isRead {
+                volume.activity = ActivitySnapshot(report: report)
+            }
+
             return volume
         }
+    }
+
+    private var rowActions: TableRowActions<VolumeItem> {
+        TableRowActions(
+            noun: "Volume",
+            name: \.name,
+            open: openDetails(for:),
+            // Not a volume a container is using.
+            canDelete: { ($0.activity?.hasEnded ?? true) && !$0.isInUse },
+            delete: deleteVolumes
+        )
     }
 
     var body: some View {
         TableView(
             rows: filteredVolumes,
+            selection: $selection,
+            sortOrder: [KeyPathComparator(\.name)],
+            actions: $actions,
+            command: $command,
+            rowActions: rowActions,
             refreshTrigger: refreshTrigger,
-            lastUpdated: lastUpdated,
-            isFiltering: !trimmedText.isEmpty,
-            onClear: {
-                volumes = []
-                lastUpdated = nil
-            },
+            activityKind: .volume,
+            onClear: clearVolumes,
             onRefresh: listVolumes
         ) {
-            TableColumn("Name") { volume in
-                Button(
-                    action: {
-                        openWindow(
-                            id: ContainersApp.volumeDetailWindowID,
-                            value: volume.id
-                        )
-                    },
-                    label: {
-                        Text(volume.name)
-                            .lineLimit(1)
-                            .underline()
-                    }
-                )
-                .buttonStyle(.link)
-                .pointerStyle(.link)
-            }
-            .width(min: 80, ideal: 80)
+            TableColumn("Name", value: \.name) { volume in
+                HStack(spacing: 4) {
+                    Text(volume.name)
+                        .lineLimit(1)
 
-            TableColumn("Type") { volume in
+                    if let activity = volume.activity {
+                        Spacer(minLength: 0)
+
+                        RowProgressIndicator(
+                            activity: activity,
+                            activityCenter: activityCenter,
+                            openReport: openWindow.report
+                        )
+                    }
+                }
+            }
+            .width(min: 40, ideal: 40)
+
+            TableColumn("Type", value: \.typeText) { volume in
                 Text(volume.volumeType.rawValue)
             }
             .width(80)
 
-            TableColumn("State") { volume in
+            TableColumn("State", value: \.stateText) { volume in
                 Group {
-                    if volume.inUse {
-                        Button(
-                            action: {
-                                showInUseContainerForVolume = volume
-                            },
-                            label: {
-                                Text("In use")
-                                    .lineLimit(1)
-                                    .underline()
-                            }
-                        )
-                        .buttonStyle(.link)
-                        .pointerStyle(.link)
-                        .popover(
-                            isPresented: Binding(
-                                get: { showInUseContainerForVolume?.id == volume.id },
-                                set: { if !$0 { showInUseContainerForVolume = nil } }
-                            ),
-                            arrowEdge: .bottom
-                        ) {
-                            ImageContainersView(volume: volume)
-                        }
+                    if volume.isInUse {
+                        Text("In use")
                     } else {
                         Text("Unused")
                     }
@@ -116,7 +117,7 @@ struct VolumesView: View {
             }
             .width(64)
 
-            TableColumn("Size") { volume in
+            TableColumn("Size", value: \.sizeSort) { volume in
                 if let size = volume.formattedSize {
                     Text(size)
                 } else {
@@ -126,98 +127,39 @@ struct VolumesView: View {
             }
             .width(min: 80, ideal: 80, max: 120)
 
-            TableColumn("Created") { volume in
+            TableColumn("Created", value: \.createdAt) { volume in
                 Text(volume.formattedCreated)
             }
-            .width(min: 80, ideal: 80, max: 160)
-
-            TableColumn("Actions") { volume in
-                HStack(spacing: 12) {
-                    // A volume a container is holding is not the row's to
-                    // delete, whatever else the row is doing.
-                    RowActionButton(
-                        icon: "trash.fill",
-                        tint: .red,
-                        isEnabled: !volume.isBusy && !volume.inUse
-                    ) {
-                        volumeToDelete = volume
-                        showDeleteConfirmation = true
-                    }
-                    .help("Delete volume")
-                }
-                .padding(.horizontal, 8)
-            }
-            .width(80)
+            .width(min: 140, ideal: 180, max: 220)
         }
-        .sheet(
-            isPresented: $showCreateVolumeView,
-            onDismiss: {
-                Task {
-                    await self.listVolumes()
-                }
-            },
-            content: {
-                CreateVolumeView()
-            }
-        )
-        .errorAlert($errorAlert)
-        .confirmationDialog(
-            "Delete Volume?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                guard let volume = volumeToDelete else {
-                    return
-                }
+    }
 
-                deleteVolume(volume)
-                volumeToDelete = nil
-            }
+    private func clearVolumes() {
+        volumes = []
+    }
 
-            Button("Cancel", role: .cancel) {
-                volumeToDelete = nil
-            }
-        } message: {
-            if let volume = volumeToDelete {
-                Text("Delete \(volume.name)? This cannot be undone.")
+    private func openDetails(for volume: VolumeItem) {
+        openWindow(id: ContainersApp.volumeDetailWindowID, value: volume.id)
+    }
+
+    private func deleteVolumes(_ volumes: [VolumeItem]) {
+        let volumeManager = volumeManager
+
+        for volume in volumes {
+            let item = volume.volume
+
+            activityCenter.run(
+                on: volume.id,
+                kind: .volume,
+                failureTitle: "The volume couldn’t be deleted."
+            ) {
+                try await volumeManager.delete(volumes: [item])
             }
         }
     }
 
-    private func deleteVolume(_ volume: VolumeViewModel) {
-        busyVolumeIDs.insert(volume.id)
-
-        Task {
-            defer { busyVolumeIDs.remove(volume.id) }
-
-            do {
-                try await volumeManager.delete(volumes: [volume.volume])
-                await self.listVolumes()
-            } catch (let err) {
-                self.errorAlert = ErrorAlert(
-                    "The volume couldn’t be deleted.",
-                    error: err
-                )
-            }
-        }
-    }
-
-    func listVolumes() async {
-        do {
-            let displayModels: [VolumeViewModel] =
-                try await volumeManager.listWithUsage()
-                .map(VolumeViewModel.init)
-                .sorted { $0.name < $1.name }
-
-            self.volumes = displayModels
-            self.lastUpdated = Date()
-
-        } catch (let err) {
-            self.errorAlert = ErrorAlert(
-                "The volumes couldn’t be loaded.",
-                error: err
-            )
-        }
+    func listVolumes() async throws {
+        volumes = try await volumeManager.summaries()
+            .map(VolumeItem.init)
     }
 }

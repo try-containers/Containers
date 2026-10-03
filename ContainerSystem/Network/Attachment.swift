@@ -10,12 +10,12 @@ import Foundation
 
 /// Represents a network attachment for a running container.
 public struct Attachment: Sendable, Codable {
-    public var network: String
-    public var hostname: String
-    public var ipv4Address: CIDRv4
-    public var ipv4Gateway: IPv4Address
-    public var ipv6Address: CIDRv6?
-    public var macAddress: MACAddress?
+    public let network: String
+    public let hostname: String
+    public let ipv4Address: CIDRv4
+    public let ipv4Gateway: IPv4Address
+    public let ipv6Address: CIDRv6?
+    public let macAddress: MACAddress?
 
     public init(
         network: String,
@@ -36,8 +36,8 @@ public struct Attachment: Sendable, Codable {
 
 /// Configuration for attaching a container to a network.
 public struct AttachmentConfiguration: Sendable, Codable {
-    public var network: String
-    public var options: AttachmentOptions
+    public let network: String
+    public let options: AttachmentOptions
 
     public init(
         network: String,
@@ -50,7 +50,7 @@ public struct AttachmentConfiguration: Sendable, Codable {
 
 /// Options for a network attachment.
 public struct AttachmentOptions: Sendable, Codable {
-    public var hostname: String
+    public let hostname: String
 
     public init(hostname: String = "") {
         self.hostname = hostname

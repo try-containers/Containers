@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var errorAlert: ErrorAlert?
     @State private var storageLocation = UserDefaults.applicationDataRoot
     @State private var dnsDomains: [DNSDomainSetting] = []
+    @State private var resolverDirectory: URL? = UserDefaults.resolverDirectory
     @State private var selectedSection: SettingsPane? = .general
     @State private var sectionHistory: [SettingsPane] = [.general]
     @State private var sectionHistoryIndex = 0
@@ -123,8 +124,10 @@ struct SettingsView: View {
     private var storageLocationSection: some View {
         SettingsSection(title: "Storage") {
             SettingsRow(
-                description:
-                    "Containers, images, volumes, kernels, and build data are stored in this folder. Changes take effect the next time the container system starts."
+                description: """
+                    Containers, images, volumes, kernels, and build data are stored in this folder. 
+                    Changes take effect the next time the container system starts.
+                    """
             ) {
                 FormField(
                     placeholder: "Storage location",
@@ -141,10 +144,7 @@ struct SettingsView: View {
                 Spacer()
 
                 Button("Use Default", action: resetStorageLocation)
-                    .disabled(
-                        system.status == .running
-                            || UserDefaults.usesDefaultApplicationDataRoot
-                    )
+                    .disabled(system.status == .running || UserDefaults.usesDefaultApplicationDataRoot)
             }
         }
     }
@@ -153,10 +153,16 @@ struct SettingsView: View {
         SettingsSection(title: "DNS Domains") {
             SettingsRow(
                 description:
-                    "DNS domains let containers access host services, such as host.containers.internal:8000."
+                    "DNS domains let containers access host services, such as host.containers.internal:8000. Manage domains by creating resolver files in /etc/resolver/."
             ) {
                 VStack(alignment: .leading, spacing: 8) {
-                    if dnsDomains.isEmpty {
+                    // Without the folder to read, there is no saying whether
+                    // there are domains: the warning below asks for it rather
+                    // than this claiming there are none.
+                    if resolverDirectory == nil {
+                        Text("Domains unavailable")
+                            .foregroundStyle(.secondary)
+                    } else if dnsDomains.isEmpty {
                         Text("No domains configured")
                             .foregroundStyle(.secondary)
                     } else {
@@ -174,8 +180,59 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsWarning(
-                "DNS domain management requires administrator privileges. Manage domains by creating resolver files in /etc/resolver/."
+            if resolverDirectory == nil {
+                SettingsWarning(
+                    "Containers needs your permission to read the resolver files in /etc/resolver before it can show the domains kept there.",
+                    actionTitle: "Allow Access…",
+                    action: grantResolverAccess
+                )
+            }
+        }
+    }
+
+    /// The folder is the user's to give, and an open panel is how they give
+    /// it: what comes back is kept as a bookmark, which is what the app reads
+    /// through on every later launch.
+    private func grantResolverAccess() {
+        let directory = NetworkManager.resolverDirectory
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.showsHiddenFiles = true
+        panel.directoryURL = directory
+        panel.prompt = "Allow"
+        panel.message =
+            "Choose the /etc/resolver folder, so Containers can read the DNS domains the container CLI keeps in it."
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        guard url.isResolverDirectory else {
+            errorAlert = ErrorAlert(
+                "That isn’t the resolver folder.",
+                message:
+                    "Containers reads its DNS domains from /etc/resolver. Choose that folder to show them here."
+            )
+
+            return
+        }
+
+        do {
+            let bookmarkData = try url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+
+            UserDefaults.setResolverDirectory(bookmarkData: bookmarkData)
+            refreshSettings()
+        } catch {
+            errorAlert = ErrorAlert(
+                "The resolver folder couldn’t be read.",
+                error: error
             )
         }
     }
@@ -217,9 +274,11 @@ struct SettingsView: View {
 
     private func refreshSettings() {
         storageLocation = UserDefaults.applicationDataRoot
-        dnsDomains = networkManager.listDomains().map(
-            DNSDomainSetting.init(name:)
-        )
+        resolverDirectory = UserDefaults.resolverDirectory
+        dnsDomains =
+            resolverDirectory
+            .map(networkManager.listDomains(in:))?
+            .map(DNSDomainSetting.init(name:)) ?? []
     }
 
     private func chooseStorageLocation() {
@@ -317,9 +376,17 @@ private struct DNSDomainSetting: Identifiable {
 
 private struct SettingsWarning: View {
     let message: String
+    let actionTitle: String?
+    let action: (() -> Void)?
 
-    init(_ message: String) {
+    init(
+        _ message: String,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil
+    ) {
         self.message = message
+        self.actionTitle = actionTitle
+        self.action = action
     }
 
     var body: some View {
@@ -331,7 +398,26 @@ private struct SettingsWarning: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let actionTitle, let action {
+                Spacer(minLength: 8)
+
+                Button(actionTitle, action: action)
+                    .controlSize(.small)
+                    .fixedSize()
+            }
         }
+    }
+}
+
+extension URL {
+    /// Whether this is the folder the resolver files are kept in, whichever
+    /// way it was reached: `/etc` is a link to `/private/etc`, and an open
+    /// panel answers with the latter.
+    fileprivate var isResolverDirectory: Bool {
+        resolvingSymlinksInPath().standardizedFileURL
+            == NetworkManager.resolverDirectory
+            .resolvingSymlinksInPath().standardizedFileURL
     }
 }
 

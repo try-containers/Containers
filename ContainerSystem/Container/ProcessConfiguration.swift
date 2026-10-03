@@ -27,9 +27,9 @@ public struct ProcessConfiguration: Sendable, Codable {
 
     /// Resource limit configuration.
     public struct Rlimit: Sendable, Codable {
-        public var limit: String
-        public var soft: UInt64
-        public var hard: UInt64
+        public let limit: String
+        public let soft: UInt64
+        public let hard: UInt64
 
         public init(limit: String, soft: UInt64, hard: UInt64) {
             self.limit = limit

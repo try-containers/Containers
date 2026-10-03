@@ -41,7 +41,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 struct ContainersApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    // MARK: Domain Managers
+    @State private var containerManager = ContainerManager()
+    @State private var imageManager = ImageManager()
+    @State private var volumeManager = VolumeManager()
+    @State private var networkManager = NetworkManager()
+    @State private var reportManager: ReportManager
+    @State private var systemManager: SystemManager
+
+    // MARK: Utilities
+    @State private var activityCenter: ActivityCenter
+    @State private var systemActions: SystemActions
+
     init() {
+        let systemManager = SystemManager()
+        let reportManager = ReportManager()
+
+        _systemManager = State(initialValue: systemManager)
+        _reportManager = State(initialValue: reportManager)
+        _activityCenter = State(initialValue: ActivityCenter(reports: reportManager))
+        _systemActions = State(initialValue: SystemActions(manager: systemManager))
+
         do {
             try Tips.configure()
         } catch {
@@ -49,17 +69,12 @@ struct ContainersApp: App {
         }
     }
 
-    @State private var containerManager = ContainerManager()
-    @State private var imageManager = ImageManager()
-    @State private var volumeManager = VolumeManager()
-    @State private var systemManager = SystemManager()
-    @State private var networkManager = NetworkManager()
-
     static let dashboardWindowID = "dashboard"
     static let settingsWindowID = "settings"
     static let containerDetailWindowID = "container-detail"
     static let imageDetailWindowID = "image-detail"
     static let volumeDetailWindowID = "volume-detail"
+    static let reportDetailWindowID = "report-detail"
 
     var body: some Scene {
         Window(
@@ -72,6 +87,9 @@ struct ContainersApp: App {
                     .environment(volumeManager)
                     .environment(systemManager)
                     .environment(networkManager)
+                    .environment(activityCenter)
+                    .environment(reportManager)
+                    .environment(systemActions)
                     .onAppear {
                         // Show dock icon when dashboard appears
                         NSApp.setActivationPolicy(.regular)
@@ -81,14 +99,21 @@ struct ContainersApp: App {
         .defaultSize(width: 800, height: 520)
         .defaultPosition(.center)
         .windowResizability(.contentSize)
+        // Links into the app are the dashboard's to open.
+        .handlesExternalEvents(matching: ["\(AppLink.scheme)://"])
 
         MenuBarExtra(
             content: {
                 MenuBarItem()
                     .environment(systemManager)
+                    .environment(systemActions)
             },
             label: {
-                Image(systemManager.status == .running ? "system.play" : "system.pause")
+                Image(
+                    systemManager.status == .running
+                        ? "container.stack.fill" : "container.stack"
+                )
+                .font(.system(size: 28))
             }
         )
         .menuBarExtraStyle(.menu)
@@ -100,6 +125,7 @@ struct ContainersApp: App {
         }
         .defaultSize(width: 600, height: 400)
         .defaultPosition(.center)
+        .handlesExternalEvents(matching: [])
         .commands { PreferencesCommands() }
 
         windowGroup(
@@ -111,6 +137,8 @@ struct ContainersApp: App {
                 .environment(containerManager)
                 .environment(volumeManager)
                 .environment(imageManager)
+                .environment(reportManager)
+                .environment(activityCenter)
         }
 
         windowGroup(
@@ -122,6 +150,8 @@ struct ContainersApp: App {
                 .environment(imageManager)
                 .environment(containerManager)
                 .environment(volumeManager)
+                .environment(activityCenter)
+                .environment(reportManager)
         }
 
         windowGroup(
@@ -131,6 +161,16 @@ struct ContainersApp: App {
         ) { volumeID in
             VolumeDetailWindow(id: volumeID)
                 .environment(volumeManager)
+                .environment(reportManager)
+        }
+
+        windowGroup(
+            "Report",
+            id: Self.reportDetailWindowID,
+            placeholder: DetailPlaceholder.report
+        ) { reportID in
+            ReportDetailWindow(id: reportID)
+                .environment(reportManager)
         }
     }
 
@@ -148,8 +188,10 @@ struct ContainersApp: App {
         }
         .windowResizability(.contentMinSize)
         .restorationBehavior(.disabled)
+        // Left alone, a window group opens an empty window of its own for a link meant for the dashboard.
+        .handlesExternalEvents(matching: [])
         .defaultWindowPlacement { _, context in
-            DetailPlaceholder.centred(
+            DetailPlaceholder.underParentToolbar(
                 on: context.defaultDisplay.visibleRect,
                 size: placeholder
             )

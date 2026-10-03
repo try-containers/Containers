@@ -29,6 +29,12 @@ struct FileSelection: View {
         case path
     }
 
+    /// Which places picked before the pop-up offers again.
+    enum Recents: String {
+        case tarArchive
+        case mountSource
+    }
+
     /// A place the pop-up can offer.
     struct Location: Hashable, CustomStringConvertible {
         let url: URL?
@@ -55,7 +61,7 @@ struct FileSelection: View {
     let locations: [URL]
     let style: Style
     let label: Label
-    let recents: RecentLocations.Kind?
+    let recents: Recents?
     let suggestedSaveFilename: String?
     let onSelection: (() -> Void)?
     let isPresented: Binding<Bool>?
@@ -73,7 +79,7 @@ struct FileSelection: View {
         locations: [URL] = [],
         style: Style = .popUp,
         label: Label = .name,
-        recents: RecentLocations.Kind? = nil,
+        recents: Recents? = nil,
         suggestedSaveFilename: String? = nil,
         onSelection: (() -> Void)? = nil,
         isPresented: Binding<Bool>? = nil
@@ -321,5 +327,78 @@ struct FileSelection: View {
         fileURL.wrappedValue = url
         onSelection?()
         remember(url)
+    }
+}
+
+/// The places already picked through an open panel, kept as security-scoped bookmarks.
+private enum RecentLocations {
+    static let limit = 8
+
+    static func urls(for kind: FileSelection.Recents) -> [URL] {
+        var urls: [URL] = []
+        var kept: [Data] = []
+
+        for data in stored(for: kind) {
+            guard let resolved = resolve(data) else { continue }
+
+            urls.append(resolved.url)
+            kept.append(resolved.isStale ? renew(resolved.url) ?? data : data)
+        }
+
+        if kept != stored(for: kind) {
+            UserDefaults.standard.set(kept, forKey: key(for: kind))
+        }
+
+        return urls
+    }
+
+    static func remember(_ url: URL, for kind: FileSelection.Recents) {
+        guard let data = renew(url) else { return }
+
+        var bookmarks = stored(for: kind).filter { existing in
+            resolve(existing)?.url.standardizedFileURL != url.standardizedFileURL
+        }
+
+        bookmarks.insert(data, at: 0)
+
+        UserDefaults.standard.set(
+            Array(bookmarks.prefix(limit)),
+            forKey: key(for: kind)
+        )
+    }
+
+    private static func key(for kind: FileSelection.Recents) -> String {
+        "recentLocations.\(kind.rawValue)"
+    }
+
+    private static func stored(for kind: FileSelection.Recents) -> [Data] {
+        UserDefaults.standard.array(forKey: key(for: kind)) as? [Data] ?? []
+    }
+
+    private static func resolve(_ data: Data) -> (url: URL, isStale: Bool)? {
+        var isStale = false
+
+        guard
+            let url = try? URL(
+                resolvingBookmarkData: data,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+        else {
+            // A bookmark that no longer resolves is dropped rather than kept
+            // around to fail again.
+            return nil
+        }
+
+        return (url, isStale)
+    }
+
+    private static func renew(_ url: URL) -> Data? {
+        try? url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
     }
 }

@@ -9,14 +9,8 @@ import Combine
 import SwiftUI
 
 extension TextField {
-    /// Completes the field from `text`, once typing stops.
-    ///
-    /// Pass `nil` to suggest nothing: a field that is not being typed into, or
-    /// one holding something that cannot be looked up. Any pending or in-flight
-    /// lookup is abandoned and the menu closes.
-    ///
-    /// This is an extension on `TextField` rather than on `View`, so it has to
-    /// come first in the chain — every later modifier returns `some View`.
+    /// Suggests completions for `text` once typing stops; `nil` cancels and closes the menu.
+    /// On `TextField`, so it must come first in the modifier chain.
     func suggestions(
         for text: String?,
         fetch: @escaping @Sendable (String) async throws -> [String]
@@ -54,8 +48,7 @@ private struct TextFieldSuggestions: ViewModifier {
                 }
             }
             .onChange(of: text) { _, newText in
-                // Text matching what is on the menu means the user just picked
-                // it, so close up rather than look the same thing up again.
+                // Text matching a suggestion was just picked from the menu.
                 guard let newText, !newText.isEmpty,
                     !resolver.suggestions.contains(newText)
                 else {
@@ -71,26 +64,18 @@ private struct TextFieldSuggestions: ViewModifier {
     }
 }
 
-/// Turns the stream of text produced while typing into at most one request,
-/// made once typing stops.
-///
-/// Text arrives on every keystroke. Nothing is fetched until the stream stays
-/// quiet for `debounce`, and text matching what is already loaded is dropped,
-/// so holding down a key or retyping the same thing costs nothing.
+/// Debounces typing into at most one lookup, skipping text already loaded.
 @Observable
 private final class SuggestionResolver {
     private(set) var suggestions: [String] = []
     private(set) var isLoading = false
 
-    /// Why the last lookup came back empty, when it came back empty because it
-    /// failed rather than because nothing matched.
+    /// Set when the last lookup failed, as opposed to matching nothing.
     private(set) var failure: String?
 
     private let queries = PassthroughSubject<String?, Never>()
 
-    /// Tied to this field and emptied whenever it stops suggesting, so an entry
-    /// never outlives the image name or registry it was looked up against. That
-    /// is what lets the text alone be the key.
+    /// Cleared on reset, so the text alone can be the key.
     @ObservationIgnored private var cache = SuggestionCache()
     @ObservationIgnored private var fetch: (@Sendable (String) async throws -> [String])?
     @ObservationIgnored private var subscription: AnyCancellable?
@@ -109,8 +94,7 @@ private final class SuggestionResolver {
             }
     }
 
-    /// Records the text typed so far, and the lookup to answer it with. The
-    /// lookup is taken every time, so it never goes stale against the view.
+    /// Takes the lookup every time, so it never goes stale against the view.
     func send(
         _ text: String,
         using fetch: @escaping @Sendable (String) async throws -> [String]
@@ -119,7 +103,6 @@ private final class SuggestionResolver {
         queries.send(text)
     }
 
-    /// Drops any pending or in-flight lookup and empties the suggestion list.
     func reset() {
         queries.send(nil)
         fetchTask?.cancel()
@@ -137,7 +120,6 @@ private final class SuggestionResolver {
         fetchTask?.cancel()
         loadedText = text
 
-        // Answered from memory, without the network or a flash of spinner.
         if let cached = cache.values(for: text) {
             suggestions = cached
             failure = nil
@@ -151,8 +133,7 @@ private final class SuggestionResolver {
             do {
                 let results = try await fetch(text)
 
-                // A cancelled task leaves `isLoading` alone: the text that
-                // replaced it owns the spinner from here on.
+                // The newer text owns `isLoading` now.
                 guard !Task.isCancelled else { return }
 
                 cache.store(results, for: text)
@@ -162,8 +143,7 @@ private final class SuggestionResolver {
             } catch {
                 guard !Task.isCancelled else { return }
 
-                // Failures are not remembered, so retyping the same text
-                // retries rather than resting on the empty result.
+                // Not cached, so retyping retries.
                 loadedText = nil
                 suggestions = []
                 failure = error.localizedDescription
@@ -173,8 +153,7 @@ private final class SuggestionResolver {
     }
 }
 
-/// Remembers what this field has already looked up, so backspacing a character
-/// answers from memory instead of going back to the network.
+/// Lets backspacing answer from memory instead of the network.
 private struct SuggestionCache {
     private struct Entry {
         let values: [String]
@@ -203,8 +182,7 @@ private struct SuggestionCache {
             return
         }
 
-        // Drop what has already expired, and only if that was not enough,
-        // the oldest of what is left.
+        // Expired entries first, then the oldest.
         let now = ContinuousClock.now
         entries = entries.filter { $0.value.stored.duration(to: now) < ttl }
 

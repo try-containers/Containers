@@ -14,7 +14,7 @@ struct ImageDetailWindow: View {
     @Environment(ImageManager.self) private var imageManager
     let imageReference: String
 
-    @SwiftUI.State private var image: ImageViewModel?
+    @SwiftUI.State private var image: ImageItem?
     @SwiftUI.State private var isLoading: Bool = true
     @SwiftUI.State private var toolbarController = DetailToolbarController()
 
@@ -35,7 +35,7 @@ struct ImageDetailWindow: View {
             } else {
                 ContentUnavailableView(
                     "Image Not Found",
-                    systemImage: "shippingbox",
+                    systemImage: "cube.transparent",
                     description: Text(
                         "The image '\(imageReference)' no longer exists."
                     )
@@ -47,7 +47,7 @@ struct ImageDetailWindow: View {
             DetailToolbarAttacher(
                 controller: toolbarController,
                 tabs: ImageDetailView.toolbarTabs,
-                actions: ImageDetailView.placeholderActions
+                items: ImageDetailView.placeholderToolbarItems
             )
         )
         .navigationTitle(
@@ -67,7 +67,7 @@ struct ImageDetailWindow: View {
             if let match = items.first(where: {
                 $0.description.reference == imageReference
             }) {
-                image = ImageViewModel(match)
+                image = ImageItem(match)
             } else {
                 image = nil
             }
@@ -79,21 +79,22 @@ struct ImageDetailWindow: View {
 
 struct ImageDetailView: View {
     @Environment(ImageManager.self) private var imageManager
+    @Environment(ReportManager.self) private var reportManager
     @Environment(\.dismissWindow) private var dismissWindow
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openURL) private var openURL
 
-    let image: ImageViewModel
+    let image: ImageItem
     let toolbarController: DetailToolbarController
 
-    @SwiftUI.State private var selectedCategory: DetailCategory = .overview
+    @SwiftUI.State private var selectedCategory: DetailCategory = .history
     @SwiftUI.State private var showDeleteConfirmation: Bool = false
     @SwiftUI.State private var showCreateContainer: Bool = false
     @SwiftUI.State private var errorAlert: ErrorAlert?
 
     enum DetailCategory: String, CaseIterable, Hashable {
-        case overview
         case history
         case inspect
+        case info
     }
 
     static var toolbarTabs: [DetailToolbarController.Tab] {
@@ -104,7 +105,7 @@ struct ImageDetailView: View {
 
     static func tabIcon(_ tab: DetailCategory) -> String {
         switch tab {
-        case .overview: "info.circle"
+        case .info: "info.circle"
         case .history: "clock.arrow.circlepath"
         case .inspect: "curlybraces"
         }
@@ -112,16 +113,16 @@ struct ImageDetailView: View {
 
     /// The same shape with nothing wired up, so the window can build its
     /// toolbar before it has an image to build one from.
-    static var placeholderActions: [DetailAction] {
+    static var placeholderToolbarItems: [DetailToolbarItem] {
         [
-            DetailAction(id: "run", title: "Run", icon: "play.fill", isEnabled: false) {},
-            DetailAction(id: "save", title: "Save", icon: "folder.fill", isEnabled: false) {},
-            DetailAction(
+            .reportsPlaceholder,
+            DetailToolbarItem(id: "run", title: "Run", icon: "play.fill", isEnabled: false) {},
+            DetailToolbarItem(id: "save", title: "Save", icon: "folder.fill", isEnabled: false) {},
+            DetailToolbarItem(
                 id: "delete",
                 title: "Delete",
                 icon: "trash",
-                isEnabled: false,
-                isDestructive: true
+                isEnabled: false
             ) {},
         ]
     }
@@ -130,7 +131,7 @@ struct ImageDetailView: View {
         DetailView(
             selectedTab: $selectedCategory,
             showTabs: true,
-            actions: actions,
+            toolbarItems: toolbarItems,
             tabTitle: { category in
                 category.rawValue.localizedCapitalized
             },
@@ -140,22 +141,22 @@ struct ImageDetailView: View {
             },
             tabMaxHeight: { category in
                 switch category {
-                case .overview: nil
+                case .info: nil
                 case .history: 430
                 case .inspect: 500
                 }
             },
             tabContentWidth: { category in
                 switch category {
-                case .overview: 650
+                case .info: 650
                 case .history, .inspect: nil
                 }
             },
             toolbarController: toolbarController,
             tabContent: { category in
                 switch category {
-                case .overview:
-                    ImageOverview(image: image)
+                case .info:
+                    ImageInfo(image: image)
 
                 case .inspect:
                     ImageInspect(image: image)
@@ -192,9 +193,17 @@ struct ImageDetailView: View {
         .errorAlert($errorAlert)
     }
 
-    private var actions: [DetailAction] {
+    private var toolbarItems: [DetailToolbarItem] {
         [
-            DetailAction(
+            // A build and a fetch are both reported against the image they
+            // were making, which is the image this window is about.
+            .reports(
+                about: image.imageDescription.reference,
+                ofKind: [.image, .build],
+                manager: reportManager,
+                openURL: openURL
+            ),
+            DetailToolbarItem(
                 id: "run",
                 title: "Run",
                 icon: "play.fill",
@@ -202,7 +211,7 @@ struct ImageDetailView: View {
             ) {
                 showCreateContainer = true
             },
-            DetailAction(
+            DetailToolbarItem(
                 id: "save",
                 title: "Save",
                 icon: "folder.fill",
@@ -219,12 +228,11 @@ struct ImageDetailView: View {
                     }
                 )
             },
-            DetailAction(
+            DetailToolbarItem(
                 id: "delete",
                 title: "Delete",
                 icon: "trash",
-                help: "Delete image",
-                isDestructive: true
+                help: "Delete image"
             ) {
                 showDeleteConfirmation = true
             },

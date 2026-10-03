@@ -15,22 +15,22 @@ import Foundation
 extension Builder {
     /// Configuration for a build operation.
     public struct BuildConfig: Sendable {
-        public var id: String
-        public var contentStore: ContentStore
-        public var args: [String]
-        public var contextDir: String
-        public var dockerfile: Data
-        public var labels: [String]
-        public var noCache: Bool
-        public var platforms: [Platform]
-        public var terminal: BuildTerminal?
-        public var tags: [String]
-        public var target: String
-        public var quiet: Bool
-        public var exports: [BuildExport]
-        public var cacheIn: [String]
-        public var cacheOut: [String]
-        public var statusUpdate: (@Sendable (String) async -> Void)?
+        public let id: String
+        public let contentStore: ContentStore
+        public let args: [String]
+        public let contextDir: String
+        public let dockerfile: Data
+        public let labels: [String]
+        public let noCache: Bool
+        public let platforms: [Platform]
+        public let terminal: BuildTerminal?
+        public let tags: [String]
+        public let target: String
+        public let quiet: Bool
+        public let exports: [BuildExport]
+        public let cacheIn: [String]
+        public let cacheOut: [String]
+        public let statusUpdate: (@Sendable (String) async -> Void)?
 
         public init(
             id: String,
@@ -71,10 +71,10 @@ extension Builder {
 
     /// Represents a build export configuration.
     public struct BuildExport: Sendable {
-        public var type: String
+        public let type: String
         public var destination: URL?
-        public var additionalFields: [String: String]
-        public var rawValue: String
+        public let additionalFields: [String: String]
+        public let rawValue: String
 
         public init(
             type: String,
@@ -113,7 +113,7 @@ extension Builder {
 
     /// Terminal handle for build output.
     public struct BuildTerminal: Sendable {
-        public var handle: FileHandle?
+        public let handle: FileHandle?
 
         public init(handle: FileHandle? = nil) {
             self.handle = handle

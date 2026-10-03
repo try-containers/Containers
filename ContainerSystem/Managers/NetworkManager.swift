@@ -13,41 +13,72 @@ import Logging
 import Observation
 
 /// Manages DNS resolver configuration for container domains.
-/// Create instances via public init() - stateless utility manager.
 @Observable
 @MainActor
 public final class NetworkManager {
+    public static let resolverDirectory = URL(fileURLWithPath: "/etc/resolver", isDirectory: true)
 
-    private static let resolverDirectory = "/etc/resolver"
     private static let filePrefix = "containerization."
-    private static let nameserver = "127.0.0.1"
-    private static let port = "2053"
 
     private let logger: Logger
 
     /// Public initializer - creates instance
     public init() {
-        var logger = Logger(label: "app.containers.manager.dns")
+        var logger = Logger(label: "app.containers.manager.network")
         logger.logLevel = .debug
         self.logger = logger
     }
 
     // MARK: - Public API
 
-    public func listDomains() -> [String] {
+    public func listDomains(in directory: URL) -> [String] {
         let fileManager = FileManager.default
+        let isScoped = directory.startAccessingSecurityScopedResource()
+
+        defer {
+            if isScoped {
+                directory.stopAccessingSecurityScopedResource()
+            }
+        }
+
         guard
-            let contents = try? fileManager.contentsOfDirectory(
-                atPath: Self.resolverDirectory
-            )
+            let filenames = try? fileManager.contentsOfDirectory(atPath: directory.path)
         else {
+            logger.debug("Unreadable resolver directory: \(directory.path)")
+
             return []
         }
+
         return
-            contents
+            filenames
             .filter { $0.hasPrefix(Self.filePrefix) }
-            .map { String($0.dropFirst(Self.filePrefix.count)) }
+            .compactMap { domain(inResolverNamed: $0, in: directory) }
             .sorted()
+    }
+
+    private func domain(inResolverNamed filename: String, in directory: URL) -> String? {
+        let path = directory.appendingPathComponent(filename)
+
+        guard let text = try? String(contentsOf: path, encoding: .utf8) else {
+            logger.debug("Unreadable resolver file: \(filename)")
+
+            return nil
+        }
+
+        for line in text.components(separatedBy: .newlines) {
+            let fields =
+                line
+                .trimmingCharacters(in: .whitespaces)
+                .split(whereSeparator: \.isWhitespace)
+
+            guard fields.count == 2, fields[0] == "domain" else {
+                continue
+            }
+
+            return String(fields[1])
+        }
+
+        return nil
     }
 
     // MARK: - Create domain

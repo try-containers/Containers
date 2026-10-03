@@ -19,11 +19,12 @@ public final class SystemManager {
 
     let runtime: ContainerRuntime
     private let logger: Logger
+    private var startTask: Task<Void, Error>?
 
     public var startupError: (any Error)? { runtime.startupError }
 
-    /// System status for UI
-    public enum SystemStatus: Equatable {
+    /// Where the system is in its life cycle; `startupError` says why a start failed.
+    public enum Status: Equatable {
         case notStarted
         case starting
         case running
@@ -31,7 +32,7 @@ public final class SystemManager {
         case failed
     }
 
-    public var status: SystemStatus {
+    public var status: Status {
         if runtime.isStopping { return .stopping }
         if runtime.isStarting { return .starting }
         if runtime.isRunning { return .running }
@@ -39,10 +40,10 @@ public final class SystemManager {
         return .notStarted
     }
 
-    /// Observable state for progress while the system installs what a first
-    /// run needs. This mirrors the runtime's progress reporter.
-    public var progress: ProgressReporter {
-        runtime.progress
+    /// How far a first start has got with installing what the system needs,
+    /// while it installs it; `nil` once there is nothing left to install.
+    public var setupProgress: Progress? {
+        runtime.setupProgress
     }
 
     /// Public initializer - creates instance referencing shared runtime
@@ -66,7 +67,35 @@ public final class SystemManager {
     /// - Throws: An error if the runtime cannot initialize prerequisites, storage, services, or networking.
     public func start(appRoot: URL) async throws {
         logger.info("Starting system", metadata: ["appRoot": "\(appRoot.path)"])
-        try await runtime.start(appRoot: appRoot)
+
+        let task = Task { [runtime] in
+            try await runtime.start(appRoot: appRoot)
+        }
+
+        startTask = task
+
+        defer {
+            if startTask == task {
+                startTask = nil
+            }
+        }
+
+        try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    public func cancelStart() {
+        logger.info("Cancelling start")
+        startTask?.cancel()
+    }
+
+    public func diskUsage() async -> Int64? {
+        guard let appRoot = try? runtime.getAppRoot() else { return nil }
+
+        return await FileIO.shared.allocatedSize(of: appRoot)
     }
 
     /// Stop the container system
