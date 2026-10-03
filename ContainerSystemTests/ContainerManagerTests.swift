@@ -30,27 +30,15 @@ struct ContainerManagerTests {
 
     // MARK: - List Containers Tests
 
-    @Test("List containers")
+    @Test("Empty store lists no containers")
     @MainActor
-    func listContainers() async throws {
+    func emptyStoreListsNoContainers() async throws {
         let (_, testRuntime) = try await setupTestSystem()
 
         let manager = ContainerManager(testRuntime: testRuntime)
         let containers = try await manager.list()
 
-        #expect(type(of: containers) == [ContainerSnapshot].self)
-    }
-
-    @Test("List returns container snapshots")
-    @MainActor
-    func listReturnsSnapshots() async throws {
-        let (_, testRuntime) = try await setupTestSystem()
-
-        let manager = ContainerManager(testRuntime: testRuntime)
-        let result = try await manager.list()
-
-        // Verify result is an array
-        #expect(type(of: result) == [ContainerSnapshot].self)
+        #expect(containers.isEmpty)
     }
 
     // MARK: - Get Container Tests
